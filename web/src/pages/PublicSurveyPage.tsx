@@ -411,7 +411,12 @@ export function PublicSurveyPage() {
   const wheelSegments = useMemo(() => buildPrizeWheelSegments(survey?.rewardPreviewItems ?? []), [survey?.rewardPreviewItems])
   const showWheelArea = canSpinReward || wheelSpinning || Boolean(rewardResult)
   const retryTasks = rewardResult?.retryTasks ?? survey?.rewardRetryTasks ?? []
-  const canCloseWheelModal = !wheelSpinning && Boolean(rewardResult)
+  const canCloseWheelModal =
+    !wheelSpinning &&
+    Boolean(
+      rewardResult &&
+        (rewardResult.won || (rewardResult.finalAttempt && !rewardResult.retryAvailable && !canSpinReward)),
+    )
   const rewardContactWhatsAppUrl =
     rewardResult?.won && rewardResult.contactWhatsApp
       ? buildRewardWhatsAppUrl({
@@ -1075,7 +1080,6 @@ export function PublicSurveyPage() {
   const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
 
   function startRetryTask(task: RewardRetryTask) {
-    const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
     const nextRetryTaskProgressMap = {
       ...retryTaskProgressMap,
       [task.id]: {
@@ -1093,9 +1097,7 @@ export function PublicSurveyPage() {
       wheelModalOpen: true,
     })
 
-    if (!openedWindow) {
-      window.location.href = task.url
-    }
+    window.location.assign(task.url)
   }
 
   function getRetryTaskProgress(taskId: string) {
@@ -1772,11 +1774,7 @@ export function PublicSurveyPage() {
                       <X className="h-4 w-4" />
                       Fechar
                     </button>
-                  ) : (
-                    <div className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
-                      Fechamento liberado ao final
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
