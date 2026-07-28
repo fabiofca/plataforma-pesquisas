@@ -184,6 +184,7 @@ export function PrizeWheel({
   const gradient = buildWheelGradient(segments, primaryColor)
   const dividerOverlay = buildWheelOverlay(segments)
   const compactWheel = segments.length >= 8
+  const rewardLikeSegments = segments.filter((segment) => segment.kind !== 'neutral').length
   const labelDistance = isFullscreen
     ? compactWheel
       ? 'clamp(124px, 31vw, 188px)'
@@ -254,6 +255,12 @@ export function PrizeWheel({
               const isActive = activeSegmentId === segment.id
               const isRewardSegment = segment.kind === 'reward'
               const isRetrySegment = segment.kind === 'retry'
+              const showSegmentLabel = segment.kind !== 'neutral'
+
+              if (!showSegmentLabel) {
+                return null
+              }
+
               const labelLines = splitSegmentLabel(getWheelDisplayLabel(segment.label))
               const { text } = getSegmentColors(segment, index, primaryColor)
               const textShadow =
@@ -278,7 +285,12 @@ export function PrizeWheel({
                       isActive ? 'scale-[1.06]' : ''
                     }`}
                     style={{
-                      width: isFullscreen ? labelWidth : undefined,
+                      width:
+                        isFullscreen && rewardLikeSegments <= 3
+                          ? 'clamp(132px, 26vw, 196px)'
+                          : isFullscreen
+                            ? labelWidth
+                            : undefined,
                       color: text,
                       textShadow,
                       fontSize:

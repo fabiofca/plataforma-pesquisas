@@ -1155,11 +1155,7 @@ export function PublicSurveyPage() {
                       <p className="mt-3 text-lg font-semibold text-white">
                         {wheelSpinning ? 'A sorte está girando...' : canSpinReward ? 'Pronta para girar' : 'Aguardando resultado'}
                       </p>
-                      <p className="mt-2 text-sm text-slate-300">
-                        {wheelSpinning
-                          ? 'Segure esse momento. O resultado já está sendo revelado.'
-                          : 'Quando você tocar em girar, o resultado salvo no servidor será mostrado aqui.'}
-                      </p>
+                      {wheelSpinning ? <p className="mt-2 text-sm text-slate-300">Segure esse momento.</p> : null}
                     </div>
                   ) : rewardResult.won ? (
                     <div ref={rewardProofRef} className="rounded-[24px] border border-amber-300/25 bg-[linear-gradient(180deg,rgba(250,204,21,0.22)_0%,rgba(236,72,153,0.16)_52%,rgba(15,23,42,0.96)_100%)] p-5 shadow-[0_22px_70px_rgba(250,204,21,0.14)]">
