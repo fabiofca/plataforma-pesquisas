@@ -679,7 +679,8 @@ export function RewardsPage() {
               {campaignForm.retryUnlockEnabled ? (
                 <div className="grid gap-3">
                   <div className="admin-alert border-amber-200 bg-amber-50 text-amber-900">
-                    Se o cliente não ganhar no primeiro giro, ele verá as tarefas abaixo. O segundo giro só libera depois que ele clicar em <strong>todas</strong>.
+                    Se o cliente não ganhar, o sistema mostra <strong>uma tarefa por vez</strong>. Cada tarefa confirmada libera um
+                    novo giro, e a próxima tarefa só aparece se ele ainda não ganhar.
                   </div>
 
                   {campaignForm.retryUnlockTasks.map((task, index) => (

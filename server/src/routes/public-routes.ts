@@ -650,6 +650,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         : []
     const nextPendingTask = retryTasks.find((task) => !completedTaskIds.includes(task.id))
     const maxAttempts = 1 + retryTasks.length
+    const isFinalAttempt = currentAttempt >= maxAttempts
 
     if (attemptsMade >= maxAttempts) {
       await client.query('commit')
@@ -660,6 +661,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         couponCode: latestSpin?.coupon_code ?? undefined,
         pickupAddress: latestSpin?.pickup_address ?? undefined,
         contactWhatsApp: latestSpin?.contact_whatsapp ?? undefined,
+        spinAttempt: latestSpin?.spin_attempt ?? maxAttempts,
+        maxAttempts,
+        finalAttempt: true,
         message:
           latestSpin?.outcome_type === 'win'
             ? 'Este resultado já foi registrado anteriormente.'
@@ -677,6 +681,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         couponCode: latestSpin.coupon_code ?? undefined,
         pickupAddress: latestSpin.pickup_address ?? undefined,
         contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+        spinAttempt: latestSpin.spin_attempt,
+        maxAttempts,
+        finalAttempt: true,
         message: 'Este resultado já foi registrado anteriormente.',
       })
       return
@@ -694,6 +701,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
             retryUnlocked: false,
             retryTasks,
             completedTaskIds,
+            spinAttempt: latestSpin.spin_attempt,
+            maxAttempts,
+            finalAttempt: false,
           })
           return
         }
@@ -704,6 +714,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           landedLabel: latestSpin.wheel_label,
           pickupAddress: latestSpin.pickup_address ?? undefined,
           contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+          spinAttempt: latestSpin.spin_attempt,
+          maxAttempts,
+          finalAttempt: latestSpin.spin_attempt >= maxAttempts,
           message: `A roleta já foi utilizada nesta participação e parou em "${latestSpin.wheel_label}".`,
         })
         return
@@ -732,6 +745,45 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     ) {
       await client.query('commit')
       response.status(409).json({ message: 'A chance extra ainda não está liberada para esta participação.' })
+      return
+    }
+
+    if (!isFinalAttempt) {
+      const noPrizeLabel = selectNoPrizeLabel()
+
+      await client.query(
+        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
+         values ($1, $2, $3, null, 'no_prize', $4, $5)`,
+        [makeId(), survey.reward_campaign_id, responseId, noPrizeLabel, currentAttempt],
+      )
+
+      await client.query(
+        `update survey_responses
+         set reward_eligible = false,
+             reward_spin_completed = false,
+             reward_spin_item_id = null,
+             reward_retry_unlock_pending = $2,
+             reward_retry_unlocked_at = null,
+             reward_retry_count = $3
+         where id = $1`,
+        [responseId, Boolean(nextPendingTask), currentAttempt - 1],
+      )
+
+      await client.query('commit')
+      response.json({
+        won: false,
+        landedLabel: noPrizeLabel,
+        retryAvailable: Boolean(nextPendingTask),
+        retryUnlocked: false,
+        retryTasks,
+        completedTaskIds,
+        spinAttempt: currentAttempt,
+        maxAttempts,
+        finalAttempt: false,
+        message: nextPendingTask
+          ? `${noPrizeLabel} Conclua a próxima tarefa para liberar outro giro.`
+          : `${noPrizeLabel} Continue participando para liberar outra chance.`,
+      })
       return
     }
 
@@ -846,6 +898,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         response.json({
           won: false,
           landedLabel: noPrizeLabel,
+          spinAttempt: currentAttempt,
+          maxAttempts,
+          finalAttempt: true,
           message: `${noPrizeLabel} Conclua a próxima tarefa para liberar um novo giro.`,
           retryAvailable: true,
           retryUnlocked: false,
@@ -870,10 +925,13 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       response.json({
         won: false,
         landedLabel: noPrizeLabel,
+        spinAttempt: currentAttempt,
+        maxAttempts,
+        finalAttempt: true,
         message:
-          currentAttempt === 2
-            ? `${noPrizeLabel} A chance extra foi usada e não houve prêmio disponível neste segundo giro.`
-            : `${noPrizeLabel} Continue participando e boa sorte nas próximas campanhas.`,
+          maxAttempts > 1
+            ? `${noPrizeLabel} As chances desta participação já foram usadas.`
+            : `${noPrizeLabel} Não houve prêmio disponível nesta tentativa.`,
       })
       return
     }
@@ -924,6 +982,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         response.json({
           won: false,
           landedLabel: noPrizeLabel,
+          spinAttempt: currentAttempt,
+          maxAttempts,
+          finalAttempt: true,
           message: `${noPrizeLabel} Conclua a próxima tarefa para liberar um novo giro.`,
           retryAvailable: true,
           retryUnlocked: false,
@@ -948,9 +1009,12 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       response.json({
         won: false,
         landedLabel: noPrizeLabel,
+        spinAttempt: currentAttempt,
+        maxAttempts,
+        finalAttempt: true,
         message:
-          currentAttempt === 2
-            ? `${noPrizeLabel} A chance extra foi usada, mas nenhum prêmio ficou disponível neste segundo giro.`
+          maxAttempts > 1
+            ? `${noPrizeLabel} As chances desta participação já foram usadas.`
             : `${noPrizeLabel} Nenhum prêmio ficou disponível neste giro.`,
       })
       return
@@ -995,13 +1059,12 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       couponCode,
       pickupAddress: survey.reward_pickup_address ?? undefined,
       contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
+      spinAttempt: currentAttempt,
+      maxAttempts,
+      finalAttempt: true,
       message: survey.reward_pickup_address
-        ? currentAttempt === 2
-          ? 'Parabéns! A chance extra foi liberada e o local de retirada já está indicado abaixo.'
-          : 'Parabéns! O resultado foi definido com segurança no servidor e o local de retirada já está indicado abaixo.'
-        : currentAttempt === 2
-          ? 'Parabéns! A chance extra foi liberada e o prêmio foi registrado nesta campanha.'
-          : 'Parabéns! O resultado foi definido com segurança no servidor e registrado nesta campanha.',
+        ? 'Parabéns! O resultado foi definido com segurança no servidor e o local de retirada já está indicado abaixo.'
+        : 'Parabéns! O resultado foi definido com segurança no servidor e registrado nesta campanha.',
     })
   } catch (error) {
     await client.query('rollback')

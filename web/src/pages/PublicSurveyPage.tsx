@@ -61,6 +61,9 @@ type RewardResultState = {
   retryUnlocked?: boolean
   retryTasks?: RewardRetryTask[]
   completedTaskIds?: string[]
+  spinAttempt?: number
+  maxAttempts?: number
+  finalAttempt?: boolean
   message?: string
 }
 
@@ -752,7 +755,10 @@ export function PublicSurveyPage() {
         const previewRemainingRetryTasks = (survey.rewardRetryTasks ?? []).filter(
           (task) => !previewCompletedTaskIds.includes(task.id),
         )
-        const shouldWin = rewardSegments.length > 0 && Math.random() < 0.45
+        const previewMaxAttempts = 1 + (survey.rewardRetryTasks?.length ?? 0)
+        const previewSpinAttempt = previewCompletedTaskIds.length + 1
+        const previewIsFinalAttempt = previewSpinAttempt >= previewMaxAttempts
+        const shouldWin = previewIsFinalAttempt && rewardSegments.length > 0 && Math.random() < 0.45
         const selectedSegment = shouldWin
           ? pickRandomItem(rewardSegments)
           : pickRandomItem(neutralSegments.length ? neutralSegments : wheelSegments)
@@ -763,16 +769,21 @@ export function PublicSurveyPage() {
           landedLabel: selectedSegment.label,
           couponCode: shouldWin ? makePreviewCouponCode() : undefined,
           contactWhatsApp: shouldWin ? survey.rewardContactWhatsApp : undefined,
-          retryAvailable: !shouldWin && previewRemainingRetryTasks.length > 0,
+          retryAvailable: !shouldWin && !previewIsFinalAttempt && previewRemainingRetryTasks.length > 0,
           retryUnlocked: false,
           retryTasks: survey.rewardRetryTasks ?? [],
           completedTaskIds: previewCompletedTaskIds,
+          spinAttempt: previewSpinAttempt,
+          maxAttempts: previewMaxAttempts,
+          finalAttempt: previewIsFinalAttempt,
           pickupAddress: shouldWin ? 'Retire no balcão informado pela campanha.' : undefined,
           message: shouldWin
             ? 'Parabéns! O resultado foi definido com segurança e o local de retirada já está indicado abaixo.'
-            : previewRemainingRetryTasks.length > 0
-              ? 'Você não ganhou neste giro. Conclua a próxima tarefa para liberar uma nova tentativa.'
-              : 'Você não teve sorte desta vez. As tentativas desta experiência já foram usadas.',
+            : previewIsFinalAttempt
+              ? 'Você não teve sorte desta vez. As tentativas desta experiência já foram usadas.'
+              : previewRemainingRetryTasks.length > 0
+                ? 'Conclua a próxima tarefa para liberar sua próxima chance.'
+                : 'Continue participando para liberar sua próxima chance.',
         }
       }
 
@@ -787,6 +798,9 @@ export function PublicSurveyPage() {
         retryUnlocked?: boolean
         retryTasks?: RewardRetryTask[]
         completedTaskIds?: string[]
+        spinAttempt?: number
+        maxAttempts?: number
+        finalAttempt?: boolean
         message?: string
       }>(`/public/surveys/${survey.slug}/spin`, {
         method: 'POST',
@@ -846,7 +860,7 @@ export function PublicSurveyPage() {
 
         return {
           ok: true,
-          unlocked: nextCompletedTaskIds.length >= (survey.rewardRetryTasks?.length ?? 0),
+          unlocked: true,
           completedTaskIds: nextCompletedTaskIds,
           remainingTasks: Math.max((survey.rewardRetryTasks?.length ?? 0) - nextCompletedTaskIds.length, 0),
         }
@@ -886,7 +900,7 @@ export function PublicSurveyPage() {
               retryUnlocked: result.unlocked,
               completedTaskIds: result.completedTaskIds,
               message: result.unlocked
-                ? 'A tarefa foi registrada. Sua nova tentativa já está liberada.'
+                ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
                 : current.message,
             }
           : current,
