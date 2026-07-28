@@ -15,7 +15,7 @@ import {
   type RewardDrawItem,
 } from '../services/reward-draw.js'
 import { publicVisitSchema, responseSchema, rewardEligibilitySchema, rewardRetryTaskClickSchema } from '../validators/schemas.js'
-import { generateCouponCode, hashValue, makeId } from '../utils/security.js'
+import { generateCouponCode, hashValue, makeId, verifySurveyPreviewToken } from '../utils/security.js'
 
 export const publicRouter = Router()
 
@@ -160,6 +160,94 @@ async function getSurveyBySlug(slug: string) {
   }
 }
 
+async function getSurveyPreviewById(surveyId: string) {
+  const surveyResult = await query<PublicSurveyRecord & { status: string }>(
+    `select
+        surveys.id,
+        surveys.title,
+        surveys.description,
+        surveys.status,
+        surveys.participation_mode,
+        surveys.brand_name,
+        surveys.logo_url,
+        surveys.primary_color,
+        surveys.banner_url,
+        surveys.closing_message,
+        surveys.reward_enabled,
+        reward_campaigns.id as reward_campaign_id,
+        reward_campaigns.status as reward_campaign_status,
+        cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
+        reward_campaigns.pickup_address as reward_pickup_address,
+        reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
+        reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
+     from surveys
+     left join reward_campaigns on reward_campaigns.survey_id = surveys.id
+     where surveys.id = $1`,
+    [surveyId],
+  )
+
+  const survey = surveyResult.rows[0]
+
+  if (!survey) {
+    return null
+  }
+
+  const questions = await query<{
+    id: string
+    title: string
+    description: string | null
+    type: string
+    is_required: boolean
+    position: number
+    settings_json: {
+      flowRules?: Array<{
+        value: string
+        nextQuestionId: string
+      }>
+    }
+  }>(
+    `select id, title, description, type, is_required, position, settings_json
+     from survey_questions
+     where survey_id = $1
+     order by position asc`,
+    [survey.id],
+  )
+
+  const options = await query<{ question_id: string; label: string; position: number }>(
+    `select question_id, label, position
+     from question_options
+     where question_id in (select id from survey_questions where survey_id = $1)
+     order by position asc`,
+    [survey.id],
+  )
+
+  const rewardItems =
+    survey.reward_enabled && survey.reward_campaign_id
+      ? await query<{ id: string; title: string }>(
+          `select reward_items.id, reward_items.title
+           from reward_items
+           where reward_items.campaign_id = $1
+             and reward_items.is_active = true
+             and reward_items.quantity_total > reward_items.quantity_awarded
+           order by reward_items.created_at asc
+           limit $2`,
+          [survey.reward_campaign_id, MAX_REAL_REWARDS],
+        )
+      : { rows: [] }
+
+  return {
+    ...survey,
+    questions: questions.rows.map((question) => ({
+      ...question,
+      options: options.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
+    })),
+    reward_items: rewardItems.rows,
+    reward_neutral_labels: DEFAULT_NO_PRIZE_LABELS.slice(0, 6),
+    reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,
+    reward_retry_tasks: normalizeRewardRetryTasks(survey.reward_retry_unlock_tasks_json),
+  }
+}
+
 function isRewardCampaignAvailable(survey: Awaited<ReturnType<typeof getSurveyBySlug>>) {
   if (!survey?.reward_enabled || !survey.reward_campaign_id) {
     return false
@@ -234,6 +322,31 @@ publicRouter.get('/surveys/:slug', async (request, response) => {
 
   if (!survey) {
     response.status(404).json({ message: 'Pesquisa pública não encontrada.' })
+    return
+  }
+
+  response.json({ survey })
+})
+
+publicRouter.get('/preview/:token', async (request, response) => {
+  let surveyId = ''
+
+  try {
+    surveyId = verifySurveyPreviewToken(String(request.params.token ?? '')).surveyId
+  } catch {
+    response.status(404).json({ message: 'Link de teste inválido ou expirado.' })
+    return
+  }
+
+  const survey = await getSurveyPreviewById(surveyId)
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa de teste não encontrada.' })
+    return
+  }
+
+  if (survey.status !== 'draft') {
+    response.status(410).json({ message: 'Este link de teste expirou porque a pesquisa já não está mais em rascunho.' })
     return
   }
 

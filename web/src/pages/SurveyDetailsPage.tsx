@@ -15,6 +15,7 @@ import {
 import { Link, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyPreviewLinkCard } from '@/components/ui/SurveyPreviewLinkCard'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest } from '@/lib/api-client'
@@ -150,6 +151,7 @@ export function SurveyDetailsPage() {
   const summary = summaryQuery.data?.summary
   const publicSurveyPath = survey?.slug ? getPublicSurveyPath(survey.slug) : ''
   const isPublishedSurvey = survey?.status === 'Publicada'
+  const isDraftSurvey = survey?.status === 'Rascunho'
   const tabs = [
     { id: 'summary' as const, label: 'Resumo', icon: PieChart },
     { id: 'questions' as const, label: 'Perguntas', icon: ListChecks },
@@ -414,6 +416,10 @@ export function SurveyDetailsPage() {
                 title="Link, QR code e abertura pública"
                 description="Tudo pronto para divulgar com leitura rápida de cliques e QR scans."
               >
+                <div className="mb-4">
+                  <SurveyPreviewLinkCard surveyId={survey.id} isDraft={Boolean(isDraftSurvey)} />
+                </div>
+
                 {isPublishedSurvey ? (
                   <SurveyShareCard
                     surveyId={survey.id}

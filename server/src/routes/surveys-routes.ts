@@ -12,7 +12,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
 import { ensureFeatureAccess, hasFeatureAccess } from '../services/feature-access.js'
 import { ensureSurveyAccess } from '../services/survey-access.js'
 import { surveySchema } from '../validators/schemas.js'
-import { makeId } from '../utils/security.js'
+import { makeId, signSurveyPreviewToken } from '../utils/security.js'
 
 export const surveysRouter = Router()
 const SURVEY_PREVIEW_REWARD_LIMIT = 3
@@ -467,6 +467,39 @@ surveysRouter.get('/:id/preview', async (request: AuthenticatedRequest, response
   }
 
   response.json({ survey })
+})
+
+surveysRouter.get('/:id/preview-link', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const survey = await loadSurveyPreview(surveyId)
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa não encontrada.' })
+    return
+  }
+
+  if (survey.status !== 'draft') {
+    response.status(409).json({ message: 'O link de teste só pode ser gerado enquanto a pesquisa estiver em rascunho.' })
+    return
+  }
+
+  const token = signSurveyPreviewToken(surveyId)
+  const path = `/teste/${token}`
+  const url = new URL(path, env.frontendUrl).toString()
+
+  response.json({
+    token,
+    path,
+    url,
+    message: 'Link de teste gerado. Ele deixa de funcionar automaticamente quando a pesquisa for publicada.',
+  })
 })
 
 surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {

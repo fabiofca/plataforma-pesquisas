@@ -308,6 +308,7 @@ export default function App() {
               </MasterRoute>
             }
           />
+          <Route path="/teste/:token" element={<PublicSurveyPage />} />
           <Route path="/:slug" element={<PublicSurveyPage />} />
         </Routes>
       </Suspense>

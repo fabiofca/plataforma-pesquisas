@@ -18,6 +18,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
+import { SurveyPreviewLinkCard } from '@/components/ui/SurveyPreviewLinkCard'
 import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
@@ -834,6 +835,12 @@ export function SurveyBuilderPage() {
       {params.id && !isPublishedSurvey ? (
         <div className="admin-alert mb-6 border-sky-200 bg-sky-50 text-sky-900">
           Esta pesquisa ainda não está publicada. Use <strong>Testar pesquisa</strong> para validar a experiência antes de colocar o link no ar.
+        </div>
+      ) : null}
+
+      {params.id ? (
+        <div className="mb-6">
+          <SurveyPreviewLinkCard surveyId={params.id} isDraft={!isPublishedSurvey} />
         </div>
       ) : null}
 

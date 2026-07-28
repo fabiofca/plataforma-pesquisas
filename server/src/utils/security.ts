@@ -21,6 +21,22 @@ export function verifyToken(token: string) {
   return jwt.verify(token, env.jwtSecret) as { sub: string; roleCode: string }
 }
 
+export function signSurveyPreviewToken(surveyId: string) {
+  return jwt.sign({ kind: 'survey-preview', surveyId }, env.jwtSecret)
+}
+
+export function verifySurveyPreviewToken(token: string) {
+  const payload = jwt.verify(token, env.jwtSecret) as { kind?: string; surveyId?: string }
+
+  if (payload.kind !== 'survey-preview' || !payload.surveyId) {
+    throw new Error('Token de preview inválido.')
+  }
+
+  return {
+    surveyId: payload.surveyId,
+  }
+}
+
 export function makeId() {
   return crypto.randomUUID()
 }

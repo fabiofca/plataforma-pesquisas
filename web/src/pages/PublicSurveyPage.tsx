@@ -166,8 +166,10 @@ function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
 }
 
 export function PublicSurveyPage() {
-  const { slug, id } = useParams()
-  const previewMode = Boolean(id)
+  const { slug, id, token } = useParams()
+  const previewVariant = id ? 'internal' : token ? 'shared' : 'public'
+  const previewMode = previewVariant !== 'public'
+  const sharedPreviewMode = previewVariant === 'shared'
   const [searchParams] = useSearchParams()
   const [participantName, setParticipantName] = useState('')
   const [participantPhone, setParticipantPhone] = useState('')
@@ -206,7 +208,7 @@ export function PublicSurveyPage() {
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
 
   const surveyQuery = useQuery({
-    queryKey: ['public-survey', previewMode ? id : slug, previewMode ? 'preview' : 'public'],
+    queryKey: ['public-survey', previewVariant, id ?? token ?? slug],
     queryFn: async () => {
       const response = await apiRequest<{
         survey: {
@@ -243,15 +245,21 @@ export function PublicSurveyPage() {
             }
           }>
         }
-      }>(previewMode ? `/surveys/${id}/preview` : `/public/surveys/${slug}`)
+      }>(
+        previewVariant === 'internal'
+          ? `/surveys/${id}/preview`
+          : previewVariant === 'shared'
+            ? `/public/preview/${token}`
+            : `/public/surveys/${slug}`,
+      )
 
       return mapApiSurvey({
         ...response.survey,
         slug: response.survey.slug ?? slug ?? `preview-${id ?? 'sem-slug'}`,
-        status: response.survey.status ?? 'published',
+        status: response.survey.status ?? (previewMode ? 'draft' : 'published'),
       })
     },
-    enabled: Boolean(previewMode ? id : slug),
+    enabled: Boolean(previewVariant === 'internal' ? id : previewVariant === 'shared' ? token : slug),
     retry: 0,
   })
 
@@ -682,12 +690,17 @@ export function PublicSurveyPage() {
   }
 
   if (surveyQuery.isError || !survey) {
+    const errorMessage =
+      surveyQuery.error instanceof Error
+        ? surveyQuery.error.message
+        : 'Verifique se o link está correto ou tente novamente mais tarde.'
+
     return (
       <div className="min-h-screen px-4 py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
         <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-10 text-center shadow-card" style={{ borderRadius: 6 }}>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa indisponível</p>
           <h1 className="mt-4 font-display text-4xl text-slate-950">Não foi possível abrir esta pesquisa agora</h1>
-          <p className="mt-4 text-sm text-slate-600">Verifique se o link está correto ou tente novamente mais tarde.</p>
+          <p className="mt-4 text-sm text-slate-600">{errorMessage}</p>
         </div>
       </div>
     )
@@ -700,14 +713,20 @@ export function PublicSurveyPage() {
           {previewMode ? (
             <div className="mb-6 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950 sm:flex-row sm:items-center sm:justify-between" style={{ borderRadius: 6 }}>
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-sky-700">Modo teste</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-sky-700">
+                  {sharedPreviewMode ? 'Modo teste compartilhado' : 'Modo teste'}
+                </p>
                 <p className="mt-1 text-sm">
-                  Nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
+                  Este formulário está em teste. Nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
                 </p>
               </div>
-              <Link to={`/app/pesquisas/${id}/editar`} className="admin-button self-start">
-                Voltar para o editor
-              </Link>
+              {id ? (
+                <Link to={`/app/pesquisas/${id}/editar`} className="admin-button self-start">
+                  Voltar para o editor
+                </Link>
+              ) : (
+                <div className="admin-badge self-start border-sky-300 bg-white text-sky-800">Link expira ao publicar</div>
+              )}
             </div>
           ) : null}
 
@@ -934,7 +953,7 @@ export function PublicSurveyPage() {
               </div>
 
               <button type="submit" disabled={submitMutation.isPending} className="admin-button-primary w-full justify-center">
-                {submitMutation.isPending ? (previewMode ? 'Preparando teste...' : 'Enviando...') : previewMode ? 'Testar pesquisa' : 'Enviar respostas'}
+                {submitMutation.isPending ? (previewMode ? 'Preparando teste...' : 'Enviando...') : previewMode ? 'Executar teste' : 'Enviar respostas'}
               </button>
             </form>
           ) : (

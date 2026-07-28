@@ -24,6 +24,20 @@ export function getSurveyTestPath(id: string) {
   return `/app/pesquisas/${id}/teste`
 }
 
+export function getSharedSurveyTestPath(token: string) {
+  return `/teste/${token.trim()}`
+}
+
+export function getSharedSurveyTestUrl(token: string) {
+  const path = getSharedSurveyTestPath(token)
+
+  if (typeof window === 'undefined') {
+    return path
+  }
+
+  return new URL(path, window.location.origin).toString()
+}
+
 export async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text)
