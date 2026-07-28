@@ -159,6 +159,18 @@ function buildRewardWhatsAppUrl(input: {
   return `https://wa.me/${contactPhone}?text=${encodeURIComponent(lines.join('\n'))}`
 }
 
+function getRetryTaskTypeLabel(type: RewardRetryTask['type']) {
+  if (type === 'google_review') {
+    return 'Google'
+  }
+
+  if (type === 'instagram_follow') {
+    return 'Instagram'
+  }
+
+  return 'Link personalizado'
+}
+
 function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
   const rewardItems = items.slice(0, 3)
   if (!rewardItems.length) {
@@ -315,6 +327,14 @@ export function PublicSurveyPage() {
           surveyTitle: survey?.title,
         })
       : null
+  const currentRetryTask = useMemo(() => {
+    if (!rewardResult?.retryAvailable) {
+      return null
+    }
+
+    const completedIds = rewardResult.completedTaskIds ?? completedRetryTaskIds
+    return retryTasks.find((task) => !completedIds.includes(task.id)) ?? null
+  }, [completedRetryTaskIds, retryTasks, rewardResult?.completedTaskIds, rewardResult?.retryAvailable])
 
   function clearPersistedSurveySession() {
     window.sessionStorage.removeItem(surveySessionStorageKey)
@@ -682,6 +702,10 @@ export function PublicSurveyPage() {
       if (previewMode) {
         const rewardSegments = wheelSegments.filter((segment) => segment.kind === 'reward')
         const neutralSegments = wheelSegments.filter((segment) => segment.kind !== 'reward')
+        const previewCompletedTaskIds = Array.from(new Set(completedRetryTaskIds))
+        const previewRemainingRetryTasks = (survey.rewardRetryTasks ?? []).filter(
+          (task) => !previewCompletedTaskIds.includes(task.id),
+        )
         const shouldWin = rewardSegments.length > 0 && Math.random() < 0.45
         const selectedSegment = shouldWin
           ? pickRandomItem(rewardSegments)
@@ -693,14 +717,16 @@ export function PublicSurveyPage() {
           landedLabel: selectedSegment.label,
           couponCode: shouldWin ? makePreviewCouponCode() : undefined,
           contactWhatsApp: shouldWin ? survey.rewardContactWhatsApp : undefined,
-          retryAvailable: !shouldWin && Boolean(survey.rewardRetryUnlockEnabled && (survey.rewardRetryTasks?.length ?? 0) > 0),
+          retryAvailable: !shouldWin && previewRemainingRetryTasks.length > 0,
           retryUnlocked: false,
           retryTasks: survey.rewardRetryTasks ?? [],
-          completedTaskIds: [],
+          completedTaskIds: previewCompletedTaskIds,
           pickupAddress: shouldWin ? 'Retire no balcão informado pela campanha.' : undefined,
           message: shouldWin
             ? 'Parabéns! O resultado foi definido com segurança e o local de retirada já está indicado abaixo.'
-            : 'Você não teve sorte desta vez. Continue participando e boa sorte nas próximas campanhas.',
+            : previewRemainingRetryTasks.length > 0
+              ? 'Você não ganhou neste giro. Conclua a próxima tarefa para liberar uma nova tentativa.'
+              : 'Você não teve sorte desta vez. As tentativas desta experiência já foram usadas.',
         }
       }
 
@@ -814,13 +840,40 @@ export function PublicSurveyPage() {
               retryUnlocked: result.unlocked,
               completedTaskIds: result.completedTaskIds,
               message: result.unlocked
-                ? 'As tarefas foram registradas. Sua chance extra já está liberada.'
+                ? 'A tarefa foi registrada. Sua nova tentativa já está liberada.'
                 : current.message,
             }
           : current,
       )
     },
   })
+
+  const currentRetryTaskProgress = currentRetryTask ? retryTaskProgressMap[currentRetryTask.id] : null
+  const currentRetryTaskReturned = Boolean(currentRetryTaskProgress?.returnedAt)
+  const currentRetryTaskCanConfirm = currentRetryTask ? canConfirmRetryTask(currentRetryTask.id) : false
+  const currentRetryTaskRemainingSeconds = currentRetryTask ? getRetryTaskRemainingSeconds(currentRetryTask.id) : 0
+  const currentRetryTaskIsLoading = currentRetryTask
+    ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
+    : false
+  const currentRetryTaskStatusLabel = !currentRetryTask
+    ? ''
+    : !currentRetryTaskProgress
+      ? 'Pendente'
+      : !currentRetryTaskReturned
+        ? 'Volte para a página'
+        : currentRetryTaskCanConfirm
+          ? 'Pronto para confirmar'
+          : `Aguarde ${currentRetryTaskRemainingSeconds}s`
+  const currentRetryTaskButtonLabel = !currentRetryTask
+    ? ''
+    : !currentRetryTaskProgress
+      ? 'Ir para a tarefa'
+      : !currentRetryTaskReturned
+        ? 'Volte para esta página'
+        : currentRetryTaskCanConfirm
+          ? 'Já concluí'
+          : `Aguarde ${currentRetryTaskRemainingSeconds}s`
+  const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
 
   function startRetryTask(task: RewardRetryTask) {
     const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
@@ -1477,7 +1530,7 @@ export function PublicSurveyPage() {
               </div>
 
               <div className="mt-3 grid flex-1 gap-3 xl:mt-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,420px)] xl:items-center 2xl:grid-cols-[minmax(0,1.3fr)_440px]">
-                <div className="relative flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
+                <div className="relative isolate flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
                   <PrizeWheel
                     segments={wheelSegments}
                     rotation={wheelRotation}
@@ -1493,8 +1546,9 @@ export function PublicSurveyPage() {
                   />
 
                   {rewardResult?.won ? (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center p-3 sm:p-5">
-                      <div className="w-full max-w-[min(92vw,560px)] rounded-[28px] border border-amber-300/35 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.52)_8%,rgba(250,204,21,0.26)_28%,rgba(236,72,153,0.18)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.45)] backdrop-blur-md sm:px-7 sm:py-8">
+                    <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
+                      <div className="absolute inset-0 rounded-[inherit] bg-slate-950/55 backdrop-blur-[3px]" />
+                      <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-amber-300/35 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.52)_8%,rgba(250,204,21,0.26)_28%,rgba(236,72,153,0.18)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.45)] backdrop-blur-md sm:px-7 sm:py-8">
                         <p className="text-xs uppercase tracking-[0.26em] text-amber-100">Prêmio confirmado</p>
                         <p className="mt-3 text-base font-semibold text-emerald-100 sm:text-lg">Parabéns! Você ganhou:</p>
                         <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
@@ -1518,6 +1572,59 @@ export function PublicSurveyPage() {
                           ) : null}
                           <p className="text-xs text-slate-200">
                             Seu prêmio já foi registrado. Use o botão acima para iniciar o resgate.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {showRetryTaskOverlay && currentRetryTask ? (
+                    <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
+                      <div className="absolute inset-0 rounded-[inherit] bg-slate-950/58 backdrop-blur-[3px]" />
+                      <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-sky-300/30 bg-[linear-gradient(180deg,rgba(15,23,42,0.22)_0%,rgba(15,23,42,0.78)_12%,rgba(59,130,246,0.18)_56%,rgba(15,23,42,0.98)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.48)] backdrop-blur-md sm:px-7 sm:py-8">
+                        <p className="text-xs uppercase tracking-[0.26em] text-sky-100">Mais uma chance</p>
+                        <p className="mt-3 text-base font-semibold text-white sm:text-lg">
+                          {rewardResult?.landedLabel ? `A roleta parou em ${rewardResult.landedLabel}.` : 'Você não ganhou neste giro.'}
+                        </p>
+                        <p className="mt-3 text-sm text-slate-200 sm:text-base">
+                          Conclua esta tarefa, volte para a página e confirme aqui na frente da roleta para liberar o próximo giro.
+                        </p>
+
+                        <div className="mt-5 rounded-[20px] border border-white/12 bg-slate-950/35 px-4 py-4 text-left">
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Tarefa atual</p>
+                          <p className="mt-2 text-lg font-semibold text-white">{currentRetryTask.title}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">
+                            {getRetryTaskTypeLabel(currentRetryTask.type)}
+                          </p>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-center">
+                          <span
+                            className={`admin-badge ${
+                              currentRetryTaskCanConfirm
+                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                : 'border-white/15 bg-white/10 text-white'
+                            }`}
+                          >
+                            {currentRetryTaskStatusLabel}
+                          </span>
+                        </div>
+
+                        <div className="mt-5 flex flex-col gap-3">
+                          <button
+                            type="button"
+                            disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
+                            onClick={() =>
+                              currentRetryTaskProgress
+                                ? void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                : startRetryTask(currentRetryTask)
+                            }
+                            className="admin-button-primary w-full justify-center disabled:opacity-60"
+                          >
+                            {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
+                          </button>
+                          <p className="text-xs text-slate-200">
+                            A roleta continua aberta. Assim que confirmar esta etapa, o botão de girar será liberado aqui mesmo.
                           </p>
                         </div>
                       </div>
@@ -1586,8 +1693,10 @@ export function PublicSurveyPage() {
                         </p>
                       ) : null}
                       <p className="mt-3 text-lg font-semibold text-white">{rewardResult.message || 'Desta vez não houve prêmio disponível.'}</p>
-                      {rewardResult.retryAvailable ? (
-                        <p className="mt-3 text-sm text-slate-300">Conclua as tarefas abaixo na página para liberar a chance extra.</p>
+                      {rewardResult.retryAvailable && currentRetryTask ? (
+                        <p className="mt-3 text-sm text-slate-300">
+                          A próxima etapa é <span className="font-semibold text-white">{currentRetryTask.title}</span>. Ela aparece na frente da roleta.
+                        </p>
                       ) : null}
                     </div>
                   )}
@@ -1595,78 +1704,46 @@ export function PublicSurveyPage() {
                   {rewardResult?.retryAvailable ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-left">
                       <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
-                      <p className="mt-2 text-sm text-slate-300">
-                        Abra a tarefa, volte para a página, aguarde alguns segundos e confirme manualmente para liberar o novo giro.
-                      </p>
-                      <div className="mt-4 space-y-3">
-                        {retryTasks.map((task) => {
-                          const completed = completedRetryTaskIds.includes(task.id)
-                          const taskProgress = getRetryTaskProgress(task.id)
-                          const hasReturned = Boolean(taskProgress?.returnedAt)
-                          const canConfirm = canConfirmRetryTask(task.id)
-                          const remainingSeconds = getRetryTaskRemainingSeconds(task.id)
-                          const isLoading = retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === task.id
-                          const statusLabel = completed
-                            ? 'Registrado'
-                            : !taskProgress
-                              ? 'Pendente'
-                              : !hasReturned
-                                ? 'Volte para a página'
-                                : canConfirm
-                                  ? 'Pronto para confirmar'
-                                  : `Aguarde ${remainingSeconds}s`
-                          const buttonLabel = completed
-                            ? 'Registrado'
-                            : !taskProgress
-                              ? 'Ir para a tarefa'
-                              : !hasReturned
-                                ? 'Volte para esta página'
-                                : canConfirm
-                                  ? 'Já concluí'
-                                  : `Aguarde ${remainingSeconds}s`
-
-                          return (
-                            <div
-                              key={task.id}
-                              className="flex flex-col gap-3 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4"
+                      {canSpinReward ? (
+                        <div className="mt-4 rounded-[18px] border border-emerald-300/25 bg-emerald-500/10 px-4 py-4">
+                          <p className="text-sm font-semibold text-emerald-100">Nova tentativa liberada</p>
+                          <p className="mt-2 text-sm text-slate-200">
+                            A tarefa atual já foi confirmada. Agora você pode girar a roleta novamente.
+                          </p>
+                        </div>
+                      ) : currentRetryTask ? (
+                        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4">
+                          <p className="text-sm font-semibold text-white">{currentRetryTask.title}</p>
+                          <p className="mt-1 text-xs text-slate-400">{getRetryTaskTypeLabel(currentRetryTask.type)}</p>
+                          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <span
+                              className={`admin-badge ${
+                                currentRetryTaskCanConfirm
+                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                  : 'border-white/15 bg-white/10 text-white'
+                              }`}
                             >
-                              <div>
-                                <p className="text-sm font-semibold text-white">{task.title}</p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {task.type === 'google_review'
-                                    ? 'Google'
-                                    : task.type === 'instagram_follow'
-                                      ? 'Instagram'
-                                      : 'Link personalizado'}
-                                </p>
-                              </div>
-                              <div className="flex items-center justify-between gap-3">
-                                <span
-                                  className={`admin-badge ${
-                                    completed
-                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                      : canConfirm
-                                        ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                        : 'border-white/15 bg-white/10 text-white'
-                                  }`}
-                                >
-                                  {statusLabel}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={completed || isLoading || (Boolean(taskProgress) && !canConfirm)}
-                                  onClick={() =>
-                                    taskProgress ? void retryTaskClickMutation.mutateAsync(task) : startRetryTask(task)
-                                  }
-                                  className="admin-button-primary disabled:opacity-60"
-                                >
-                                  {isLoading ? 'Confirmando...' : buttonLabel}
-                                </button>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
+                              {currentRetryTaskStatusLabel}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
+                              onClick={() =>
+                                currentRetryTaskProgress
+                                  ? void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                  : startRetryTask(currentRetryTask)
+                              }
+                              className="admin-button-primary justify-center disabled:opacity-60"
+                            >
+                              {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4">
+                          <p className="text-sm text-slate-200">Todas as tarefas configuradas para esta participação já foram usadas.</p>
+                        </div>
+                      )}
                     </div>
                   ) : null}
                 </div>
