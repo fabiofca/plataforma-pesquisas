@@ -1477,7 +1477,7 @@ export function PublicSurveyPage() {
               </div>
 
               <div className="mt-3 grid flex-1 gap-3 xl:mt-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,420px)] xl:items-center 2xl:grid-cols-[minmax(0,1.3fr)_440px]">
-                <div className="flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
+                <div className="relative flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
                   <PrizeWheel
                     segments={wheelSegments}
                     rotation={wheelRotation}
@@ -1491,6 +1491,38 @@ export function PublicSurveyPage() {
                     spinLabel="Girar agora"
                     onSpin={() => void spinMutation.mutateAsync()}
                   />
+
+                  {rewardResult?.won ? (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center p-3 sm:p-5">
+                      <div className="w-full max-w-[min(92vw,560px)] rounded-[28px] border border-amber-300/35 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.52)_8%,rgba(250,204,21,0.26)_28%,rgba(236,72,153,0.18)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.45)] backdrop-blur-md sm:px-7 sm:py-8">
+                        <p className="text-xs uppercase tracking-[0.26em] text-amber-100">Prêmio confirmado</p>
+                        <p className="mt-3 text-base font-semibold text-emerald-100 sm:text-lg">Parabéns! Você ganhou:</p>
+                        <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
+                        {rewardResult.couponCode ? (
+                          <div className="mt-5 rounded-[18px] border border-white/15 bg-slate-950/35 px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo</p>
+                            <p className="mt-2 text-lg font-bold text-white sm:text-xl">{rewardResult.couponCode}</p>
+                          </div>
+                        ) : null}
+                        <div className="mt-5 flex flex-col gap-3">
+                          {rewardContactWhatsAppUrl ? (
+                            <a
+                              href={rewardContactWhatsAppUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="admin-button-primary w-full justify-center"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                              Resgatar pelo WhatsApp
+                            </a>
+                          ) : null}
+                          <p className="text-xs text-slate-200">
+                            Seu prêmio já foi registrado. Use o botão acima para iniciar o resgate.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-4 xl:max-w-[440px]">
