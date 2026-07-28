@@ -668,6 +668,20 @@ surveysRouter.post('/:id/publish', async (request: AuthenticatedRequest, respons
   response.json({ ok: true })
 })
 
+surveysRouter.post('/:id/unpublish', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  await query(`update surveys set status = 'draft', published_at = null, updated_at = now() where id = $1`, [surveyId])
+
+  response.json({ ok: true })
+})
+
 surveysRouter.get('/:id/share/qr', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)

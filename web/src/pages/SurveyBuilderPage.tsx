@@ -327,6 +327,34 @@ export function SurveyBuilderPage() {
     },
   })
 
+  const unpublishMutation = useMutation({
+    mutationFn: async () => {
+      if (!params.id) {
+        throw new Error('A pesquisa ainda precisa ser salva antes de voltar para rascunho.')
+      }
+
+      return apiRequest<{ ok: boolean }>(`/surveys/${params.id}/unpublish`, {
+        method: 'POST',
+      })
+    },
+    onSuccess: async () => {
+      if (!params.id) {
+        return
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['survey', params.id] }),
+      ])
+
+      setFeedback('Pesquisa movida de volta para rascunho com sucesso.')
+    },
+    onError: (error) => {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível voltar a pesquisa para rascunho.')
+    },
+  })
+
   const uploadMutation = useMutation({
     mutationFn: async ({ target, file, previousValue }: { target: SurveyUploadTarget; file: File; previousValue: string }) => {
       return uploadApiFile(`/surveys/uploads/${target}`, file, 'file', { previousValue })
@@ -611,7 +639,7 @@ export function SurveyBuilderPage() {
       <button
         type="button"
         onClick={() => void saveMutation.mutateAsync(false)}
-        disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || unpublishMutation.isPending}
         className="admin-button-primary"
       >
         <Sparkles className="h-4 w-4" />
@@ -620,12 +648,31 @@ export function SurveyBuilderPage() {
       <button
         type="button"
         onClick={() => void saveMutation.mutateAsync(true)}
-        disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || unpublishMutation.isPending}
         className="admin-button"
       >
         <Share2 className="h-4 w-4" />
         Salvar e publicar
       </button>
+        {params.id && isPublishedSurvey ? (
+          <button
+            type="button"
+            disabled={saveMutation.isPending || unpublishMutation.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  'Deseja tirar esta pesquisa do ar e voltar para rascunho? O link público deixará de funcionar, mas as respostas já recebidas continuarão salvas.',
+                )
+              ) {
+                void unpublishMutation.mutateAsync()
+              }
+            }}
+            className="admin-button"
+          >
+            <Share2 className="h-4 w-4" />
+            {unpublishMutation.isPending ? 'Voltando...' : 'Voltar para rascunho'}
+          </button>
+        ) : null}
       {params.id && form.rewardEnabled ? (
         <Link
           to={`/app/pesquisas/${params.id}/premios`}
@@ -662,7 +709,7 @@ export function SurveyBuilderPage() {
       {feedback ? (
         <div
           className={`admin-alert mb-6 ${
-            saveMutation.isError || uploadMutation.isError || removeUploadMutation.isError
+            saveMutation.isError || uploadMutation.isError || removeUploadMutation.isError || unpublishMutation.isError
               ? 'border border-rose-200 bg-rose-50 text-rose-900'
               : 'border border-emerald-200 bg-emerald-50 text-emerald-900'
           }`}
@@ -835,6 +882,12 @@ export function SurveyBuilderPage() {
       {params.id && !isPublishedSurvey ? (
         <div className="admin-alert mb-6 border-sky-200 bg-sky-50 text-sky-900">
           Esta pesquisa ainda não está publicada. Use <strong>Testar pesquisa</strong> para validar a experiência antes de colocar o link no ar.
+        </div>
+      ) : null}
+
+      {params.id && isPublishedSurvey ? (
+        <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
+          Esta pesquisa está publicada. Se você voltar para rascunho, o link público sai do ar, mas as respostas já recebidas continuam salvas.
         </div>
       ) : null}
 
