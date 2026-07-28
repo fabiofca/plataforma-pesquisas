@@ -1178,11 +1178,59 @@ configure_nginx() {
     return
   fi
 
-  sed \
-    -e "s|__SERVER_NAME__|${SERVER_NAME}|g" \
-    -e "s|__APP_DIR__|${APP_ROOT}|g" \
-    -e "s|__APP_PORT__|${APP_PORT}|g" \
-    "${NGINX_TEMPLATE}" > "${NGINX_SITE}"
+  if ssl_certificate_exists; then
+    cat > "${NGINX_SITE}" <<EOF
+server {
+    listen 80;
+    server_name ${SERVER_NAME};
+
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name ${SERVER_NAME};
+
+    ssl_certificate /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root ${APP_ROOT}/web/dist;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:${APP_PORT}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${APP_PORT}/uploads/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+  else
+    sed \
+      -e "s|__SERVER_NAME__|${SERVER_NAME}|g" \
+      -e "s|__APP_DIR__|${APP_ROOT}|g" \
+      -e "s|__APP_PORT__|${APP_PORT}|g" \
+      "${NGINX_TEMPLATE}" > "${NGINX_SITE}"
+  fi
 
   ln -sfn "${NGINX_SITE}" "${NGINX_ENABLED}"
   nginx -t
