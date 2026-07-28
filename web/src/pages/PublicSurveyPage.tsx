@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -38,7 +38,7 @@ const neutralWheelLabels = [
   'Quase!',
   'Não foi dessa vez',
   'Você não teve sorte',
-  'Boa sorte',
+  'Que Pena!',
   'Obrigado',
 ]
 
@@ -50,6 +50,15 @@ type RewardRetryTask = {
 }
 
 type SurveyAnswerMap = Record<string, string | string[] | number>
+type RetryTaskProgressMap = Record<
+  string,
+  {
+    startedAt: number
+    returnedAt: number | null
+  }
+>
+
+const RETRY_TASK_MIN_WAIT_MS = 12000
 
 function buildVisibleQuestionSet(questions: SurveyQuestion[], answers: SurveyAnswerMap) {
   return new Set(getVisibleSurveyQuestions(questions, answers).map((question) => question.id))
@@ -166,6 +175,9 @@ export function PublicSurveyPage() {
   const [celebrationKey, setCelebrationKey] = useState(0)
   const [wheelModalOpen, setWheelModalOpen] = useState(false)
   const [savingRewardProof, setSavingRewardProof] = useState(false)
+  const [retryTaskProgressMap, setRetryTaskProgressMap] = useState<RetryTaskProgressMap>({})
+  const [activeRetryTaskId, setActiveRetryTaskId] = useState<string | null>(null)
+  const [retryTaskNow, setRetryTaskNow] = useState(() => Date.now())
   const trackedVisitKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
@@ -284,6 +296,64 @@ export function PublicSurveyPage() {
   }, [])
 
   useEffect(() => {
+    if (!rewardResult?.retryAvailable) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setRetryTaskNow(Date.now())
+    }, 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [rewardResult?.retryAvailable])
+
+  useEffect(() => {
+    if (!activeRetryTaskId) {
+      return
+    }
+
+    const markTaskAsReturned = () => {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
+      setRetryTaskProgressMap((current) => {
+        const currentTask = current[activeRetryTaskId]
+
+        if (!currentTask || currentTask.returnedAt) {
+          return current
+        }
+
+        return {
+          ...current,
+          [activeRetryTaskId]: {
+            ...currentTask,
+            returnedAt: Date.now(),
+          },
+        }
+      })
+      setRetryTaskNow(Date.now())
+      setActiveRetryTaskId(null)
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markTaskAsReturned()
+      }
+    }
+
+    window.addEventListener('focus', markTaskAsReturned)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', markTaskAsReturned)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [activeRetryTaskId])
+
+  useEffect(() => {
     if (!wheelModalOpen) {
       return
     }
@@ -317,6 +387,8 @@ export function PublicSurveyPage() {
     setActiveWheelSegmentId('')
     setCompletedRetryTaskIds([])
     setWheelModalOpen(false)
+    setRetryTaskProgressMap({})
+    setActiveRetryTaskId(null)
   }
 
   const submitMutation = useMutation({
@@ -402,6 +474,8 @@ export function PublicSurveyPage() {
       setRewardResult(null)
       setActiveWheelSegmentId('')
       setWheelRotation(0)
+      setRetryTaskProgressMap({})
+      setActiveRetryTaskId(null)
       setSubmitMessage(
         result.rewardMessage ||
           (result.rewardEligible
@@ -419,6 +493,8 @@ export function PublicSurveyPage() {
       setCompletedRetryTaskIds([])
       setCanSpinReward(false)
       setSubmitted(false)
+      setRetryTaskProgressMap({})
+      setActiveRetryTaskId(null)
       setEligibilityMessage(message)
     },
   })
@@ -547,9 +623,14 @@ export function PublicSurveyPage() {
 
       return result
     },
-    onSuccess: (result) => {
+    onSuccess: (result, task) => {
       setCompletedRetryTaskIds(result.completedTaskIds)
       setCanSpinReward(result.unlocked)
+      setRetryTaskProgressMap((current) => {
+        const nextState = { ...current }
+        delete nextState[task.id]
+        return nextState
+      })
       setRewardResult((current) =>
         current
           ? {
@@ -564,6 +645,48 @@ export function PublicSurveyPage() {
       )
     },
   })
+
+  function startRetryTask(task: RewardRetryTask) {
+    const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
+
+    setRetryTaskProgressMap((current) => ({
+      ...current,
+      [task.id]: {
+        startedAt: Date.now(),
+        returnedAt: null,
+      },
+    }))
+    setRetryTaskNow(Date.now())
+    setActiveRetryTaskId(task.id)
+
+    if (!openedWindow) {
+      window.location.href = task.url
+    }
+  }
+
+  function getRetryTaskProgress(taskId: string) {
+    return retryTaskProgressMap[taskId]
+  }
+
+  function getRetryTaskRemainingSeconds(taskId: string) {
+    const progress = getRetryTaskProgress(taskId)
+
+    if (!progress) {
+      return 0
+    }
+
+    return Math.max(0, Math.ceil((progress.startedAt + RETRY_TASK_MIN_WAIT_MS - retryTaskNow) / 1000))
+  }
+
+  function canConfirmRetryTask(taskId: string) {
+    const progress = getRetryTaskProgress(taskId)
+
+    if (!progress?.returnedAt) {
+      return false
+    }
+
+    return retryTaskNow - progress.startedAt >= RETRY_TASK_MIN_WAIT_MS
+  }
 
   async function handleDownloadRewardProof() {
     if (!rewardResult?.won || !rewardProofRef.current) {
@@ -1014,15 +1137,37 @@ export function PublicSurveyPage() {
                                 <div>
                                   <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
                                   <p className="mt-2 text-sm text-slate-200">
-                                    Clique em todas as tarefas abaixo para liberar o segundo giro.
+                                    Abra cada tarefa, volte para esta página, aguarde alguns segundos e toque em "Já concluí" para liberar o segundo giro.
                                   </p>
                                 </div>
 
                                 <div className="space-y-3">
                                   {retryTasks.map((task) => {
                                     const completed = completedRetryTaskIds.includes(task.id)
+                                    const taskProgress = getRetryTaskProgress(task.id)
+                                    const hasReturned = Boolean(taskProgress?.returnedAt)
+                                    const canConfirm = canConfirmRetryTask(task.id)
+                                    const remainingSeconds = getRetryTaskRemainingSeconds(task.id)
                                     const isLoading =
                                       retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === task.id
+                                    const statusLabel = completed
+                                      ? 'Registrado'
+                                      : !taskProgress
+                                        ? 'Pendente'
+                                        : !hasReturned
+                                          ? 'Volte para a página'
+                                          : canConfirm
+                                            ? 'Pronto para confirmar'
+                                            : `Aguarde ${remainingSeconds}s`
+                                    const buttonLabel = completed
+                                      ? 'Registrado'
+                                      : !taskProgress
+                                        ? 'Ir para a tarefa'
+                                        : !hasReturned
+                                          ? 'Volte para esta página'
+                                          : canConfirm
+                                            ? 'Já concluí'
+                                            : `Aguarde ${remainingSeconds}s`
 
                                     return (
                                       <div
@@ -1046,18 +1191,24 @@ export function PublicSurveyPage() {
                                             className={`admin-badge ${
                                               completed
                                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                : 'border-white/15 bg-white/10 text-white'
+                                                : canConfirm
+                                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                                  : 'border-white/15 bg-white/10 text-white'
                                             }`}
                                           >
-                                            {completed ? 'Clicado' : 'Pendente'}
+                                            {statusLabel}
                                           </span>
                                           <button
                                             type="button"
-                                            disabled={completed || isLoading}
-                                            onClick={() => void retryTaskClickMutation.mutateAsync(task)}
+                                            disabled={completed || isLoading || (Boolean(taskProgress) && !canConfirm)}
+                                            onClick={() =>
+                                              taskProgress
+                                                ? void retryTaskClickMutation.mutateAsync(task)
+                                                : startRetryTask(task)
+                                            }
                                             className="admin-button-primary disabled:opacity-60"
                                           >
-                                            {completed ? 'Registrado' : isLoading ? 'Abrindo...' : 'Ir para a tarefa'}
+                                            {isLoading ? 'Confirmando...' : buttonLabel}
                                           </button>
                                         </div>
                                       </div>
@@ -1121,6 +1272,7 @@ export function PublicSurveyPage() {
                 <div className="flex items-center gap-3 self-start">
                   {canCloseWheelModal ? (
                     <button type="button" onClick={() => setWheelModalOpen(false)} className="admin-button px-4 py-3 text-white">
+                      <X className="h-4 w-4" />
                       Fechar
                     </button>
                   ) : (
@@ -1207,10 +1359,35 @@ export function PublicSurveyPage() {
                   {rewardResult?.retryAvailable ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-left">
                       <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
+                      <p className="mt-2 text-sm text-slate-300">
+                        Abra a tarefa, volte para a página, aguarde alguns segundos e confirme manualmente para liberar o novo giro.
+                      </p>
                       <div className="mt-4 space-y-3">
                         {retryTasks.map((task) => {
                           const completed = completedRetryTaskIds.includes(task.id)
+                          const taskProgress = getRetryTaskProgress(task.id)
+                          const hasReturned = Boolean(taskProgress?.returnedAt)
+                          const canConfirm = canConfirmRetryTask(task.id)
+                          const remainingSeconds = getRetryTaskRemainingSeconds(task.id)
                           const isLoading = retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === task.id
+                          const statusLabel = completed
+                            ? 'Registrado'
+                            : !taskProgress
+                              ? 'Pendente'
+                              : !hasReturned
+                                ? 'Volte para a página'
+                                : canConfirm
+                                  ? 'Pronto para confirmar'
+                                  : `Aguarde ${remainingSeconds}s`
+                          const buttonLabel = completed
+                            ? 'Registrado'
+                            : !taskProgress
+                              ? 'Ir para a tarefa'
+                              : !hasReturned
+                                ? 'Volte para esta página'
+                                : canConfirm
+                                  ? 'Já concluí'
+                                  : `Aguarde ${remainingSeconds}s`
 
                           return (
                             <div
@@ -1230,18 +1407,24 @@ export function PublicSurveyPage() {
                               <div className="flex items-center justify-between gap-3">
                                 <span
                                   className={`admin-badge ${
-                                    completed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-white/15 bg-white/10 text-white'
+                                    completed
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                      : canConfirm
+                                        ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                        : 'border-white/15 bg-white/10 text-white'
                                   }`}
                                 >
-                                  {completed ? 'Clicado' : 'Pendente'}
+                                  {statusLabel}
                                 </span>
                                 <button
                                   type="button"
-                                  disabled={completed || isLoading}
-                                  onClick={() => void retryTaskClickMutation.mutateAsync(task)}
+                                  disabled={completed || isLoading || (Boolean(taskProgress) && !canConfirm)}
+                                  onClick={() =>
+                                    taskProgress ? void retryTaskClickMutation.mutateAsync(task) : startRetryTask(task)
+                                  }
                                   className="admin-button-primary disabled:opacity-60"
                                 >
-                                  {completed ? 'Registrado' : isLoading ? 'Abrindo...' : 'Ir para a tarefa'}
+                                  {isLoading ? 'Confirmando...' : buttonLabel}
                                 </button>
                               </div>
                             </div>

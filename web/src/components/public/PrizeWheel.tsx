@@ -18,6 +18,42 @@ type PrizeWheelProps = {
   onSpin: () => void
 }
 
+const rewardSegmentPalette = [
+  { start: '#4c1d95', end: '#6d28d9', text: '#ffffff' },
+  { start: '#7f1d1d', end: '#be123c', text: '#ffffff' },
+  { start: '#1e3a8a', end: '#2563eb', text: '#ffffff' },
+  { start: '#92400e', end: '#b45309', text: '#fff7ed' },
+  { start: '#115e59', end: '#0f766e', text: '#ffffff' },
+  { start: '#581c87', end: '#9333ea', text: '#ffffff' },
+  { start: '#3f6212', end: '#4d7c0f', text: '#ffffff' },
+  { start: '#9a3412', end: '#ea580c', text: '#ffffff' },
+  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+]
+
+const retrySegmentPalette = [
+  { start: '#9f1239', end: '#e11d48', text: '#ffffff' },
+  { start: '#7c2d12', end: '#f97316', text: '#ffffff' },
+  { start: '#6d28d9', end: '#a855f7', text: '#ffffff' },
+  { start: '#155e75', end: '#0891b2', text: '#ffffff' },
+  { start: '#166534', end: '#16a34a', text: '#ffffff' },
+  { start: '#1d4ed8', end: '#38bdf8', text: '#ffffff' },
+  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
+  { start: '#92400e', end: '#f59e0b', text: '#fff7ed' },
+  { start: '#831843', end: '#db2777', text: '#ffffff' },
+]
+
+const neutralSegmentPalette = [
+  { start: '#8b5cf6', end: '#6366f1', text: '#ffffff' },
+  { start: '#f43f5e', end: '#ec4899', text: '#ffffff' },
+  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+  { start: '#2563eb', end: '#60a5fa', text: '#ffffff' },
+  { start: '#f59e0b', end: '#facc15', text: '#1f2937' },
+  { start: '#14b8a6', end: '#22c55e', text: '#ffffff' },
+  { start: '#d946ef', end: '#a855f7', text: '#ffffff' },
+  { start: '#fb7185', end: '#f97316', text: '#ffffff' },
+  { start: '#0ea5e9', end: '#06b6d4', text: '#ffffff' },
+]
+
 const confettiPalette = ['#facc15', '#ff006e', '#4338ca', '#22c55e', '#38bdf8', '#ffffff']
 const confettiPieces = Array.from({ length: 18 }, (_, index) => {
   const angle = (Math.PI * 2 * index) / 18
@@ -91,44 +127,16 @@ function getWheelDisplayLabel(label: string) {
 }
 
 function getSegmentColors(segment: PrizeWheelSegment, index: number, primaryColor: string) {
-  const rewardSequence = [0, 1, 2, 3, 4, 5]
-  const retrySequence = [0, 1, 2, 3]
-  const neutralSequence = [0, 1, 2, 3, 4, 5]
-
   if (segment.kind === 'reward') {
-    const rewardPalette = [
-      { start: '#4c1d95', end: primaryColor, text: '#ffffff' },
-      { start: '#7f1d1d', end: '#be123c', text: '#ffffff' },
-      { start: '#1d4ed8', end: '#1e3a8a', text: '#ffffff' },
-      { start: '#92400e', end: '#b45309', text: '#fff7ed' },
-      { start: '#115e59', end: '#134e4a', text: '#ffffff' },
-      { start: '#581c87', end: '#a21caf', text: '#ffffff' },
-    ]
-
-    return rewardPalette[rewardSequence[index % rewardSequence.length]]
+    const selected = rewardSegmentPalette[index % rewardSegmentPalette.length]
+    return index === 0 ? { ...selected, end: primaryColor, text: '#ffffff' } : selected
   }
 
   if (segment.kind === 'retry') {
-    const retryPalette = [
-      { start: '#f97316', end: '#fb7185', text: '#ffffff' },
-      { start: '#e11d48', end: '#f43f5e', text: '#ffffff' },
-      { start: '#7c3aed', end: '#a855f7', text: '#ffffff' },
-      { start: '#0f766e', end: '#2dd4bf', text: '#ffffff' },
-    ]
-
-    return retryPalette[retrySequence[index % retrySequence.length]]
+    return retrySegmentPalette[index % retrySegmentPalette.length]
   }
 
-  const neutralPalette = [
-    { start: '#8b5cf6', end: '#6366f1', text: '#ffffff' },
-    { start: '#f43f5e', end: '#ec4899', text: '#ffffff' },
-    { start: '#0f172a', end: '#334155', text: '#ffffff' },
-    { start: '#2563eb', end: '#60a5fa', text: '#ffffff' },
-    { start: '#f59e0b', end: '#facc15', text: '#1f2937' },
-    { start: '#14b8a6', end: '#22c55e', text: '#ffffff' },
-  ]
-
-  return neutralPalette[neutralSequence[index % neutralSequence.length]]
+  return neutralSegmentPalette[index % neutralSegmentPalette.length]
 }
 
 function buildWheelGradient(segments: PrizeWheelSegment[], primaryColor: string) {
