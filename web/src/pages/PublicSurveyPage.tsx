@@ -997,13 +997,7 @@ export function PublicSurveyPage() {
         throw new Error('A participação ainda não está pronta para liberar a chance extra.')
       }
 
-      const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
-
       if (previewMode) {
-        if (!openedWindow) {
-          window.location.href = task.url
-        }
-
         const currentCompletedTaskIds = rewardResult?.completedTaskIds ?? completedRetryTaskIds
         const nextCompletedTaskIds = Array.from(new Set([...currentCompletedTaskIds, task.id]))
 
@@ -1027,10 +1021,6 @@ export function PublicSurveyPage() {
           taskId: task.id,
         }),
       })
-
-      if (!openedWindow) {
-        window.location.href = task.url
-      }
 
       return result
     },
