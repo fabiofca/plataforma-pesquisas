@@ -125,6 +125,52 @@ function formatRewardProofFileName(title: string) {
   return `comprovante-premio-${normalized || 'roleta'}.png`
 }
 
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word
+
+    if (context.measureText(nextLine).width <= maxWidth || !currentLine) {
+      currentLine = nextLine
+      continue
+    }
+
+    lines.push(currentLine)
+    currentLine = word
+  }
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines
+}
+
+function fillRoundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.lineTo(x + width - radius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + radius)
+  context.lineTo(x + width, y + height - radius)
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+  context.lineTo(x + radius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - radius)
+  context.lineTo(x, y + radius)
+  context.quadraticCurveTo(x, y, x + radius, y)
+  context.closePath()
+  context.fill()
+}
+
 function pickRandomItem<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)]
 }
@@ -924,57 +970,109 @@ export function PublicSurveyPage() {
   }
 
   async function handleDownloadRewardProof() {
-    if (!rewardResult?.won || !rewardProofRef.current) {
+    if (!rewardResult?.won) {
       return
     }
 
     setSavingRewardProof(true)
 
     try {
-      const proofNode = rewardProofRef.current
-      const clonedNode = proofNode.cloneNode(true) as HTMLElement
-
-      clonedNode.style.position = 'fixed'
-      clonedNode.style.left = '-99999px'
-      clonedNode.style.top = '0'
-      clonedNode.style.width = '1080px'
-      clonedNode.style.maxWidth = '1080px'
-      clonedNode.style.transform = 'none'
-      clonedNode.style.zIndex = '-1'
-      document.body.appendChild(clonedNode)
-
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${Math.ceil(clonedNode.getBoundingClientRect().height)}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="width:1080px;height:100%;">
-              ${new XMLSerializer().serializeToString(clonedNode)}
-            </div>
-          </foreignObject>
-        </svg>
-      `
-
-      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const image = new Image()
-
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve()
-        image.onerror = () => reject(new Error('Não foi possível preparar o comprovante do prêmio.'))
-        image.src = url
-      })
-
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = Math.ceil(clonedNode.getBoundingClientRect().height)
+      canvas.height = 1350
       const context = canvas.getContext('2d')
 
       if (!context) {
         throw new Error('Não foi possível gerar a imagem do comprovante.')
       }
 
-      context.drawImage(image, 0, 0)
-      URL.revokeObjectURL(url)
-      document.body.removeChild(clonedNode)
+      const background = context.createLinearGradient(0, 0, 0, canvas.height)
+      background.addColorStop(0, '#1e293b')
+      background.addColorStop(0.45, '#0f172a')
+      background.addColorStop(1, '#020617')
+      context.fillStyle = background
+      context.fillRect(0, 0, canvas.width, canvas.height)
+
+      const glow = context.createRadialGradient(220, 180, 40, 220, 180, 460)
+      glow.addColorStop(0, 'rgba(250,204,21,0.34)')
+      glow.addColorStop(0.4, 'rgba(236,72,153,0.18)')
+      glow.addColorStop(1, 'rgba(15,23,42,0)')
+      context.fillStyle = glow
+      context.fillRect(0, 0, canvas.width, canvas.height)
+
+      context.fillStyle = 'rgba(255,255,255,0.08)'
+      fillRoundedRect(context, 72, 72, 936, 1206, 36)
+
+      context.fillStyle = '#fef3c7'
+      context.font = '700 28px Arial'
+      context.fillText('Comprovante do prêmio', 120, 152)
+
+      const brandName = survey?.brandName || survey?.title || 'Campanha'
+      context.fillStyle = '#e2e8f0'
+      context.font = '500 24px Arial'
+      context.fillText(brandName, 120, 196)
+
+      context.fillStyle = '#86efac'
+      context.font = '700 36px Arial'
+      context.fillText(`Parabéns, ${participantName || 'participante'}!`, 120, 280)
+
+      context.fillStyle = '#ffffff'
+      context.font = '700 66px Arial'
+      const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 840)
+      let currentY = 370
+      for (const line of prizeLines.slice(0, 3)) {
+        context.fillText(line, 120, currentY)
+        currentY += 78
+      }
+
+      context.fillStyle = 'rgba(15,23,42,0.82)'
+      fillRoundedRect(context, 120, 500, 840, 140, 28)
+      context.fillStyle = '#cbd5e1'
+      context.font = '600 24px Arial'
+      context.fillText('Protocolo', 156, 554)
+      context.fillStyle = '#ffffff'
+      context.font = '700 42px Arial'
+      context.fillText(rewardResult.couponCode || 'Sem protocolo', 156, 610)
+
+      context.fillStyle = 'rgba(15,23,42,0.72)'
+      fillRoundedRect(context, 120, 684, 840, 236, 28)
+      context.fillStyle = '#cbd5e1'
+      context.font = '600 24px Arial'
+      context.fillText('Orientação para resgate', 156, 738)
+
+      context.fillStyle = '#ffffff'
+      context.font = '600 32px Arial'
+      const instructionLines = wrapCanvasText(
+        context,
+        'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.',
+        768,
+      )
+      let instructionY = 794
+      for (const line of instructionLines.slice(0, 4)) {
+        context.fillText(line, 156, instructionY)
+        instructionY += 42
+      }
+
+      if (rewardResult.pickupAddress) {
+        context.fillStyle = 'rgba(255,255,255,0.1)'
+        fillRoundedRect(context, 120, 964, 840, 188, 28)
+        context.fillStyle = '#fef3c7'
+        context.font = '600 24px Arial'
+        context.fillText('Endereço de retirada', 156, 1018)
+
+        context.fillStyle = '#ffffff'
+        context.font = '500 30px Arial'
+        const addressLines = wrapCanvasText(context, rewardResult.pickupAddress, 768)
+        let addressY = 1072
+        for (const line of addressLines.slice(0, 4)) {
+          context.fillText(line, 156, addressY)
+          addressY += 38
+        }
+      }
+
+      context.fillStyle = '#cbd5e1'
+      context.font = '500 22px Arial'
+      context.fillText('Guarde esta imagem para apresentar no resgate do prêmio.', 120, 1224)
 
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
@@ -1510,7 +1608,7 @@ export function PublicSurveyPage() {
                       : wheelSpinning
                         ? 'A roleta está girando.'
                         : rewardResult?.won
-                          ? 'Seu prêmio foi confirmado. Salve o comprovante antes de fechar.'
+                          ? 'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.'
                           : 'Seu resultado já está disponível.'}
                   </p>
                 </div>
@@ -1558,7 +1656,16 @@ export function PublicSurveyPage() {
                             <p className="mt-2 text-lg font-bold text-white sm:text-xl">{rewardResult.couponCode}</p>
                           </div>
                         ) : null}
+                        {rewardResult.pickupAddress ? (
+                          <div className="mt-4 rounded-[18px] border border-white/15 bg-white/10 px-4 py-3 text-left">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada na loja</p>
+                            <p className="mt-2 text-sm text-white">{rewardResult.pickupAddress}</p>
+                          </div>
+                        ) : null}
                         <div className="mt-5 flex flex-col gap-3">
+                          <p className="text-xs text-slate-100">
+                            Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.
+                          </p>
                           {rewardContactWhatsAppUrl ? (
                             <a
                               href={rewardContactWhatsAppUrl}
@@ -1570,9 +1677,6 @@ export function PublicSurveyPage() {
                               Resgatar pelo WhatsApp
                             </a>
                           ) : null}
-                          <p className="text-xs text-slate-200">
-                            Seu prêmio já foi registrado. Use o botão acima para iniciar o resgate.
-                          </p>
                         </div>
                       </div>
                     </div>
@@ -1666,7 +1770,7 @@ export function PublicSurveyPage() {
                           className="admin-button-primary w-full justify-center"
                         >
                           <Download className="h-4 w-4" />
-                          {savingRewardProof ? 'Gerando imagem...' : 'Salvar comprovante em imagem'}
+                          {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
                         </button>
                         {rewardContactWhatsAppUrl ? (
                           <a
