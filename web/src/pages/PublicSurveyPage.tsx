@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
+import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -34,11 +34,11 @@ const birthdayMonths = [
 ]
 
 const neutralWheelLabels = [
-  'Que pena',
-  'Quase!',
-  'Boa sorte',
   'Valeu!',
-  'Hoje não',
+  'Quase!',
+  'Não foi dessa vez',
+  'Você não teve sorte',
+  'Boa sorte',
   'Obrigado',
 ]
 
@@ -647,8 +647,8 @@ export function PublicSurveyPage() {
 
   if (surveyQuery.isLoading) {
     return (
-      <div className="min-h-screen px-4 py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
-        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-10 text-center shadow-card" style={{ borderRadius: 6 }}>
+      <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
           <p className="text-sm text-slate-500">Carregando pesquisa...</p>
         </div>
       </div>
@@ -662,8 +662,8 @@ export function PublicSurveyPage() {
         : 'Verifique se o link está correto ou tente novamente mais tarde.'
 
     return (
-      <div className="min-h-screen px-4 py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
-        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-10 text-center shadow-card" style={{ borderRadius: 6 }}>
+      <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa indisponível</p>
           <h1 className="mt-4 font-display text-4xl text-slate-950">Não foi possível abrir esta pesquisa agora</h1>
           <p className="mt-4 text-sm text-slate-600">{errorMessage}</p>
@@ -673,11 +673,11 @@ export function PublicSurveyPage() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-6" style={{ background: `linear-gradient(180deg, ${survey.primaryColor}12 0%, #f8fafc 24%, #e2e8f0 100%)` }}>
-      <div className="mx-auto max-w-4xl">
-        <div className="border border-slate-200 bg-white p-6 shadow-card lg:p-8" style={{ borderRadius: 6 }}>
+    <div className="min-h-screen px-2 py-3 sm:px-4 sm:py-6 lg:px-6" style={{ background: `linear-gradient(180deg, ${survey.primaryColor}12 0%, #f8fafc 24%, #e2e8f0 100%)` }}>
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="overflow-hidden border border-slate-200 bg-white p-3 shadow-card sm:p-6 lg:p-8" style={{ borderRadius: 6 }}>
           {previewMode ? (
-            <div className="mb-6 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950 sm:flex-row sm:items-center sm:justify-between" style={{ borderRadius: 6 }}>
+            <div className="mb-5 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-3 py-3 text-sky-950 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4" style={{ borderRadius: 6 }}>
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-sky-700">
                   {sharedPreviewMode ? 'Link de teste' : 'Modo teste'}
@@ -696,13 +696,13 @@ export function PublicSurveyPage() {
             </div>
           ) : null}
 
-          <header className="border-b border-slate-200 pb-5">
+          <header className="border-b border-slate-200 pb-4 sm:pb-5">
             <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
               <Sparkles className="h-4 w-4" />
               Pesquisa
             </p>
-            <h1 className="mt-3 font-display text-4xl text-slate-950 lg:text-5xl">{survey.title}</h1>
-            <p className="mt-3 max-w-2xl text-sm text-slate-600 lg:text-base">
+            <h1 className="mt-3 font-display text-2xl leading-tight text-slate-950 sm:text-4xl lg:text-5xl">{survey.title}</h1>
+            <p className="mt-3 max-w-3xl text-sm text-slate-600 sm:text-[15px] lg:text-base">
               {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
             </p>
           </header>
@@ -713,13 +713,13 @@ export function PublicSurveyPage() {
 
           {!submitted ? (
             <form
-              className="mt-6 space-y-5"
+              className="mt-5 space-y-4 sm:mt-6 sm:space-y-5"
               onSubmit={(event) => {
                 event.preventDefault()
                 void submitMutation.mutateAsync()
               }}
             >
-              <section className="admin-panel grid gap-4 p-5 md:grid-cols-2">
+              <section className="admin-panel grid gap-4 p-4 sm:p-5 md:grid-cols-2">
                 <label className="grid gap-2 text-sm">
                   <span className="text-slate-600">Nome completo</span>
                   <input
@@ -786,8 +786,8 @@ export function PublicSurveyPage() {
                 const currentAnswer = answers[question.id]
 
                 return (
-                  <section key={question.id} className="border border-slate-200 bg-white p-5" style={{ borderRadius: 6 }}>
-                    <div className="mb-4 flex items-start justify-between gap-3">
+                  <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 6 }}>
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pergunta {index + 1}</p>
                         <h2 className="mt-2 font-semibold text-slate-950">{question.title}</h2>
@@ -804,7 +804,7 @@ export function PublicSurveyPage() {
                         onChange={(event) => setSingleAnswer(question.id, event.target.value)}
                       />
                     ) : question.type === 'multiple_choice' || question.type === 'single_choice' ? (
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         {question.options?.map((option) => (
                           <label key={option} className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
                             <input
@@ -826,7 +826,7 @@ export function PublicSurveyPage() {
                         ))}
                       </div>
                     ) : question.type === 'yes_no' ? (
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         {['Sim', 'Não'].map((option) => (
                           <label key={option} className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
                             <input
@@ -859,7 +859,7 @@ export function PublicSurveyPage() {
                       </div>
                     ) : question.type === 'nps' ? (
                       <div className="space-y-4">
-                        <div className="grid gap-3 md:grid-cols-3">
+                        <div className="grid gap-3 sm:grid-cols-3">
                           <div className="flex items-center gap-2 border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-800" style={{ borderRadius: 6 }}>
                             <ThumbsDown className="h-4 w-4" />
                             <span>0 a 6 😕</span>
@@ -874,7 +874,7 @@ export function PublicSurveyPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-6 xl:grid-cols-11">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11">
                           {Array.from({ length: 11 }, (_, value) => (
                             <button
                               key={value}
@@ -929,7 +929,7 @@ export function PublicSurveyPage() {
               </p>
 
               {survey.rewardEnabled ? (
-                <div className="mt-6 border border-slate-200 bg-slate-950 p-5 text-white" style={{ borderRadius: 6 }}>
+                <div className="mt-6 border border-slate-200 bg-slate-950 p-4 text-white sm:p-5" style={{ borderRadius: 6 }}>
                   <div className="flex items-center justify-center gap-2 font-semibold">
                     <Gift className="h-5 w-5" />
                     Roleta de prêmios
@@ -939,8 +939,8 @@ export function PublicSurveyPage() {
                     <>
                       <p className="mt-2 text-sm text-slate-300">
                         {canSpinReward
-                          ? 'O resultado já será decidido no servidor assim que você girar. A animação abaixo apenas revela esse resultado.'
-                          : 'A participação já foi processada. Confira abaixo o resultado registrado para este giro.'}
+                          ? 'Toque em girar para revelar o seu resultado.'
+                          : 'A participação já foi concluída. Confira abaixo o resultado do giro.'}
                       </p>
 
                       <div className="mt-6">
@@ -1103,9 +1103,9 @@ export function PublicSurveyPage() {
 
       {survey.rewardEnabled && wheelModalOpen ? (
         <div className="fixed inset-0 z-50 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.22)_0%,rgba(15,23,42,0.92)_36%,rgba(2,6,23,0.98)_100%)]">
-          <div className="absolute inset-0 overflow-y-auto p-2 sm:px-6 sm:py-6">
-            <div className="mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-7xl flex-col justify-between rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-3 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:min-h-full sm:rounded-[28px] sm:p-6 lg:p-8">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="absolute inset-0 overflow-y-auto p-1 sm:p-3 lg:px-6 lg:py-6">
+            <div className="mx-auto flex min-h-[calc(100dvh-0.5rem)] w-full max-w-[1500px] flex-col justify-between rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-3 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:min-h-[calc(100dvh-1.5rem)] sm:rounded-[28px] sm:p-5 lg:p-8">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
                   <p className="text-sm text-slate-300 sm:text-base">
                     {canSpinReward
@@ -1121,7 +1121,6 @@ export function PublicSurveyPage() {
                 <div className="flex items-center gap-3 self-start">
                   {canCloseWheelModal ? (
                     <button type="button" onClick={() => setWheelModalOpen(false)} className="admin-button px-4 py-3 text-white">
-                      <X className="h-4 w-4" />
                       Fechar
                     </button>
                   ) : (
@@ -1132,8 +1131,8 @@ export function PublicSurveyPage() {
                 </div>
               </div>
 
-              <div className="mt-3 grid flex-1 gap-3 lg:mt-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1fr)_420px]">
-                <div className="flex min-h-[calc(100dvh-270px)] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-3 sm:min-h-0 sm:px-4 sm:py-6 lg:rounded-[28px] lg:px-6 lg:py-8">
+              <div className="mt-3 grid flex-1 gap-3 xl:mt-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,420px)] xl:items-center 2xl:grid-cols-[minmax(0,1.3fr)_440px]">
+                <div className="flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
                   <PrizeWheel
                     segments={wheelSegments}
                     rotation={wheelRotation}
@@ -1149,7 +1148,7 @@ export function PublicSurveyPage() {
                   />
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-4 xl:max-w-[440px]">
                   {!rewardResult ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-center">
                       <p className="mt-3 text-lg font-semibold text-white">
