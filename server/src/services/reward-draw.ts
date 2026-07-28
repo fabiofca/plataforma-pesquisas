@@ -1,0 +1,97 @@
+export type RewardFrequencyMode = 'frequent' | 'balanced' | 'rare' | 'custom'
+
+export interface RewardDrawItem {
+  id: string
+  title: string
+  quantity_total: number
+  quantity_awarded: number
+  is_active?: boolean
+  frequency_mode: RewardFrequencyMode
+  frequency_target: number
+  next_release_spin: number
+  last_awarded_spin: number
+  min_gap_spins: number
+}
+
+export const MAX_WHEEL_OPTIONS = 6
+export const MAX_REAL_REWARDS = 3
+export const DEFAULT_NO_PRIZE_LABELS = [
+  'Não foi dessa vez',
+  'Quase!',
+  'Obrigado por participar.',
+  'Boa sorte na próxima',
+  'Tente novamente',
+  'Continue participando',
+]
+
+const DEFAULT_TARGETS: Record<Exclude<RewardFrequencyMode, 'custom'>, number> = {
+  frequent: 30,
+  balanced: 60,
+  rare: 120,
+}
+
+function randomBetween(min: number, max: number) {
+  const safeMin = Math.min(min, max)
+  const safeMax = Math.max(min, max)
+  return Math.floor(Math.random() * (safeMax - safeMin + 1)) + safeMin
+}
+
+export function getFrequencyTarget(mode: RewardFrequencyMode, customTarget?: number | null) {
+  if (mode === 'custom') {
+    return Math.max(2, Math.trunc(customTarget ?? 100))
+  }
+
+  return DEFAULT_TARGETS[mode]
+}
+
+export function calculateMinimumGapSpins(target: number) {
+  return Math.max(2, Math.floor(target * 0.2))
+}
+
+export function calculateCampaignMinimumGap(targets: number[]) {
+  if (!targets.length) {
+    return 0
+  }
+
+  return Math.max(1, Math.floor(Math.min(...targets) * 0.2))
+}
+
+export function createNextReleaseSpin(currentSpin: number, target: number) {
+  const safeTarget = Math.max(2, Math.trunc(target))
+  const minOffset = Math.max(1, Math.floor(safeTarget * 0.7))
+  const maxOffset = Math.max(minOffset + 1, Math.ceil(safeTarget * 1.3))
+
+  return currentSpin + randomBetween(minOffset, maxOffset)
+}
+
+export function isRewardAvailable(item: RewardDrawItem) {
+  return (item.is_active ?? true) && item.quantity_awarded < item.quantity_total
+}
+
+export function getAvailableRewardItems(items: RewardDrawItem[]) {
+  return items.filter(isRewardAvailable)
+}
+
+export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number) {
+  const availableItems = getAvailableRewardItems(items).filter((item) => currentSpin >= item.next_release_spin)
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return [...availableItems].sort((left, right) => {
+    if (left.next_release_spin !== right.next_release_spin) {
+      return left.next_release_spin - right.next_release_spin
+    }
+
+    if (left.frequency_target !== right.frequency_target) {
+      return left.frequency_target - right.frequency_target
+    }
+
+    return left.title.localeCompare(right.title)
+  })[0]
+}
+
+export function selectNoPrizeLabel() {
+  return DEFAULT_NO_PRIZE_LABELS[Math.floor(Math.random() * DEFAULT_NO_PRIZE_LABELS.length)] ?? DEFAULT_NO_PRIZE_LABELS[0]
+}

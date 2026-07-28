@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+.DS_Store
+coverage/
+*.log
+web/node_modules/
+web/dist/
+server/node_modules/
+server/dist/
+server/uploads/
+.trae/
+.vscode/
+server/.env
+web/.env
+*.local
