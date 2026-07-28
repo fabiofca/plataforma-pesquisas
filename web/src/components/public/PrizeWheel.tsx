@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 type PrizeWheelSegment = {
   id: string
   label: string
@@ -190,6 +192,10 @@ export function PrizeWheel({
   spinLabel,
   onSpin,
 }: PrizeWheelProps) {
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const spinSoundTimeoutRef = useRef<number | null>(null)
+  const spinSoundStartedAtRef = useRef<number | null>(null)
+  const audioUnlockedRef = useRef(false)
   const isFullscreen = variant === 'fullscreen'
   const angle = 360 / segments.length
   const gradient = buildWheelGradient(segments, primaryColor)
@@ -210,6 +216,117 @@ export function PrizeWheel({
   const wheelWrapperStyle = {
     maxWidth: isFullscreen ? 'min(calc(100vw - 0.75rem), calc(100dvh - 11.5rem))' : '430px',
   }
+
+  function getAudioContext() {
+    if (typeof window === 'undefined') {
+      return null
+    }
+
+    const BrowserAudioContext = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+
+    if (!BrowserAudioContext) {
+      return null
+    }
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new BrowserAudioContext()
+    }
+
+    return audioContextRef.current
+  }
+
+  async function unlockWheelSound() {
+    const audioContext = getAudioContext()
+
+    if (!audioContext) {
+      return
+    }
+
+    try {
+      if (audioContext.state !== 'running') {
+        await audioContext.resume()
+      }
+
+      audioUnlockedRef.current = true
+    } catch {
+      audioUnlockedRef.current = false
+    }
+  }
+
+  function clearSpinSoundLoop() {
+    if (spinSoundTimeoutRef.current) {
+      window.clearTimeout(spinSoundTimeoutRef.current)
+      spinSoundTimeoutRef.current = null
+    }
+
+    spinSoundStartedAtRef.current = null
+  }
+
+  function playWheelTick(audioContext: AudioContext, progress: number) {
+    const now = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    const filter = audioContext.createBiquadFilter()
+
+    oscillator.type = 'square'
+    oscillator.frequency.setValueAtTime(1400 - progress * 620, now)
+    filter.type = 'bandpass'
+    filter.frequency.setValueAtTime(1800 - progress * 800, now)
+    filter.Q.setValueAtTime(2.8, now)
+
+    gainNode.gain.setValueAtTime(0.0001, now)
+    gainNode.gain.exponentialRampToValueAtTime(0.018, now + 0.006)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.055)
+
+    oscillator.connect(filter)
+    filter.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    oscillator.start(now)
+    oscillator.stop(now + 0.06)
+  }
+
+  useEffect(() => {
+    if (!isSpinning || !audioUnlockedRef.current) {
+      clearSpinSoundLoop()
+      return
+    }
+
+    const audioContext = getAudioContext()
+
+    if (!audioContext || audioContext.state !== 'running') {
+      return
+    }
+
+    spinSoundStartedAtRef.current = Date.now()
+
+    const runTickLoop = () => {
+      if (!audioContextRef.current || audioContext.state !== 'running') {
+        clearSpinSoundLoop()
+        return
+      }
+
+      const startedAt = spinSoundStartedAtRef.current ?? Date.now()
+      const elapsed = Date.now() - startedAt
+      const progress = Math.min(elapsed / 5200, 1)
+      playWheelTick(audioContext, progress)
+
+      const nextDelay = Math.round(62 + progress * 88)
+      spinSoundTimeoutRef.current = window.setTimeout(runTickLoop, nextDelay)
+    }
+
+    runTickLoop()
+
+    return () => {
+      clearSpinSoundLoop()
+    }
+  }, [isSpinning])
+
+  useEffect(() => {
+    return () => {
+      clearSpinSoundLoop()
+    }
+  }, [])
 
   return (
     <div className="mx-auto w-full" style={wheelWrapperStyle}>
@@ -353,7 +470,10 @@ export function PrizeWheel({
       <div className="mt-4 flex justify-center">
         <button
           type="button"
-          onClick={onSpin}
+          onClick={() => {
+            void unlockWheelSound()
+            onSpin()
+          }}
           disabled={disabled || isSpinning}
           className={`rounded-full bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#e2e8f0_100%)] font-bold uppercase text-slate-950 shadow-[0_10px_18px_rgba(255,255,255,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 ${
             isFullscreen ? 'px-8 py-3.5 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
