@@ -45,7 +45,7 @@ function splitSegmentLabel(label: string) {
   for (const word of words) {
     const nextLine = currentLine ? `${currentLine} ${word}` : word
 
-    if (nextLine.length <= 14) {
+    if (nextLine.length <= 11) {
       currentLine = nextLine
       continue
     }
@@ -60,13 +60,13 @@ function splitSegmentLabel(label: string) {
     lines.push(currentLine)
   }
 
-  return lines.slice(0, 3)
+  return lines.slice(0, 2)
 }
 
 function getWheelDisplayLabel(label: string) {
   const normalized = label.trim().replace(/\s+/g, ' ')
 
-  if (normalized.length <= 34) {
+  if (normalized.length <= 22) {
     return normalized
   }
 
@@ -76,7 +76,7 @@ function getWheelDisplayLabel(label: string) {
   for (const word of words) {
     const nextValue = shortened ? `${shortened} ${word}` : word
 
-    if (nextValue.length > 30) {
+    if (nextValue.length > 18) {
       break
     }
 
@@ -84,7 +84,7 @@ function getWheelDisplayLabel(label: string) {
   }
 
   if (!shortened) {
-    return `${normalized.slice(0, 27).trimEnd()}...`
+    return `${normalized.slice(0, 16).trimEnd()}...`
   }
 
   return `${shortened}...`
@@ -183,8 +183,17 @@ export function PrizeWheel({
   const angle = 360 / segments.length
   const gradient = buildWheelGradient(segments, primaryColor)
   const dividerOverlay = buildWheelOverlay(segments)
-  const labelDistance = isFullscreen ? 'clamp(116px, 28vw, 182px)' : '94px'
-  const labelWidth = isFullscreen ? 'clamp(156px, 38vw, 240px)' : '124px'
+  const compactWheel = segments.length >= 8
+  const labelDistance = isFullscreen
+    ? compactWheel
+      ? 'clamp(124px, 31vw, 188px)'
+      : 'clamp(116px, 28vw, 182px)'
+    : '94px'
+  const labelWidth = isFullscreen
+    ? compactWheel
+      ? 'clamp(104px, 20vw, 156px)'
+      : 'clamp(140px, 30vw, 200px)'
+    : '124px'
   const pointerBaseClass = isFullscreen
     ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
     : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)]'
@@ -275,10 +284,14 @@ export function PrizeWheel({
                       fontSize:
                         isRewardSegment || isRetrySegment
                           ? isFullscreen
-                            ? 'clamp(14px, 2.15vw, 26px)'
+                            ? compactWheel
+                              ? 'clamp(11px, 1.7vw, 19px)'
+                              : 'clamp(14px, 2.15vw, 26px)'
                             : 'clamp(12px, 1.28vw, 18px)'
                           : isFullscreen
-                            ? 'clamp(12px, 1.7vw, 20px)'
+                            ? compactWheel
+                              ? 'clamp(10px, 1.45vw, 16px)'
+                              : 'clamp(12px, 1.7vw, 20px)'
                             : 'clamp(10px, 1.05vw, 15px)',
                       fontWeight: isRewardSegment || isRetrySegment ? '900' : '800',
                       lineHeight: isRewardSegment || isRetrySegment ? '1.03' : '1.06',

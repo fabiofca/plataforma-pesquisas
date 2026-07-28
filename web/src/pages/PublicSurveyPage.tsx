@@ -34,12 +34,12 @@ const birthdayMonths = [
 ]
 
 const neutralWheelLabels = [
-  'Não foi dessa vez',
+  'Que pena',
   'Quase!',
-  'Obrigado por participar.',
-  'Boa sorte na próxima',
-  'Você não teve sorte',
-  'Continue participando',
+  'Boa sorte',
+  'Valeu!',
+  'Hoje não',
+  'Obrigado',
 ]
 
 type RewardRetryTask = {
@@ -1107,16 +1107,14 @@ export function PublicSurveyPage() {
             <div className="mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-7xl flex-col justify-between rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-3 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:min-h-full sm:rounded-[28px] sm:p-6 lg:p-8">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-2xl">
-                  <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Momento do prêmio</p>
-                  <h2 className="mt-2 font-display text-2xl text-white sm:mt-3 sm:text-4xl lg:text-5xl">Roleta premium em tela cheia</h2>
-                  <p className="mt-2 text-sm text-slate-300 sm:mt-3 sm:text-base">
+                  <p className="text-sm text-slate-300 sm:text-base">
                     {canSpinReward
-                      ? 'Toque em girar para revelar o resultado desta campanha com destaque total.'
+                      ? 'Gire a roleta para descobrir seu resultado.'
                       : wheelSpinning
-                        ? 'A roleta está girando e o resultado está sendo revelado agora.'
+                        ? 'A roleta está girando.'
                         : rewardResult?.won
-                          ? 'Seu prêmio já foi confirmado. Você pode salvar o comprovante antes de fechar.'
-                          : 'O resultado deste giro já foi registrado. Confira a mensagem final abaixo.'}
+                          ? 'Seu prêmio foi confirmado. Salve o comprovante antes de fechar.'
+                          : 'Seu resultado já está disponível.'}
                   </p>
                 </div>
 
@@ -1154,7 +1152,6 @@ export function PublicSurveyPage() {
                 <div className="space-y-4">
                   {!rewardResult ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-center">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Status da roleta</p>
                       <p className="mt-3 text-lg font-semibold text-white">
                         {wheelSpinning ? 'A sorte está girando...' : canSpinReward ? 'Pronta para girar' : 'Aguardando resultado'}
                       </p>
