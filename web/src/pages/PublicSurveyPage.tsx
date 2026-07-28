@@ -50,6 +50,19 @@ type RewardRetryTask = {
 }
 
 type SurveyAnswerMap = Record<string, string | string[] | number>
+type RewardResultState = {
+  won: boolean
+  item?: string
+  landedLabel?: string
+  couponCode?: string
+  pickupAddress?: string
+  retryAvailable?: boolean
+  retryUnlocked?: boolean
+  retryTasks?: RewardRetryTask[]
+  completedTaskIds?: string[]
+  message?: string
+}
+
 type RetryTaskProgressMap = Record<
   string,
   {
@@ -58,7 +71,27 @@ type RetryTaskProgressMap = Record<
   }
 >
 
+type PersistedPublicSurveySession = {
+  participantName: string
+  submitted: boolean
+  submitMessage: string
+  responseId: string
+  canSpinReward: boolean
+  rewardResult: RewardResultState | null
+  wheelRotation: number
+  activeWheelSegmentId: string
+  completedRetryTaskIds: string[]
+  wheelModalOpen: boolean
+  retryTaskProgressMap: RetryTaskProgressMap
+  activeRetryTaskId: string | null
+}
+
 const RETRY_TASK_MIN_WAIT_MS = 12000
+const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
+
+function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
+  return `${PUBLIC_SURVEY_SESSION_KEY_PREFIX}:${previewVariant}:${surveyStorageId}`
+}
 
 function buildVisibleQuestionSet(questions: SurveyQuestion[], answers: SurveyAnswerMap) {
   return new Set(getVisibleSurveyQuestions(questions, answers).map((question) => question.id))
@@ -144,7 +177,10 @@ export function PublicSurveyPage() {
   const previewVariant = id ? 'internal' : token ? 'shared' : 'public'
   const previewMode = previewVariant !== 'public'
   const sharedPreviewMode = previewVariant === 'shared'
+  const surveyStorageId = id ?? token ?? slug ?? 'unknown'
+  const surveySessionStorageKey = getPublicSurveySessionStorageKey(previewVariant, surveyStorageId)
   const [searchParams] = useSearchParams()
+  const [sessionStateReady, setSessionStateReady] = useState(false)
   const [participantName, setParticipantName] = useState('')
   const [participantPhone, setParticipantPhone] = useState('')
   const [participantEmail, setParticipantEmail] = useState('')
@@ -155,18 +191,7 @@ export function PublicSurveyPage() {
   const [submitMessage, setSubmitMessage] = useState('')
   const [responseId, setResponseId] = useState('')
   const [canSpinReward, setCanSpinReward] = useState(false)
-  const [rewardResult, setRewardResult] = useState<{
-    won: boolean
-    item?: string
-    landedLabel?: string
-    couponCode?: string
-    pickupAddress?: string
-    retryAvailable?: boolean
-    retryUnlocked?: boolean
-    retryTasks?: RewardRetryTask[]
-    completedTaskIds?: string[]
-    message?: string
-  } | null>(null)
+  const [rewardResult, setRewardResult] = useState<RewardResultState | null>(null)
   const [eligibilityMessage, setEligibilityMessage] = useState('')
   const [wheelRotation, setWheelRotation] = useState(0)
   const [wheelSpinning, setWheelSpinning] = useState(false)
@@ -179,6 +204,7 @@ export function PublicSurveyPage() {
   const [activeRetryTaskId, setActiveRetryTaskId] = useState<string | null>(null)
   const [retryTaskNow, setRetryTaskNow] = useState(() => Date.now())
   const trackedVisitKeyRef = useRef('')
+  const sessionHydratedRef = useRef(false)
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
   const source = searchParams.get('src')
@@ -249,6 +275,113 @@ export function PublicSurveyPage() {
   const showWheelArea = canSpinReward || wheelSpinning || Boolean(rewardResult)
   const retryTasks = rewardResult?.retryTasks ?? survey?.rewardRetryTasks ?? []
   const canCloseWheelModal = !wheelSpinning && Boolean(rewardResult)
+
+  function clearPersistedSurveySession() {
+    window.sessionStorage.removeItem(surveySessionStorageKey)
+  }
+
+  function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
+    const snapshot: PersistedPublicSurveySession = {
+      participantName,
+      submitted,
+      submitMessage,
+      responseId,
+      canSpinReward,
+      rewardResult,
+      wheelRotation,
+      activeWheelSegmentId,
+      completedRetryTaskIds,
+      wheelModalOpen,
+      retryTaskProgressMap,
+      activeRetryTaskId,
+      ...overrides,
+    }
+
+    const hasMeaningfulSession =
+      snapshot.submitted ||
+      Boolean(snapshot.responseId) ||
+      Boolean(snapshot.rewardResult) ||
+      Boolean(snapshot.canSpinReward) ||
+      Object.keys(snapshot.retryTaskProgressMap).length > 0
+
+    if (!hasMeaningfulSession) {
+      clearPersistedSurveySession()
+      return
+    }
+
+    window.sessionStorage.setItem(surveySessionStorageKey, JSON.stringify(snapshot))
+  }
+
+  useEffect(() => {
+    if (sessionHydratedRef.current) {
+      return
+    }
+
+    sessionHydratedRef.current = true
+
+    const rawSession = window.sessionStorage.getItem(surveySessionStorageKey)
+
+    if (!rawSession) {
+      setSessionStateReady(true)
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(rawSession) as PersistedPublicSurveySession
+      const nextRetryTaskProgressMap = { ...(parsed.retryTaskProgressMap ?? {}) }
+      let nextActiveRetryTaskId = parsed.activeRetryTaskId ?? null
+
+      if (nextActiveRetryTaskId && nextRetryTaskProgressMap[nextActiveRetryTaskId] && !nextRetryTaskProgressMap[nextActiveRetryTaskId].returnedAt) {
+        nextRetryTaskProgressMap[nextActiveRetryTaskId] = {
+          ...nextRetryTaskProgressMap[nextActiveRetryTaskId],
+          returnedAt: Date.now(),
+        }
+        nextActiveRetryTaskId = null
+      }
+
+      setParticipantName(parsed.participantName ?? '')
+      setSubmitted(Boolean(parsed.submitted))
+      setSubmitMessage(parsed.submitMessage ?? '')
+      setResponseId(parsed.responseId ?? '')
+      setCanSpinReward(Boolean(parsed.canSpinReward))
+      setRewardResult(parsed.rewardResult ?? null)
+      setWheelRotation(parsed.wheelRotation ?? 0)
+      setWheelSpinning(false)
+      setActiveWheelSegmentId(parsed.activeWheelSegmentId ?? '')
+      setCompletedRetryTaskIds(parsed.completedRetryTaskIds ?? [])
+      setWheelModalOpen(Boolean(parsed.wheelModalOpen))
+      setRetryTaskProgressMap(nextRetryTaskProgressMap)
+      setActiveRetryTaskId(nextActiveRetryTaskId)
+      setRetryTaskNow(Date.now())
+    } catch {
+      clearPersistedSurveySession()
+    } finally {
+      setSessionStateReady(true)
+    }
+  }, [surveySessionStorageKey])
+
+  useEffect(() => {
+    if (!sessionStateReady) {
+      return
+    }
+
+    persistSurveySessionSnapshot()
+  }, [
+    activeRetryTaskId,
+    activeWheelSegmentId,
+    canSpinReward,
+    completedRetryTaskIds,
+    participantName,
+    responseId,
+    retryTaskProgressMap,
+    rewardResult,
+    sessionStateReady,
+    submitted,
+    submitMessage,
+    surveySessionStorageKey,
+    wheelModalOpen,
+    wheelRotation,
+  ])
 
   useEffect(() => {
     if (!survey) {
@@ -389,6 +522,7 @@ export function PublicSurveyPage() {
     setWheelModalOpen(false)
     setRetryTaskProgressMap({})
     setActiveRetryTaskId(null)
+    clearPersistedSurveySession()
   }
 
   const submitMutation = useMutation({
@@ -648,16 +782,22 @@ export function PublicSurveyPage() {
 
   function startRetryTask(task: RewardRetryTask) {
     const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
-
-    setRetryTaskProgressMap((current) => ({
-      ...current,
+    const nextRetryTaskProgressMap = {
+      ...retryTaskProgressMap,
       [task.id]: {
         startedAt: Date.now(),
         returnedAt: null,
       },
-    }))
+    }
+
+    setRetryTaskProgressMap(nextRetryTaskProgressMap)
     setRetryTaskNow(Date.now())
     setActiveRetryTaskId(task.id)
+    persistSurveySessionSnapshot({
+      retryTaskProgressMap: nextRetryTaskProgressMap,
+      activeRetryTaskId: task.id,
+      wheelModalOpen: true,
+    })
 
     if (!openedWindow) {
       window.location.href = task.url
