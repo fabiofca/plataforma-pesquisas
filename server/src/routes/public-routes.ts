@@ -53,6 +53,23 @@ type RewardRetryTask = {
   url: string
 }
 
+type RewardSessionResult = {
+  won: boolean
+  item?: string
+  landedLabel?: string
+  couponCode?: string
+  pickupAddress?: string
+  contactWhatsApp?: string
+  retryAvailable?: boolean
+  retryUnlocked?: boolean
+  retryTasks?: RewardRetryTask[]
+  completedTaskIds?: string[]
+  spinAttempt?: number
+  maxAttempts?: number
+  finalAttempt?: boolean
+  message?: string
+}
+
 function normalizeRewardRetryTasks(value: PublicSurveyRecord['reward_retry_unlock_tasks_json']): RewardRetryTask[] {
   if (!Array.isArray(value)) {
     return []
@@ -267,6 +284,19 @@ function isRewardCampaignAvailable(survey: Awaited<ReturnType<typeof getSurveyBy
   return survey.reward_campaign_expires_at >= new Date().toISOString().slice(0, 10)
 }
 
+function buildRewardSubmitMessage(
+  survey: Awaited<ReturnType<typeof getSurveyBySlug>>,
+  rewardEligible: boolean,
+) {
+  if (!survey?.reward_enabled || rewardEligible) {
+    return null
+  }
+
+  return isRewardCampaignAvailable(survey)
+    ? 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi registrada normalmente, mas a roleta não gira novamente.'
+    : 'A campanha de prêmios está pausada, encerrada ou indisponível no momento. Sua resposta foi registrada normalmente.'
+}
+
 async function countExistingRewardParticipants(input: {
   surveyId: string
   phone: string
@@ -318,6 +348,158 @@ async function getCompletedRetryTaskIds(
   )
 
   return clicks.rows.map((row) => row.task_id)
+}
+
+async function getRewardSessionState(
+  client: Pick<typeof pool, 'query'>,
+  survey: NonNullable<Awaited<ReturnType<typeof getSurveyBySlug>>>,
+  responseId: string,
+) {
+  const retryTasks = survey.reward_retry_unlock_enabled ? survey.reward_retry_tasks ?? [] : []
+  const surveyResponseResult = await client.query<{
+    id: string
+    participant_name: string | null
+    participant_phone: string | null
+    reward_eligible: boolean
+    reward_spin_completed: boolean
+    reward_retry_count: number
+    reward_retry_unlock_pending: boolean
+    reward_retry_unlocked_at: string | null
+  }>(
+    `select
+        id,
+        participant_name,
+        participant_phone,
+        reward_eligible,
+        reward_spin_completed,
+        reward_retry_count,
+        reward_retry_unlock_pending,
+        cast(reward_retry_unlocked_at as text) as reward_retry_unlocked_at
+     from survey_responses
+     where id = $1 and survey_id = $2
+     limit 1`,
+    [responseId, survey.id],
+  )
+
+  const surveyResponse = surveyResponseResult.rows[0]
+
+  if (!surveyResponse) {
+    return null
+  }
+
+  const spinLogsResult = await client.query<{
+    spin_attempt: number
+    outcome_type: 'win' | 'no_prize'
+    wheel_label: string
+    coupon_code: string | null
+    item_title: string | null
+    pickup_address: string | null
+    contact_whatsapp: string | null
+  }>(
+    `select
+        reward_spin_logs.spin_attempt,
+        reward_spin_logs.outcome_type,
+        reward_spin_logs.wheel_label,
+        reward_wins.coupon_code,
+        reward_items.title as item_title,
+        reward_campaigns.pickup_address,
+        reward_campaigns.contact_whatsapp
+     from reward_spin_logs
+     left join reward_wins on reward_wins.response_id = reward_spin_logs.response_id
+     left join reward_items on reward_items.id = reward_spin_logs.reward_item_id
+     left join reward_campaigns on reward_campaigns.id = reward_spin_logs.campaign_id
+     where reward_spin_logs.response_id = $1
+     order by reward_spin_logs.spin_attempt desc`,
+    [responseId],
+  )
+
+  const latestSpin = spinLogsResult.rows[0]
+  const attemptsMade = spinLogsResult.rows.length
+  const maxAttempts = 1 + retryTasks.length
+  const completedTaskIds =
+    survey.reward_campaign_id && retryTasks.length > 0
+      ? await getCompletedRetryTaskIds(client, responseId, survey.reward_campaign_id)
+      : []
+  const nextPendingTask = retryTasks.find((task) => !completedTaskIds.includes(task.id))
+  const retryUnlocked = Boolean(
+    surveyResponse.reward_retry_unlock_pending &&
+      surveyResponse.reward_retry_unlocked_at &&
+      completedTaskIds.length > surveyResponse.reward_retry_count,
+  )
+
+  const canSpinReward = latestSpin
+    ? latestSpin.outcome_type !== 'win' && retryUnlocked
+    : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
+
+  let rewardResult: RewardSessionResult | null = null
+
+  if (latestSpin?.outcome_type === 'win') {
+    rewardResult = {
+      won: true,
+      item: latestSpin.item_title ?? undefined,
+      landedLabel: latestSpin.wheel_label,
+      couponCode: latestSpin.coupon_code ?? undefined,
+      pickupAddress: latestSpin.pickup_address ?? undefined,
+      contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+      retryAvailable: false,
+      retryUnlocked: false,
+      retryTasks,
+      completedTaskIds,
+      spinAttempt: latestSpin.spin_attempt,
+      maxAttempts,
+      finalAttempt: true,
+      message: 'Este resultado já foi registrado anteriormente.',
+    }
+  } else if (latestSpin) {
+    const finalAttempt = latestSpin.spin_attempt >= maxAttempts
+
+    if (surveyResponse.reward_retry_unlock_pending && nextPendingTask) {
+      rewardResult = {
+        won: false,
+        landedLabel: latestSpin.wheel_label,
+        retryAvailable: true,
+        retryUnlocked,
+        retryTasks,
+        completedTaskIds,
+        spinAttempt: latestSpin.spin_attempt,
+        maxAttempts,
+        finalAttempt,
+        message: retryUnlocked
+          ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
+          : 'Conclua a próxima tarefa para liberar um novo giro.',
+      }
+    } else {
+      rewardResult = {
+        won: false,
+        landedLabel: latestSpin.wheel_label,
+        pickupAddress: latestSpin.pickup_address ?? undefined,
+        contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+        retryAvailable: false,
+        retryUnlocked: false,
+        retryTasks,
+        completedTaskIds,
+        spinAttempt: latestSpin.spin_attempt,
+        maxAttempts,
+        finalAttempt,
+        message:
+          finalAttempt || surveyResponse.reward_spin_completed
+            ? maxAttempts > 1
+              ? 'As chances desta participação já foram usadas.'
+              : 'Não houve prêmio disponível nesta tentativa.'
+            : 'A roleta já foi utilizada nesta participação.',
+      }
+    }
+  }
+
+  return {
+    responseId,
+    participantName: surveyResponse.participant_name ?? '',
+    participantPhone: surveyResponse.participant_phone ?? '',
+    submitMessage: buildRewardSubmitMessage(survey, surveyResponse.reward_eligible),
+    canSpinReward,
+    completedTaskIds,
+    rewardResult,
+  }
 }
 
 publicRouter.get('/surveys/:slug', async (request, response) => {
@@ -458,13 +640,38 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     responseId,
     rewardEnabled: survey.reward_enabled,
     rewardEligible,
-    rewardMessage:
-      survey.reward_enabled && !rewardEligible
-        ? isRewardCampaignAvailable(survey)
-          ? 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi registrada normalmente, mas a roleta não gira novamente.'
-          : 'A campanha de prêmios está pausada, encerrada ou indisponível no momento. Sua resposta foi registrada normalmente.'
-        : null,
+    rewardMessage: buildRewardSubmitMessage(survey, rewardEligible),
   })
+})
+
+publicRouter.get('/surveys/:slug/reward-session', async (request, response) => {
+  const survey = await getSurveyBySlug(request.params.slug)
+  const responseId = String(request.query.responseId ?? '').trim()
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa pública não encontrada.' })
+    return
+  }
+
+  if (!responseId) {
+    response.status(400).json({ message: 'Informe a participação para recuperar a roleta.' })
+    return
+  }
+
+  const client = await pool.connect()
+
+  try {
+    const sessionState = await getRewardSessionState(client, survey, responseId)
+
+    if (!sessionState) {
+      response.status(404).json({ message: 'Participação não encontrada para esta pesquisa.' })
+      return
+    }
+
+    response.json(sessionState)
+  } finally {
+    client.release()
+  }
 })
 
 publicRouter.post('/surveys/:slug/retry-task-click', async (request, response) => {

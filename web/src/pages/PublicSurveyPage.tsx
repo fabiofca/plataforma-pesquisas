@@ -4,7 +4,7 @@ import { Download, Gift, Meh, MessageCircle, ShieldCheck, Sparkles, ThumbsDown, 
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
-import { apiRequest } from '@/lib/api-client'
+import { ApiError, apiRequest } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import type { SurveyShareSource } from '@/lib/public-survey'
 import { FLOW_END, getVisibleSurveyQuestions, isQuestionAnswered } from '@/lib/survey-flow'
@@ -77,6 +77,7 @@ type RetryTaskProgressMap = Record<
 
 type PersistedPublicSurveySession = {
   participantName: string
+  participantPhone: string
   submitted: boolean
   submitMessage: string
   responseId: string
@@ -95,6 +96,52 @@ const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
 
 function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
   return `${PUBLIC_SURVEY_SESSION_KEY_PREFIX}:${previewVariant}:${surveyStorageId}`
+}
+
+function readPersistedSurveySessionSnapshot(storageKey: string) {
+  try {
+    const localSnapshot = window.localStorage.getItem(storageKey)
+
+    if (localSnapshot) {
+      return localSnapshot
+    }
+  } catch {
+    // Ignore localStorage access issues and fall back to sessionStorage.
+  }
+
+  try {
+    return window.sessionStorage.getItem(storageKey)
+  } catch {
+    return null
+  }
+}
+
+function writePersistedSurveySessionSnapshot(storageKey: string, value: string) {
+  try {
+    window.localStorage.setItem(storageKey, value)
+  } catch {
+    // Ignore localStorage access issues and keep the shorter-lived fallback below.
+  }
+
+  try {
+    window.sessionStorage.setItem(storageKey, value)
+  } catch {
+    // Ignore sessionStorage access issues.
+  }
+}
+
+function removePersistedSurveySessionSnapshot(storageKey: string) {
+  try {
+    window.localStorage.removeItem(storageKey)
+  } catch {
+    // Ignore localStorage access issues.
+  }
+
+  try {
+    window.sessionStorage.removeItem(storageKey)
+  } catch {
+    // Ignore sessionStorage access issues.
+  }
 }
 
 function buildVisibleQuestionSet(questions: SurveyQuestion[], answers: SurveyAnswerMap) {
@@ -293,6 +340,7 @@ export function PublicSurveyPage() {
   const [retryTaskNow, setRetryTaskNow] = useState(() => Date.now())
   const trackedVisitKeyRef = useRef('')
   const sessionHydratedRef = useRef(false)
+  const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
   const source = searchParams.get('src')
@@ -386,12 +434,13 @@ export function PublicSurveyPage() {
   }, [completedRetryTaskIds, retryTasks, rewardResult?.completedTaskIds, rewardResult?.retryAvailable])
 
   function clearPersistedSurveySession() {
-    window.sessionStorage.removeItem(surveySessionStorageKey)
+    removePersistedSurveySessionSnapshot(surveySessionStorageKey)
   }
 
   function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
     const snapshot: PersistedPublicSurveySession = {
       participantName,
+      participantPhone,
       submitted,
       submitMessage,
       responseId,
@@ -418,7 +467,7 @@ export function PublicSurveyPage() {
       return
     }
 
-    window.sessionStorage.setItem(surveySessionStorageKey, JSON.stringify(snapshot))
+    writePersistedSurveySessionSnapshot(surveySessionStorageKey, JSON.stringify(snapshot))
   }
 
   useEffect(() => {
@@ -428,7 +477,7 @@ export function PublicSurveyPage() {
 
     sessionHydratedRef.current = true
 
-    const rawSession = window.sessionStorage.getItem(surveySessionStorageKey)
+    const rawSession = readPersistedSurveySessionSnapshot(surveySessionStorageKey)
 
     if (!rawSession) {
       setSessionStateReady(true)
@@ -449,6 +498,7 @@ export function PublicSurveyPage() {
       }
 
       setParticipantName(parsed.participantName ?? '')
+      setParticipantPhone(parsed.participantPhone ?? '')
       setSubmitted(Boolean(parsed.submitted))
       setSubmitMessage(parsed.submitMessage ?? '')
       setResponseId(parsed.responseId ?? '')
@@ -481,6 +531,7 @@ export function PublicSurveyPage() {
     canSpinReward,
     completedRetryTaskIds,
     participantName,
+    participantPhone,
     responseId,
     retryTaskProgressMap,
     rewardResult,
@@ -491,6 +542,104 @@ export function PublicSurveyPage() {
     wheelModalOpen,
     wheelRotation,
   ])
+
+  useEffect(() => {
+    if (previewMode || !survey || !sessionStateReady || !responseId) {
+      return
+    }
+
+    const restoreKey = `${survey.slug}:${responseId}`
+
+    if (rewardSessionRestoreKeyRef.current === restoreKey) {
+      return
+    }
+
+    rewardSessionRestoreKeyRef.current = restoreKey
+    let cancelled = false
+
+    void apiRequest<{
+      responseId: string
+      participantName: string
+      participantPhone: string
+      submitMessage?: string | null
+      canSpinReward: boolean
+      completedTaskIds: string[]
+      rewardResult: RewardResultState | null
+    }>(`/public/surveys/${survey.slug}/reward-session?responseId=${encodeURIComponent(responseId)}`)
+      .then((session) => {
+        if (cancelled) {
+          return
+        }
+
+        const nextCompletedTaskIds = session.completedTaskIds ?? []
+        const restoredSegment = session.rewardResult?.landedLabel
+          ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
+          : null
+
+        setParticipantName((current) => current || session.participantName || '')
+        setParticipantPhone((current) => current || session.participantPhone || '')
+        setSubmitted(true)
+        setSubmitMessage(
+          session.submitMessage ??
+            (session.canSpinReward
+              ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
+              : 'Sua resposta foi registrada com sucesso.'),
+        )
+        setWheelSpinning(false)
+        setCompletedRetryTaskIds(nextCompletedTaskIds)
+        setCanSpinReward(Boolean(session.canSpinReward))
+        setRewardResult(session.rewardResult ?? null)
+        setWheelModalOpen(Boolean(survey.rewardEnabled && (session.canSpinReward || session.rewardResult)))
+        setRetryTaskProgressMap((current) => {
+          if (!session.rewardResult?.retryAvailable) {
+            return {}
+          }
+
+          return Object.fromEntries(
+            Object.entries(current).filter(([taskId]) => !nextCompletedTaskIds.includes(taskId)),
+          )
+        })
+
+        if (restoredSegment) {
+          setActiveWheelSegmentId(restoredSegment.id)
+        }
+
+        if (!session.rewardResult?.retryAvailable) {
+          setActiveRetryTaskId(null)
+        }
+
+        setRetryTaskNow(Date.now())
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+
+        rewardSessionRestoreKeyRef.current = ''
+
+        if (!(error instanceof ApiError) || error.status !== 404) {
+          return
+        }
+
+        clearPersistedSurveySession()
+        setSubmitted(false)
+        setSubmitMessage('')
+        setResponseId('')
+        setCanSpinReward(false)
+        setRewardResult(null)
+        setWheelRotation(0)
+        setWheelSpinning(false)
+        setActiveWheelSegmentId('')
+        setCompletedRetryTaskIds([])
+        setWheelModalOpen(false)
+        setRetryTaskProgressMap({})
+        setActiveRetryTaskId(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewMode, responseId, sessionStateReady, survey, wheelSegments])
 
   useEffect(() => {
     if (!survey) {
