@@ -92,36 +92,42 @@ function makePreviewCouponCode() {
 
 function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
   const rewardItems = items.slice(0, 3)
-  const neutralSlots = Math.max(3, rewardItems.length + 2)
-  const neutralSegments: PrizeWheelSegment[] = Array.from({ length: neutralSlots }, (_, index) => ({
-    id: `neutral-${index}`,
-    label: neutralWheelLabels[index % neutralWheelLabels.length],
-    kind: 'neutral',
-  }))
-  const segments: PrizeWheelSegment[] = []
-  const totalGroups = Math.max(rewardItems.length, neutralSegments.length)
-
-  for (let index = 0; index < totalGroups; index += 1) {
-    if (rewardItems[index]) {
-      segments.push({
-        id: rewardItems[index].id,
-        label: rewardItems[index].title,
-        kind: 'reward',
-      })
-    }
-
-    if (neutralSegments[index]) {
-      segments.push(neutralSegments[index])
-    }
-  }
-
-  return segments.length
-    ? segments
-    : neutralWheelLabels.map((label, index) => ({
+  if (!rewardItems.length) {
+    return neutralWheelLabels.map((label, index) => ({
         id: `neutral-${index}`,
         label,
         kind: 'neutral' as const,
-      }))
+    }))
+  }
+
+  const totalSegments = rewardItems.length === 1 ? 6 : rewardItems.length === 2 ? 8 : 9
+  const rewardPositions = new Set(
+    rewardItems.map((_, index) => Math.floor((index * totalSegments) / rewardItems.length)),
+  )
+  const segments: PrizeWheelSegment[] = []
+  let rewardIndex = 0
+  let neutralIndex = 0
+
+  for (let index = 0; index < totalSegments; index += 1) {
+    if (rewardPositions.has(index) && rewardItems[rewardIndex]) {
+      segments.push({
+        id: rewardItems[rewardIndex].id,
+        label: rewardItems[rewardIndex].title,
+        kind: 'reward',
+      })
+      rewardIndex += 1
+      continue
+    }
+
+    segments.push({
+      id: `neutral-${neutralIndex}`,
+      label: neutralWheelLabels[neutralIndex % neutralWheelLabels.length],
+      kind: 'neutral',
+    })
+    neutralIndex += 1
+  }
+
+  return segments
 }
 
 export function PublicSurveyPage() {
