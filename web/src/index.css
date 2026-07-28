@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Outfit:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -23,7 +23,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  font-family: 'Outfit', sans-serif;
+  font-family: 'Inter', sans-serif;
   line-height: 1.6;
   background: #f8fafc;
 }
@@ -39,7 +39,7 @@ textarea {
 }
 
 .font-display {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Inter', sans-serif;
 }
 
 .glass-panel {
