@@ -363,6 +363,7 @@ export function PublicSurveyPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          reward_pickup_address?: string | null
           reward_contact_whatsapp?: string | null
           reward_retry_unlock_enabled?: boolean
           reward_retry_tasks?: RewardRetryTask[]
@@ -417,6 +418,7 @@ export function PublicSurveyPage() {
       rewardResult &&
         (rewardResult.won || (rewardResult.finalAttempt && !rewardResult.retryAvailable && !canSpinReward)),
     )
+  const rewardPickupAddress = rewardResult?.pickupAddress ?? survey?.rewardPickupAddress
   const rewardContactWhatsAppUrl =
     rewardResult?.won && rewardResult.contactWhatsApp
       ? buildRewardWhatsAppUrl({
@@ -1208,7 +1210,7 @@ export function PublicSurveyPage() {
         instructionY += 42
       }
 
-      if (rewardResult.pickupAddress) {
+      if (rewardPickupAddress) {
         context.fillStyle = 'rgba(255,255,255,0.1)'
         fillRoundedRect(context, 120, 964, 840, 188, 28)
         context.fillStyle = '#fef3c7'
@@ -1217,7 +1219,7 @@ export function PublicSurveyPage() {
 
         context.fillStyle = '#ffffff'
         context.font = '500 30px Arial'
-        const addressLines = wrapCanvasText(context, rewardResult.pickupAddress, 768)
+        const addressLines = wrapCanvasText(context, rewardPickupAddress, 768)
         let addressY = 1072
         for (const line of addressLines.slice(0, 4)) {
           context.fillText(line, 156, addressY)
@@ -1612,10 +1614,10 @@ export function PublicSurveyPage() {
                                 </a>
                               ) : null}
                             </div>
-                            {rewardResult.pickupAddress ? (
+                            {rewardPickupAddress ? (
                               <div className="mx-auto max-w-xl border border-white/10 bg-white/10 px-4 py-3 text-left" style={{ borderRadius: 6 }}>
                                 <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada do prêmio</p>
-                                <p className="mt-2 text-sm text-white">{rewardResult.pickupAddress}</p>
+                                <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
                               </div>
                             ) : null}
                             {rewardResult.message ? <p className="text-xs text-slate-400">{rewardResult.message}</p> : null}
@@ -1770,7 +1772,11 @@ export function PublicSurveyPage() {
 
                 <div className="flex items-center gap-3 self-start">
                   {canCloseWheelModal ? (
-                    <button type="button" onClick={() => setWheelModalOpen(false)} className="admin-button px-4 py-3 text-white">
+                    <button
+                      type="button"
+                      onClick={() => setWheelModalOpen(false)}
+                      className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-white/15 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(2,6,23,0.32)] transition hover:bg-slate-900"
+                    >
                       <X className="h-4 w-4" />
                       Fechar
                     </button>
@@ -1807,10 +1813,10 @@ export function PublicSurveyPage() {
                             <p className="mt-2 text-lg font-bold text-white sm:text-xl">{rewardResult.couponCode}</p>
                           </div>
                         ) : null}
-                        {rewardResult.pickupAddress ? (
+                        {rewardPickupAddress ? (
                           <div className="mt-4 rounded-[18px] border border-white/15 bg-white/10 px-4 py-3 text-left">
                             <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada na loja</p>
-                            <p className="mt-2 text-sm text-white">{rewardResult.pickupAddress}</p>
+                            <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
                           </div>
                         ) : null}
                         <div className="mt-5 flex flex-col gap-3">
@@ -1906,10 +1912,10 @@ export function PublicSurveyPage() {
                           <p className="mt-2 text-xl font-bold text-white">{rewardResult.couponCode}</p>
                         </div>
                       ) : null}
-                      {rewardResult.pickupAddress ? (
+                      {rewardPickupAddress ? (
                         <div className="mt-4 rounded-[18px] border border-white/10 bg-white/10 px-4 py-4">
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada</p>
-                          <p className="mt-2 text-sm text-white">{rewardResult.pickupAddress}</p>
+                          <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
                         </div>
                       ) : null}
                       <p className="mt-4 text-xs uppercase tracking-[0.18em] text-amber-50/80">{survey.brandName || survey.title}</p>

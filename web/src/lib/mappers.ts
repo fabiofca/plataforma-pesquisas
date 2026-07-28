@@ -127,6 +127,7 @@ export function mapApiSurvey(item: {
     title: string
   }>
   reward_retry_unlock_enabled?: boolean
+  reward_pickup_address?: string | null
   reward_contact_whatsapp?: string | null
   reward_retry_tasks?: Array<{
     id: string
@@ -160,6 +161,7 @@ export function mapApiSurvey(item: {
       title: rewardItem.title,
     })),
     rewardRetryUnlockEnabled: item.reward_retry_unlock_enabled ?? false,
+    rewardPickupAddress: item.reward_pickup_address ?? undefined,
     rewardContactWhatsApp: item.reward_contact_whatsapp ?? undefined,
     rewardRetryTasks: item.reward_retry_tasks ?? [],
   }

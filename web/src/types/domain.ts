@@ -89,6 +89,7 @@ export interface SurveyItem {
     title: string
   }>
   rewardRetryUnlockEnabled?: boolean
+  rewardPickupAddress?: string
   rewardContactWhatsApp?: string
   rewardRetryTasks?: Array<{
     id: string
