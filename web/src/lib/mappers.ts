@@ -127,6 +127,7 @@ export function mapApiSurvey(item: {
     title: string
   }>
   reward_retry_unlock_enabled?: boolean
+  reward_contact_whatsapp?: string | null
   reward_retry_tasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'
@@ -159,6 +160,7 @@ export function mapApiSurvey(item: {
       title: rewardItem.title,
     })),
     rewardRetryUnlockEnabled: item.reward_retry_unlock_enabled ?? false,
+    rewardContactWhatsApp: item.reward_contact_whatsapp ?? undefined,
     rewardRetryTasks: item.reward_retry_tasks ?? [],
   }
 }

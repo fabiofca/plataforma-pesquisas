@@ -45,7 +45,8 @@ export function hashValue(value: string) {
   return crypto.createHash('sha256').update(value).digest('hex')
 }
 
-export function generateCouponCode(prefix: string) {
-  const random = crypto.randomBytes(4).toString('hex').toUpperCase()
-  return `${prefix}-${random}`
+export function generateCouponCode(_prefix: string) {
+  const timestamp = Date.now().toString()
+  const randomSuffix = crypto.randomInt(100, 1000).toString()
+  return `${timestamp}${randomSuffix}`
 }

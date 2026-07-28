@@ -117,6 +117,7 @@ export function RewardsPage() {
     status: 'active' as 'active' | 'paused' | 'ended',
     expiresAt: '',
     pickupAddress: '',
+    contactWhatsApp: '',
     retryUnlockEnabled: false,
     retryUnlockTasks: [] as RewardRetryTask[],
   })
@@ -140,6 +141,7 @@ export function RewardsPage() {
           status: 'active' | 'paused' | 'ended'
           expires_at?: string | null
           pickup_address?: string | null
+          contact_whatsapp?: string | null
           retry_unlock_enabled?: boolean
           retry_unlock_tasks_json?: RewardRetryTask[]
           spin_count?: number
@@ -185,6 +187,7 @@ export function RewardsPage() {
         status: rewardsQuery.data.campaign.status,
         expiresAt: rewardsQuery.data.campaign.expires_at ?? '',
         pickupAddress: rewardsQuery.data.campaign.pickup_address ?? '',
+        contactWhatsApp: rewardsQuery.data.campaign.contact_whatsapp ?? '',
         retryUnlockEnabled: rewardsQuery.data.campaign.retry_unlock_enabled ?? false,
         retryUnlockTasks: rewardsQuery.data.campaign.retry_unlock_tasks_json ?? [],
       })
@@ -193,6 +196,7 @@ export function RewardsPage() {
         status: 'active',
         expiresAt: '',
         pickupAddress: '',
+        contactWhatsApp: '',
         retryUnlockEnabled: false,
         retryUnlockTasks: [],
       })
@@ -386,6 +390,7 @@ export function RewardsPage() {
         ['Opções na roleta', `${maxWheelOptions} no total`],
         ['Validade', rewardsQuery.data.campaign.expires_at ? rewardsQuery.data.campaign.expires_at : 'Sem validade'],
         ['Retirada', rewardsQuery.data.campaign.pickup_address ? rewardsQuery.data.campaign.pickup_address : 'Não informada'],
+        ['WhatsApp de resgate', rewardsQuery.data.campaign.contact_whatsapp ? rewardsQuery.data.campaign.contact_whatsapp : 'Não informado'],
         ['Chance extra', rewardsQuery.data.campaign.retry_unlock_enabled ? `${rewardsQuery.data.campaign.retry_unlock_tasks_json?.length ?? 0} tarefa(s)` : 'Desligada'],
       ]
     : [
@@ -394,6 +399,7 @@ export function RewardsPage() {
         ['Opções na roleta', `${maxWheelOptions} no total`],
         ['Validade', campaignForm.expiresAt ? campaignForm.expiresAt : 'Sem validade'],
         ['Retirada', campaignForm.pickupAddress ? campaignForm.pickupAddress : 'Não informada'],
+        ['WhatsApp de resgate', campaignForm.contactWhatsApp ? campaignForm.contactWhatsApp : 'Não informado'],
         ['Chance extra', campaignForm.retryUnlockEnabled ? `${campaignForm.retryUnlockTasks.length} tarefa(s)` : 'Desligada'],
       ]
 
@@ -633,6 +639,22 @@ export function RewardsPage() {
                   setCampaignForm((current) => ({
                     ...current,
                     pickupAddress: event.target.value,
+                  }))
+                }
+              />
+            </label>
+
+            <label className="admin-subcard grid gap-2 text-sm text-slate-700">
+              <span className="text-slate-600">WhatsApp para resgate do prêmio</span>
+              <input
+                type="tel"
+                className="admin-input"
+                placeholder="Ex: 5511999998888 ou (11) 99999-8888"
+                value={campaignForm.contactWhatsApp}
+                onChange={(event) =>
+                  setCampaignForm((current) => ({
+                    ...current,
+                    contactWhatsApp: event.target.value,
                   }))
                 }
               />

@@ -34,6 +34,7 @@ type PublicSurveyRecord = {
   reward_campaign_status: 'active' | 'paused' | 'ended' | null
   reward_campaign_expires_at: string | null
   reward_pickup_address: string | null
+  reward_contact_whatsapp: string | null
   reward_retry_unlock_enabled: boolean | null
   reward_retry_unlock_tasks_json:
     | Array<{
@@ -87,6 +88,7 @@ async function getSurveyBySlug(slug: string) {
         reward_campaigns.status as reward_campaign_status,
         cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
         reward_campaigns.pickup_address as reward_pickup_address,
+        reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -178,6 +180,7 @@ async function getSurveyPreviewById(surveyId: string) {
         reward_campaigns.status as reward_campaign_status,
         cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
         reward_campaigns.pickup_address as reward_pickup_address,
+        reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -610,6 +613,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       coupon_code: string | null
       item_title: string | null
       pickup_address: string | null
+      contact_whatsapp: string | null
     }>(
       `select
           reward_spin_logs.spin_attempt,
@@ -617,7 +621,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           reward_spin_logs.wheel_label,
           reward_wins.coupon_code,
           reward_items.title as item_title,
-          reward_campaigns.pickup_address
+          reward_campaigns.pickup_address,
+          reward_campaigns.contact_whatsapp
        from reward_spin_logs
        left join reward_wins on reward_wins.response_id = reward_spin_logs.response_id
        left join reward_items on reward_items.id = reward_spin_logs.reward_item_id
@@ -638,6 +643,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         landedLabel: latestSpin?.wheel_label,
         couponCode: latestSpin?.coupon_code ?? undefined,
         pickupAddress: latestSpin?.pickup_address ?? undefined,
+        contactWhatsApp: latestSpin?.contact_whatsapp ?? undefined,
         message:
           latestSpin?.outcome_type === 'win'
             ? 'Este resultado já foi registrado anteriormente.'
@@ -655,6 +661,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           landedLabel: latestSpin.wheel_label,
           couponCode: latestSpin.coupon_code ?? undefined,
           pickupAddress: latestSpin.pickup_address ?? undefined,
+          contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
           message: 'Este resultado já foi registrado anteriormente.',
         })
         return
@@ -682,6 +689,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           won: false,
           landedLabel: latestSpin.wheel_label,
           pickupAddress: latestSpin.pickup_address ?? undefined,
+          contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
           message: `A roleta já foi utilizada nesta participação e parou em "${latestSpin.wheel_label}".`,
         })
         return
@@ -939,6 +947,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       landedLabel: selectedItem.title,
       couponCode,
       pickupAddress: survey.reward_pickup_address ?? undefined,
+      contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
       message: survey.reward_pickup_address
         ? currentAttempt === 2
           ? 'Parabéns! A chance extra foi liberada e o local de retirada já está indicado abaixo.'
@@ -1001,13 +1010,15 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       coupon_code: string | null
       item_title: string | null
       pickup_address: string | null
+      contact_whatsapp: string | null
     }>(
       `select
           reward_spin_logs.outcome_type,
           reward_spin_logs.wheel_label,
           reward_wins.coupon_code,
           reward_items.title as item_title,
-          reward_campaigns.pickup_address
+          reward_campaigns.pickup_address,
+          reward_campaigns.contact_whatsapp
        from reward_spin_logs
        left join reward_wins on reward_wins.response_id = reward_spin_logs.response_id
        left join reward_items on reward_items.id = reward_spin_logs.reward_item_id
@@ -1028,6 +1039,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         landedLabel: previous.wheel_label,
         couponCode: previous.coupon_code ?? undefined,
         pickupAddress: previous.pickup_address ?? undefined,
+        contactWhatsApp: previous.contact_whatsapp ?? undefined,
         message:
           previous.outcome_type === 'win'
             ? 'Este resultado já foi registrado anteriormente.'
@@ -1230,6 +1242,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       landedLabel: selectedItem.title,
       couponCode,
       pickupAddress: survey.reward_pickup_address ?? undefined,
+      contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
       message: survey.reward_pickup_address
         ? 'Parabéns! O resultado foi definido com segurança no servidor e o local de retirada já está indicado abaixo.'
         : 'Parabéns! O resultado foi definido com segurança no servidor e registrado nesta campanha.',

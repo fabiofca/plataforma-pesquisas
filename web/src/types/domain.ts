@@ -89,6 +89,7 @@ export interface SurveyItem {
     title: string
   }>
   rewardRetryUnlockEnabled?: boolean
+  rewardContactWhatsApp?: string
   rewardRetryTasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
+import { Download, Gift, Meh, MessageCircle, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -56,6 +56,7 @@ type RewardResultState = {
   landedLabel?: string
   couponCode?: string
   pickupAddress?: string
+  contactWhatsApp?: string
   retryAvailable?: boolean
   retryUnlocked?: boolean
   retryTasks?: RewardRetryTask[]
@@ -129,7 +130,33 @@ function pickRandomItem<T>(items: T[]) {
 }
 
 function makePreviewCouponCode() {
-  return `RADAR-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+  return `${Date.now()}${Math.floor(100 + Math.random() * 900)}`
+}
+
+function buildRewardWhatsAppUrl(input: {
+  contactPhone?: string
+  participantName?: string
+  participantPhone?: string
+  item?: string
+  protocol?: string
+  brandName?: string
+  surveyTitle?: string
+}) {
+  const contactPhone = sanitizePhone(input.contactPhone ?? '')
+
+  if (!contactPhone) {
+    return null
+  }
+
+  const lines = [
+    `Olá! Ganhei um prêmio${input.brandName ? ` na campanha ${input.brandName}` : input.surveyTitle ? ` na pesquisa ${input.surveyTitle}` : ''}.`,
+    input.participantName ? `Nome: ${input.participantName}` : null,
+    input.participantPhone ? `WhatsApp: ${input.participantPhone}` : null,
+    input.item ? `Prêmio: ${input.item}` : null,
+    input.protocol ? `Protocolo: ${input.protocol}` : null,
+  ].filter(Boolean)
+
+  return `https://wa.me/${contactPhone}?text=${encodeURIComponent(lines.join('\n'))}`
 }
 
 function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
@@ -227,6 +254,7 @@ export function PublicSurveyPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          reward_contact_whatsapp?: string | null
           reward_retry_unlock_enabled?: boolean
           reward_retry_tasks?: RewardRetryTask[]
           reward_items?: Array<{
@@ -275,6 +303,18 @@ export function PublicSurveyPage() {
   const showWheelArea = canSpinReward || wheelSpinning || Boolean(rewardResult)
   const retryTasks = rewardResult?.retryTasks ?? survey?.rewardRetryTasks ?? []
   const canCloseWheelModal = !wheelSpinning && Boolean(rewardResult)
+  const rewardContactWhatsAppUrl =
+    rewardResult?.won && rewardResult.contactWhatsApp
+      ? buildRewardWhatsAppUrl({
+          contactPhone: rewardResult.contactWhatsApp,
+          participantName,
+          participantPhone,
+          item: rewardResult.item,
+          protocol: rewardResult.couponCode,
+          brandName: survey?.brandName,
+          surveyTitle: survey?.title,
+        })
+      : null
 
   function clearPersistedSurveySession() {
     window.sessionStorage.removeItem(surveySessionStorageKey)
@@ -652,6 +692,7 @@ export function PublicSurveyPage() {
           item: shouldWin ? selectedSegment.label : undefined,
           landedLabel: selectedSegment.label,
           couponCode: shouldWin ? makePreviewCouponCode() : undefined,
+          contactWhatsApp: shouldWin ? survey.rewardContactWhatsApp : undefined,
           retryAvailable: !shouldWin && Boolean(survey.rewardRetryUnlockEnabled && (survey.rewardRetryTasks?.length ?? 0) > 0),
           retryUnlocked: false,
           retryTasks: survey.rewardRetryTasks ?? [],
@@ -669,6 +710,7 @@ export function PublicSurveyPage() {
         landedLabel?: string
         couponCode?: string
         pickupAddress?: string
+        contactWhatsApp?: string
         retryAvailable?: boolean
         retryUnlocked?: boolean
         retryTasks?: RewardRetryTask[]
@@ -1239,10 +1281,10 @@ export function PublicSurveyPage() {
                               ) : null}
                             </div>
                             <div className="mx-auto max-w-sm border border-white/10 bg-white/10 px-4 py-3" style={{ borderRadius: 6 }}>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Cupom do prêmio</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo do prêmio</p>
                               <p className="mt-2 text-lg font-semibold text-white">{rewardResult.couponCode}</p>
                             </div>
-                            <div className="flex justify-center">
+                            <div className="flex flex-col justify-center gap-3 sm:flex-row">
                               <button
                                 type="button"
                                 onClick={() => void handleDownloadRewardProof()}
@@ -1252,6 +1294,17 @@ export function PublicSurveyPage() {
                                 <Download className="h-4 w-4" />
                                 {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante do prêmio'}
                               </button>
+                              {rewardContactWhatsAppUrl ? (
+                                <a
+                                  href={rewardContactWhatsAppUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="admin-button w-full justify-center sm:w-auto"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                  Entrar em contato pelo WhatsApp
+                                </a>
+                              ) : null}
                             </div>
                             {rewardResult.pickupAddress ? (
                               <div className="mx-auto max-w-xl border border-white/10 bg-white/10 px-4 py-3 text-left" style={{ borderRadius: 6 }}>
@@ -1455,7 +1508,7 @@ export function PublicSurveyPage() {
                       <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
                       {rewardResult.couponCode ? (
                         <div className="mt-5 rounded-[18px] border border-white/15 bg-slate-950/35 px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Cupom</p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo</p>
                           <p className="mt-2 text-xl font-bold text-white">{rewardResult.couponCode}</p>
                         </div>
                       ) : null}
@@ -1476,6 +1529,17 @@ export function PublicSurveyPage() {
                           <Download className="h-4 w-4" />
                           {savingRewardProof ? 'Gerando imagem...' : 'Salvar comprovante em imagem'}
                         </button>
+                        {rewardContactWhatsAppUrl ? (
+                          <a
+                            href={rewardContactWhatsAppUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="admin-button w-full justify-center"
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                            Entrar em contato para receber o prêmio
+                          </a>
+                        ) : null}
                         <p className="text-center text-xs text-slate-300">
                             Salve no celular para apresentar no resgate do prêmio.
                         </p>
