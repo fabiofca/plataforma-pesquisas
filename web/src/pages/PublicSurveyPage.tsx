@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
 import { apiRequest } from '@/lib/api-client'
@@ -40,6 +40,16 @@ const neutralWheelLabels = [
   'Boa sorte na próxima',
   'Você não teve sorte',
   'Continue participando',
+]
+
+const previewWinMessages = [
+  'Resultado de teste: este prêmio foi liberado apenas para você validar o visual.',
+  'Simulação concluída. Use este cenário para revisar cupom, texto e resgate.',
+]
+
+const previewNoPrizeMessages = [
+  'Resultado de teste: cenário sem prêmio para revisar a mensagem final.',
+  'Simulação concluída sem prêmio. Assim você valida o fluxo de derrota antes de publicar.',
 ]
 
 type RewardRetryTask = {
@@ -125,6 +135,10 @@ function formatRewardProofFileName(title: string) {
   return `comprovante-premio-${normalized || 'roleta'}.png`
 }
 
+function pickRandomItem<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)]
+}
+
 function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
   const rewardItems = items.slice(0, 3)
   const neutralSlots = Math.max(0, 6 - rewardItems.length)
@@ -152,7 +166,8 @@ function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
 }
 
 export function PublicSurveyPage() {
-  const { slug } = useParams()
+  const { slug, id } = useParams()
+  const previewMode = Boolean(id)
   const [searchParams] = useSearchParams()
   const [participantName, setParticipantName] = useState('')
   const [participantPhone, setParticipantPhone] = useState('')
@@ -191,12 +206,14 @@ export function PublicSurveyPage() {
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
 
   const surveyQuery = useQuery({
-    queryKey: ['public-survey', slug],
+    queryKey: ['public-survey', previewMode ? id : slug, previewMode ? 'preview' : 'public'],
     queryFn: async () => {
       const response = await apiRequest<{
         survey: {
           id: string
           title: string
+          slug?: string | null
+          status?: string
           description?: string | null
           participation_mode: string
           brand_name?: string
@@ -226,15 +243,15 @@ export function PublicSurveyPage() {
             }
           }>
         }
-      }>(`/public/surveys/${slug}`)
+      }>(previewMode ? `/surveys/${id}/preview` : `/public/surveys/${slug}`)
 
       return mapApiSurvey({
         ...response.survey,
-        slug: slug ?? 'sem-slug',
-        status: 'published',
+        slug: response.survey.slug ?? slug ?? `preview-${id ?? 'sem-slug'}`,
+        status: response.survey.status ?? 'published',
       })
     },
-    enabled: Boolean(slug),
+    enabled: Boolean(previewMode ? id : slug),
     retry: 0,
   })
 
@@ -267,7 +284,7 @@ export function PublicSurveyPage() {
   }, [survey, visibleQuestions])
 
   useEffect(() => {
-    if (!slug || !trackedSource) {
+    if (previewMode || !slug || !trackedSource) {
       return
     }
 
@@ -283,7 +300,7 @@ export function PublicSurveyPage() {
       body: JSON.stringify({ source: trackedSource }),
       keepalive: true,
     }).catch(() => undefined)
-  }, [slug, trackedSource])
+  }, [previewMode, slug, trackedSource])
 
   useEffect(() => {
     return () => {
@@ -314,6 +331,20 @@ export function PublicSurveyPage() {
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [canCloseWheelModal, wheelModalOpen])
+
+  function resetPreviewSession() {
+    setSubmitted(false)
+    setSubmitMessage('')
+    setResponseId('')
+    setCanSpinReward(false)
+    setRewardResult(null)
+    setEligibilityMessage('')
+    setWheelRotation(0)
+    setWheelSpinning(false)
+    setActiveWheelSegmentId('')
+    setCompletedRetryTaskIds([])
+    setWheelModalOpen(false)
+  }
 
   const submitMutation = useMutation({
     mutationFn: async () => {
@@ -352,6 +383,17 @@ export function PublicSurveyPage() {
 
         if (question.required && !isQuestionAnswered(question, currentAnswer)) {
           throw new Error(`Preencha a pergunta "${question.title}" para continuar.`)
+        }
+      }
+
+      if (previewMode) {
+        return {
+          responseId: 'preview-response',
+          rewardEnabled: survey.rewardEnabled,
+          rewardEligible: survey.rewardEnabled,
+          rewardMessage: survey.rewardEnabled
+            ? 'Modo teste: sua resposta não foi salva. Agora você pode validar a roleta com um giro simulado.'
+            : 'Modo teste: sua resposta não foi salva nem enviada para relatórios.',
         }
       }
 
@@ -414,6 +456,27 @@ export function PublicSurveyPage() {
         throw new Error('A pesquisa não está disponível agora.')
       }
 
+      if (previewMode) {
+        const rewardSegments = wheelSegments.filter((segment) => segment.kind === 'reward')
+        const neutralSegments = wheelSegments.filter((segment) => segment.kind !== 'reward')
+        const shouldWin = rewardSegments.length > 0 && Math.random() < 0.45
+        const selectedSegment = shouldWin
+          ? pickRandomItem(rewardSegments)
+          : pickRandomItem(neutralSegments.length ? neutralSegments : wheelSegments)
+
+        return {
+          won: shouldWin,
+          item: shouldWin ? selectedSegment.label : undefined,
+          landedLabel: selectedSegment.label,
+          couponCode: shouldWin ? `TESTE-${Math.random().toString(36).slice(2, 8).toUpperCase()}` : undefined,
+          retryAvailable: !shouldWin && Boolean(survey.rewardRetryUnlockEnabled && (survey.rewardRetryTasks?.length ?? 0) > 0),
+          retryUnlocked: false,
+          retryTasks: survey.rewardRetryTasks ?? [],
+          completedTaskIds: [],
+          message: shouldWin ? pickRandomItem(previewWinMessages) : pickRandomItem(previewNoPrizeMessages),
+        }
+      }
+
       return apiRequest<{
         won: boolean
         item?: string
@@ -472,6 +535,23 @@ export function PublicSurveyPage() {
       }
 
       const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
+
+      if (previewMode) {
+        if (!openedWindow) {
+          window.location.href = task.url
+        }
+
+        const currentCompletedTaskIds = rewardResult?.completedTaskIds ?? completedRetryTaskIds
+        const nextCompletedTaskIds = Array.from(new Set([...currentCompletedTaskIds, task.id]))
+
+        return {
+          ok: true,
+          unlocked: nextCompletedTaskIds.length >= (survey.rewardRetryTasks?.length ?? 0),
+          completedTaskIds: nextCompletedTaskIds,
+          remainingTasks: Math.max((survey.rewardRetryTasks?.length ?? 0) - nextCompletedTaskIds.length, 0),
+        }
+      }
+
       const result = await apiRequest<{
         ok: boolean
         unlocked: boolean
@@ -617,14 +697,28 @@ export function PublicSurveyPage() {
     <div className="min-h-screen px-4 py-6" style={{ background: `linear-gradient(180deg, ${survey.primaryColor}12 0%, #f8fafc 24%, #e2e8f0 100%)` }}>
       <div className="mx-auto max-w-4xl">
         <div className="border border-slate-200 bg-white p-6 shadow-card lg:p-8" style={{ borderRadius: 6 }}>
+          {previewMode ? (
+            <div className="mb-6 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950 sm:flex-row sm:items-center sm:justify-between" style={{ borderRadius: 6 }}>
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-sky-700">Modo teste</p>
+                <p className="mt-1 text-sm">
+                  Nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
+                </p>
+              </div>
+              <Link to={`/app/pesquisas/${id}/editar`} className="admin-button self-start">
+                Voltar para o editor
+              </Link>
+            </div>
+          ) : null}
+
           <header className="border-b border-slate-200 pb-5">
             <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
               <Sparkles className="h-4 w-4" />
-              Pesquisa publicada
+              {previewMode ? 'Prévia de teste' : 'Pesquisa publicada'}
             </p>
             <h1 className="mt-3 font-display text-4xl text-slate-950 lg:text-5xl">{survey.title}</h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-600 lg:text-base">
-              {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
+              {survey.description || (previewMode ? 'Use esta tela para testar a experiência antes de publicar.' : 'Responda os campos abaixo para concluir sua participação.')}
             </p>
           </header>
 
@@ -830,24 +924,25 @@ export function PublicSurveyPage() {
               <div className="admin-alert border-amber-200 bg-amber-50 text-amber-900">
                 <div className="flex items-center gap-2 font-semibold">
                   <ShieldCheck className="h-4 w-4" />
-                  Controle da campanha por identificadores
+                  {previewMode ? 'Teste protegido' : 'Controle da campanha por identificadores'}
                 </div>
                 <p className="mt-2">
-                  A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o
-                  mesmo cliente usando o mesmo WhatsApp ou e-mail.
+                  {previewMode
+                    ? 'Este modo ignora regras de duplicidade, não grava participação e serve apenas para validar a experiência da pesquisa.'
+                    : 'A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o mesmo cliente usando o mesmo WhatsApp ou e-mail.'}
                 </p>
               </div>
 
               <button type="submit" disabled={submitMutation.isPending} className="admin-button-primary w-full justify-center">
-                {submitMutation.isPending ? 'Enviando...' : 'Enviar respostas'}
+                {submitMutation.isPending ? (previewMode ? 'Preparando teste...' : 'Enviando...') : previewMode ? 'Testar pesquisa' : 'Enviar respostas'}
               </button>
             </form>
           ) : (
             <section className="admin-panel mt-6 p-6 text-center">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa finalizada</p>
-              <h2 className="mt-3 font-display text-4xl text-slate-950">Obrigado por participar</h2>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{previewMode ? 'Teste concluído' : 'Pesquisa finalizada'}</p>
+              <h2 className="mt-3 font-display text-4xl text-slate-950">{previewMode ? 'Prévia validada' : 'Obrigado por participar'}</h2>
               <p className="mt-4 text-sm text-slate-600">
-                {submitMessage || 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.'}
+                {submitMessage || (previewMode ? 'Este teste foi executado apenas para validar a experiência da pesquisa.' : 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.')}
               </p>
 
               {survey.rewardEnabled ? (
@@ -861,8 +956,12 @@ export function PublicSurveyPage() {
                     <>
                       <p className="mt-2 text-sm text-slate-300">
                         {canSpinReward
-                          ? 'O resultado já será decidido no servidor assim que você girar. A animação abaixo apenas revela esse resultado.'
-                          : 'A participação já foi processada. Confira abaixo o resultado registrado para este giro.'}
+                          ? previewMode
+                            ? 'No modo teste, o giro é simulado para você revisar visual, cupom e mensagens.'
+                            : 'O resultado já será decidido no servidor assim que você girar. A animação abaixo apenas revela esse resultado.'
+                          : previewMode
+                            ? 'O teste já foi processado. Confira abaixo o resultado simulado deste giro.'
+                            : 'A participação já foi processada. Confira abaixo o resultado registrado para este giro.'}
                       </p>
 
                       <div className="mt-6">
@@ -1010,6 +1109,14 @@ export function PublicSurveyPage() {
                   )}
                 </div>
               ) : null}
+
+              {previewMode ? (
+                <div className="mt-5 flex justify-center">
+                  <button type="button" onClick={resetPreviewSession} className="admin-button">
+                    Testar novamente
+                  </button>
+                </div>
+              ) : null}
             </section>
           )}
         </div>
@@ -1025,7 +1132,9 @@ export function PublicSurveyPage() {
                   <h2 className="mt-3 font-display text-3xl text-white sm:text-4xl lg:text-5xl">Roleta premium em tela cheia</h2>
                   <p className="mt-3 text-sm text-slate-300 sm:text-base">
                     {canSpinReward
-                      ? 'Toque em girar para revelar o resultado desta campanha com destaque total.'
+                      ? previewMode
+                        ? 'Toque em girar para validar a roleta em um cenário de teste, sem afetar nenhuma participação real.'
+                        : 'Toque em girar para revelar o resultado desta campanha com destaque total.'
                       : wheelSpinning
                         ? 'A roleta está girando e o resultado está sendo revelado agora.'
                         : rewardResult?.won
@@ -1075,7 +1184,9 @@ export function PublicSurveyPage() {
                       <p className="mt-2 text-sm text-slate-300">
                         {wheelSpinning
                           ? 'Segure esse momento. O resultado já está sendo revelado.'
-                          : 'Quando você tocar em girar, o resultado salvo no servidor será mostrado aqui.'}
+                          : previewMode
+                            ? 'Quando você tocar em girar, um resultado simulado será mostrado aqui para revisão.'
+                            : 'Quando você tocar em girar, o resultado salvo no servidor será mostrado aqui.'}
                       </p>
                     </div>
                   ) : rewardResult.won ? (
@@ -1107,7 +1218,7 @@ export function PublicSurveyPage() {
                           {savingRewardProof ? 'Gerando imagem...' : 'Salvar comprovante em imagem'}
                         </button>
                         <p className="text-center text-xs text-slate-300">
-                          Salve no celular para apresentar no resgate do prêmio.
+                          {previewMode ? 'Use essa imagem para validar o layout do comprovante antes da publicação.' : 'Salve no celular para apresentar no resgate do prêmio.'}
                         </p>
                       </div>
                     </div>

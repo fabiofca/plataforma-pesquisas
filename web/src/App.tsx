@@ -269,6 +269,14 @@ export default function App() {
             }
           />
           <Route
+            path="/app/pesquisas/:id/teste"
+            element={
+              <UserRoute>
+                <PublicSurveyPage />
+              </UserRoute>
+            }
+          />
+          <Route
             path="/app/pesquisas/:id/relatorios"
             element={
               <UserRoute>

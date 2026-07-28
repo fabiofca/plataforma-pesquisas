@@ -92,7 +92,9 @@ async function getSurveyBySlug(slug: string) {
      from surveys
      left join reward_campaigns on reward_campaigns.survey_id = surveys.id
      join survey_slugs on survey_slugs.survey_id = surveys.id
-     where survey_slugs.slug = $1 and survey_slugs.is_active = true`,
+     where survey_slugs.slug = $1
+       and survey_slugs.is_active = true
+       and surveys.status = 'published'`,
     [slug],
   )
 

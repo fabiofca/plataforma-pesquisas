@@ -15,6 +15,7 @@ import { surveySchema } from '../validators/schemas.js'
 import { makeId } from '../utils/security.js'
 
 export const surveysRouter = Router()
+const SURVEY_PREVIEW_REWARD_LIMIT = 3
 
 const surveyUploadKeys = new Set(['logo', 'banner'])
 const surveyUploadDir = path.resolve(process.cwd(), 'uploads', 'surveys')
@@ -70,6 +71,33 @@ function removeManagedSurveyFile(value: unknown) {
   rmSync(filePath, { force: true })
 }
 
+type RewardRetryTask = {
+  id: string
+  type: 'google_review' | 'instagram_follow' | 'custom_link'
+  title: string
+  url: string
+}
+
+function normalizeRewardRetryTasks(value: unknown): RewardRetryTask[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .filter(
+      (item): item is RewardRetryTask =>
+        Boolean(
+          item &&
+            typeof item === 'object' &&
+            typeof item.id === 'string' &&
+            typeof item.type === 'string' &&
+            typeof item.title === 'string' &&
+            typeof item.url === 'string',
+        ),
+    )
+    .slice(0, 2)
+}
+
 async function loadSurveyQuestions(surveyId: string) {
   const questionsResult = await query<{
     id: string
@@ -110,6 +138,81 @@ async function loadSurveyQuestions(surveyId: string) {
     ...question,
     options: optionsResult.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
   }))
+}
+
+async function loadSurveyPreview(surveyId: string) {
+  const surveyResult = await query<{
+    id: string
+    title: string
+    description: string | null
+    status: string
+    participation_mode: string
+    brand_name: string
+    logo_url: string | null
+    primary_color: string
+    banner_url: string | null
+    closing_message: string | null
+    reward_enabled: boolean
+    reward_campaign_id: string | null
+    reward_retry_unlock_enabled: boolean | null
+    reward_retry_unlock_tasks_json:
+      | Array<{
+          id: string
+          type: 'google_review' | 'instagram_follow' | 'custom_link'
+          title: string
+          url: string
+        }>
+      | null
+  }>(
+    `select
+        surveys.id,
+        surveys.title,
+        surveys.description,
+        surveys.status,
+        surveys.participation_mode,
+        surveys.brand_name,
+        surveys.logo_url,
+        surveys.primary_color,
+        surveys.banner_url,
+        surveys.closing_message,
+        surveys.reward_enabled,
+        reward_campaigns.id as reward_campaign_id,
+        reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
+        reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
+     from surveys
+     left join reward_campaigns on reward_campaigns.survey_id = surveys.id
+     where surveys.id = $1
+     limit 1`,
+    [surveyId],
+  )
+
+  const survey = surveyResult.rows[0]
+
+  if (!survey) {
+    return null
+  }
+
+  const rewardItems =
+    survey.reward_enabled && survey.reward_campaign_id
+      ? await query<{ id: string; title: string }>(
+          `select reward_items.id, reward_items.title
+           from reward_items
+           where reward_items.campaign_id = $1
+             and reward_items.is_active = true
+             and reward_items.quantity_total > reward_items.quantity_awarded
+           order by reward_items.created_at asc
+           limit $2`,
+          [survey.reward_campaign_id, SURVEY_PREVIEW_REWARD_LIMIT],
+        )
+      : { rows: [] }
+
+  return {
+    ...survey,
+    questions: await loadSurveyQuestions(survey.id),
+    reward_items: rewardItems.rows,
+    reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,
+    reward_retry_tasks: normalizeRewardRetryTasks(survey.reward_retry_unlock_tasks_json),
+  }
 }
 
 type SurveyQuestionPayload = z.infer<typeof surveySchema>['questions'][number]
@@ -345,6 +448,25 @@ surveysRouter.get('/:id', async (request: AuthenticatedRequest, response) => {
       questions: await loadSurveyQuestions(survey.id),
     },
   })
+})
+
+surveysRouter.get('/:id/preview', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const survey = await loadSurveyPreview(surveyId)
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa não encontrada.' })
+    return
+  }
+
+  response.json({ survey })
 })
 
 surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {

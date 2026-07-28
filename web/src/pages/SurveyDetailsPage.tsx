@@ -19,7 +19,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
-import { getPublicSurveyPath } from '@/lib/public-survey'
+import { getPublicSurveyPath, getSurveyTestPath } from '@/lib/public-survey'
 
 type SurveyTab = 'summary' | 'questions' | 'share' | 'results'
 
@@ -149,6 +149,7 @@ export function SurveyDetailsPage() {
   const requiredQuestions = survey?.questions.filter((question) => question.required).length ?? 0
   const summary = summaryQuery.data?.summary
   const publicSurveyPath = survey?.slug ? getPublicSurveyPath(survey.slug) : ''
+  const isPublishedSurvey = survey?.status === 'Publicada'
   const tabs = [
     { id: 'summary' as const, label: 'Resumo', icon: PieChart },
     { id: 'questions' as const, label: 'Perguntas', icon: ListChecks },
@@ -282,13 +283,23 @@ export function SurveyDetailsPage() {
                     </div>
                   )}
 
-                  <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-action-card">
-                    <div className="admin-icon-chip mb-3 border-amber-100 bg-amber-50 text-amber-700">
-                      <Rocket className="h-4 w-4" />
+                  <Link to={getSurveyTestPath(survey.id)} className="admin-action-card">
+                    <div className="admin-icon-chip mb-3 border-sky-100 bg-sky-50 text-sky-700">
+                      <Sparkles className="h-4 w-4" />
                     </div>
-                    <p className="text-sm font-semibold text-slate-950">Abrir pesquisa pública</p>
-                    <p className="mt-1 text-sm text-slate-600">Veja exatamente como o participante enxerga a página.</p>
-                  </a>
+                    <p className="text-sm font-semibold text-slate-950">Testar pesquisa</p>
+                    <p className="mt-1 text-sm text-slate-600">Abra uma prévia funcional sem gravar respostas reais.</p>
+                  </Link>
+
+                  {isPublishedSurvey ? (
+                    <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-action-card">
+                      <div className="admin-icon-chip mb-3 border-amber-100 bg-amber-50 text-amber-700">
+                        <Rocket className="h-4 w-4" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-950">Abrir pesquisa pública</p>
+                      <p className="mt-1 text-sm text-slate-600">Veja exatamente como o participante enxerga a página.</p>
+                    </a>
+                  ) : null}
                 </div>
               </SectionCard>
 
@@ -403,12 +414,18 @@ export function SurveyDetailsPage() {
                 title="Link, QR code e abertura pública"
                 description="Tudo pronto para divulgar com leitura rápida de cliques e QR scans."
               >
-                <SurveyShareCard
-                  surveyId={survey.id}
-                  slug={survey.slug}
-                  linkClicks={survey.linkClicks ?? 0}
-                  qrScans={survey.qrScans ?? 0}
-                />
+                {isPublishedSurvey ? (
+                  <SurveyShareCard
+                    surveyId={survey.id}
+                    slug={survey.slug}
+                    linkClicks={survey.linkClicks ?? 0}
+                    qrScans={survey.qrScans ?? 0}
+                  />
+                ) : (
+                  <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
+                    A pesquisa ainda está em rascunho. Teste à vontade no modo de prévia e publique somente quando o link já puder receber respostas reais.
+                  </div>
+                )}
 
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                   <div className="admin-highlight-card">
@@ -422,10 +439,17 @@ export function SurveyDetailsPage() {
                   <div className="admin-highlight-card">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Página pública</p>
                     <div className="mt-3">
-                      <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-button-primary">
-                        <ExternalLink className="h-4 w-4" />
-                        Abrir agora
-                      </a>
+                      {isPublishedSurvey ? (
+                        <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-button-primary">
+                          <ExternalLink className="h-4 w-4" />
+                          Abrir agora
+                        </a>
+                      ) : (
+                        <Link to={getSurveyTestPath(survey.id)} className="admin-button-primary">
+                          <Sparkles className="h-4 w-4" />
+                          Testar agora
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -502,13 +526,23 @@ export function SurveyDetailsPage() {
                     </Link>
                   ) : null}
 
-                  <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-action-card block">
-                    <div className="admin-icon-chip mb-3 border-amber-100 bg-amber-50 text-amber-700">
-                      <Rocket className="h-4 w-4" />
+                  <Link to={getSurveyTestPath(survey.id)} className="admin-action-card block">
+                    <div className="admin-icon-chip mb-3 border-sky-100 bg-sky-50 text-sky-700">
+                      <Sparkles className="h-4 w-4" />
                     </div>
-                    <p className="text-sm font-semibold text-slate-950">Abrir página pública</p>
-                    <p className="mt-1 text-sm text-slate-600">Confirme a experiência do participante com a pesquisa no ar.</p>
-                  </a>
+                    <p className="text-sm font-semibold text-slate-950">Testar experiência da pesquisa</p>
+                    <p className="mt-1 text-sm text-slate-600">Valide perguntas, roleta e mensagens sem gerar respostas reais.</p>
+                  </Link>
+
+                  {isPublishedSurvey ? (
+                    <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-action-card block">
+                      <div className="admin-icon-chip mb-3 border-amber-100 bg-amber-50 text-amber-700">
+                        <Rocket className="h-4 w-4" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-950">Abrir página pública</p>
+                      <p className="mt-1 text-sm text-slate-600">Confirme a experiência do participante com a pesquisa no ar.</p>
+                    </a>
+                  ) : null}
                 </div>
               </SectionCard>
             </div>
@@ -519,14 +553,20 @@ export function SurveyDetailsPage() {
               <PencilLine className="h-4 w-4" />
               Editar pesquisa
             </Link>
+            <Link to={getSurveyTestPath(survey.id)} className="admin-button">
+              <Sparkles className="h-4 w-4" />
+              Testar pesquisa
+            </Link>
             <Link to={`/app/pesquisas/${survey.id}/relatorios`} className="admin-button">
               <BarChart3 className="h-4 w-4" />
               Abrir relatórios
             </Link>
-            <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-button">
-              <ExternalLink className="h-4 w-4" />
-              Abrir página pública
-            </a>
+            {isPublishedSurvey ? (
+              <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-button">
+                <ExternalLink className="h-4 w-4" />
+                Abrir página pública
+              </a>
+            ) : null}
             <Link to={survey.kind === 'nps' ? '/app/pesquisas/nps' : '/app/pesquisas'} className="admin-button">
               <Share2 className="h-4 w-4" />
               Voltar para a lista

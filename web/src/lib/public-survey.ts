@@ -20,6 +20,10 @@ export function getPublicSurveyUrl(slug: string, source?: SurveyShareSource) {
   return new URL(path, window.location.origin).toString()
 }
 
+export function getSurveyTestPath(id: string) {
+  return `/app/pesquisas/${id}/teste`
+}
+
 export async function copyText(text: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text)

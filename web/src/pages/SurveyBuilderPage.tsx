@@ -21,6 +21,7 @@ import { SectionCard } from '@/components/ui/SectionCard'
 import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
+import { getSurveyTestPath } from '@/lib/public-survey'
 import { FLOW_END, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
 import type { QuestionType, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
@@ -217,6 +218,7 @@ export function SurveyBuilderPage() {
   })
 
   const survey = useMemo(() => surveyQuery.data, [surveyQuery.data])
+  const isPublishedSurvey = survey?.status === 'Publicada'
 
   useEffect(() => {
     if (survey) {
@@ -599,6 +601,12 @@ export function SurveyBuilderPage() {
         <FileImage className="h-4 w-4" />
         Ver previa
       </button>
+      {params.id ? (
+        <Link to={getSurveyTestPath(params.id)} className="admin-button">
+          <Sparkles className="h-4 w-4" />
+          Testar pesquisa
+        </Link>
+      ) : null}
       <button
         type="button"
         onClick={() => void saveMutation.mutateAsync(false)}
@@ -812,7 +820,7 @@ export function SurveyBuilderPage() {
       </section>
       ) : null}
 
-      {params.id && form.slug ? (
+      {params.id && form.slug && isPublishedSurvey ? (
         <div className="mb-6">
           <SurveyShareCard
             surveyId={params.id}
@@ -820,6 +828,12 @@ export function SurveyBuilderPage() {
             linkClicks={survey?.linkClicks ?? 0}
             qrScans={survey?.qrScans ?? 0}
           />
+        </div>
+      ) : null}
+
+      {params.id && !isPublishedSurvey ? (
+        <div className="admin-alert mb-6 border-sky-200 bg-sky-50 text-sky-900">
+          Esta pesquisa ainda não está publicada. Use <strong>Testar pesquisa</strong> para validar a experiência antes de colocar o link no ar.
         </div>
       ) : null}
 
