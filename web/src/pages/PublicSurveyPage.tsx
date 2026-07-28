@@ -42,16 +42,6 @@ const neutralWheelLabels = [
   'Continue participando',
 ]
 
-const previewWinMessages = [
-  'Resultado de teste: este prêmio foi liberado apenas para você validar o visual.',
-  'Simulação concluída. Use este cenário para revisar cupom, texto e resgate.',
-]
-
-const previewNoPrizeMessages = [
-  'Resultado de teste: cenário sem prêmio para revisar a mensagem final.',
-  'Simulação concluída sem prêmio. Assim você valida o fluxo de derrota antes de publicar.',
-]
-
 type RewardRetryTask = {
   id: string
   type: 'google_review' | 'instagram_follow' | 'custom_link'
@@ -65,63 +55,20 @@ function buildVisibleQuestionSet(questions: SurveyQuestion[], answers: SurveyAns
   return new Set(getVisibleSurveyQuestions(questions, answers).map((question) => question.id))
 }
 
+function pruneAnswerMapToVisibleQuestions(questions: SurveyQuestion[], nextAnswers: SurveyAnswerMap) {
+  const nextVisibleIds = buildVisibleQuestionSet(questions, nextAnswers)
+
+  return Object.fromEntries(Object.entries(nextAnswers).filter(([questionId]) => nextVisibleIds.has(questionId)))
+}
+
 function pruneAnswersForCurrentFlow(
   questions: SurveyQuestion[],
   currentAnswers: SurveyAnswerMap,
   sourceQuestionId: string,
-  nextValue: string | number,
+  nextValue: string | string[] | number,
 ) {
   const nextAnswers = { ...currentAnswers, [sourceQuestionId]: nextValue }
-  const questionsById = new Map(questions.map((question) => [question.id, question]))
-  const orderedQuestions = [...questions]
-  const sourceIndex = orderedQuestions.findIndex((question) => question.id === sourceQuestionId)
-  const sourceQuestion = questionsById.get(sourceQuestionId)
-  const previousVisibleIds = buildVisibleQuestionSet(questions, currentAnswers)
-  const nextVisibleIds = buildVisibleQuestionSet(questions, nextAnswers)
-
-  if (sourceIndex < 0 || !sourceQuestion) {
-    return nextAnswers
-  }
-
-  const normalizedValue = typeof nextValue === 'string' ? nextValue.trim() : ''
-  const nextTarget =
-    typeof nextValue === 'string' && normalizedValue
-      ? sourceQuestion.flowRules?.find((rule) => rule.value === normalizedValue)?.nextQuestionId ?? null
-      : null
-
-  const branchStartQuestionId =
-    nextTarget && nextTarget !== FLOW_END
-      ? nextTarget
-      : orderedQuestions[sourceIndex + 1]?.id
-
-  const blockedQuestionIds = new Set<string>()
-  let shouldCollect = false
-
-  for (const question of orderedQuestions) {
-    if (question.id === branchStartQuestionId) {
-      shouldCollect = true
-    }
-
-    if (!shouldCollect) {
-      continue
-    }
-
-    if (!nextVisibleIds.has(question.id) && previousVisibleIds.has(question.id)) {
-      blockedQuestionIds.add(question.id)
-    }
-  }
-
-  if (!blockedQuestionIds.size) {
-    return nextAnswers
-  }
-
-  const cleanedAnswers = { ...nextAnswers }
-
-  for (const questionId of blockedQuestionIds) {
-    delete cleanedAnswers[questionId]
-  }
-
-  return cleanedAnswers
+  return pruneAnswerMapToVisibleQuestions(questions, nextAnswers)
 }
 
 function formatRewardProofFileName(title: string) {
@@ -139,21 +86,33 @@ function pickRandomItem<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)]
 }
 
+function makePreviewCouponCode() {
+  return `RADAR-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+}
+
 function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
   const rewardItems = items.slice(0, 3)
-  const neutralSlots = Math.max(0, 6 - rewardItems.length)
-  const segments: PrizeWheelSegment[] = rewardItems.map((item) => ({
-    id: item.id,
-    label: item.title,
-    kind: 'reward',
+  const neutralSlots = Math.max(3, rewardItems.length + 2)
+  const neutralSegments: PrizeWheelSegment[] = Array.from({ length: neutralSlots }, (_, index) => ({
+    id: `neutral-${index}`,
+    label: neutralWheelLabels[index % neutralWheelLabels.length],
+    kind: 'neutral',
   }))
+  const segments: PrizeWheelSegment[] = []
+  const totalGroups = Math.max(rewardItems.length, neutralSegments.length)
 
-  for (let index = 0; index < neutralSlots; index += 1) {
-    segments.push({
-      id: `neutral-${index}`,
-      label: neutralWheelLabels[index % neutralWheelLabels.length],
-      kind: 'neutral',
-    })
+  for (let index = 0; index < totalGroups; index += 1) {
+    if (rewardItems[index]) {
+      segments.push({
+        id: rewardItems[index].id,
+        label: rewardItems[index].title,
+        kind: 'reward',
+      })
+    }
+
+    if (neutralSegments[index]) {
+      segments.push(neutralSegments[index])
+    }
   }
 
   return segments.length
@@ -400,8 +359,8 @@ export function PublicSurveyPage() {
           rewardEnabled: survey.rewardEnabled,
           rewardEligible: survey.rewardEnabled,
           rewardMessage: survey.rewardEnabled
-            ? 'Modo teste: sua resposta não foi salva. Agora você pode validar a roleta com um giro simulado.'
-            : 'Modo teste: sua resposta não foi salva nem enviada para relatórios.',
+            ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
+            : 'Sua resposta foi registrada com sucesso.',
         }
       }
 
@@ -476,12 +435,15 @@ export function PublicSurveyPage() {
           won: shouldWin,
           item: shouldWin ? selectedSegment.label : undefined,
           landedLabel: selectedSegment.label,
-          couponCode: shouldWin ? `TESTE-${Math.random().toString(36).slice(2, 8).toUpperCase()}` : undefined,
+          couponCode: shouldWin ? makePreviewCouponCode() : undefined,
           retryAvailable: !shouldWin && Boolean(survey.rewardRetryUnlockEnabled && (survey.rewardRetryTasks?.length ?? 0) > 0),
           retryUnlocked: false,
           retryTasks: survey.rewardRetryTasks ?? [],
           completedTaskIds: [],
-          message: shouldWin ? pickRandomItem(previewWinMessages) : pickRandomItem(previewNoPrizeMessages),
+          pickupAddress: shouldWin ? 'Retire no balcão informado pela campanha.' : undefined,
+          message: shouldWin
+            ? 'Parabéns! O resultado foi definido com segurança e o local de retirada já está indicado abaixo.'
+            : 'Você não teve sorte desta vez. Continue participando e boa sorte nas próximas campanhas.',
         }
       }
 
@@ -671,11 +633,9 @@ export function PublicSurveyPage() {
     setAnswers((current) => {
       const existing = current[questionId]
       const list = Array.isArray(existing) ? existing : []
+      const nextList = list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
 
-      return {
-        ...current,
-        [questionId]: list.includes(value) ? list.filter((item) => item !== value) : [...list, value],
-      }
+      return pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, nextList)
     })
   }
 
@@ -714,10 +674,10 @@ export function PublicSurveyPage() {
             <div className="mb-6 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950 sm:flex-row sm:items-center sm:justify-between" style={{ borderRadius: 6 }}>
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-sky-700">
-                  {sharedPreviewMode ? 'Modo teste compartilhado' : 'Modo teste'}
+                  {sharedPreviewMode ? 'Link de teste' : 'Modo teste'}
                 </p>
                 <p className="mt-1 text-sm">
-                  Este formulário está em teste. Nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
+                  Esta pesquisa está em teste. O comportamento visual é o mesmo da versão pública, mas nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
                 </p>
               </div>
               {id ? (
@@ -733,11 +693,11 @@ export function PublicSurveyPage() {
           <header className="border-b border-slate-200 pb-5">
             <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
               <Sparkles className="h-4 w-4" />
-              {previewMode ? 'Prévia de teste' : 'Pesquisa publicada'}
+              Pesquisa
             </p>
             <h1 className="mt-3 font-display text-4xl text-slate-950 lg:text-5xl">{survey.title}</h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-600 lg:text-base">
-              {survey.description || (previewMode ? 'Use esta tela para testar a experiência antes de publicar.' : 'Responda os campos abaixo para concluir sua participação.')}
+              {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
             </p>
           </header>
 
@@ -943,25 +903,23 @@ export function PublicSurveyPage() {
               <div className="admin-alert border-amber-200 bg-amber-50 text-amber-900">
                 <div className="flex items-center gap-2 font-semibold">
                   <ShieldCheck className="h-4 w-4" />
-                  {previewMode ? 'Teste protegido' : 'Controle da campanha por identificadores'}
+                    Controle da campanha por identificadores
                 </div>
                 <p className="mt-2">
-                  {previewMode
-                    ? 'Este modo ignora regras de duplicidade, não grava participação e serve apenas para validar a experiência da pesquisa.'
-                    : 'A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o mesmo cliente usando o mesmo WhatsApp ou e-mail.'}
+                    A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o mesmo cliente usando o mesmo WhatsApp ou e-mail.
                 </p>
               </div>
 
               <button type="submit" disabled={submitMutation.isPending} className="admin-button-primary w-full justify-center">
-                {submitMutation.isPending ? (previewMode ? 'Preparando teste...' : 'Enviando...') : previewMode ? 'Executar teste' : 'Enviar respostas'}
+                {submitMutation.isPending ? 'Enviando...' : 'Enviar respostas'}
               </button>
             </form>
           ) : (
             <section className="admin-panel mt-6 p-6 text-center">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{previewMode ? 'Teste concluído' : 'Pesquisa finalizada'}</p>
-              <h2 className="mt-3 font-display text-4xl text-slate-950">{previewMode ? 'Prévia validada' : 'Obrigado por participar'}</h2>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa finalizada</p>
+              <h2 className="mt-3 font-display text-4xl text-slate-950">Obrigado por participar</h2>
               <p className="mt-4 text-sm text-slate-600">
-                {submitMessage || (previewMode ? 'Este teste foi executado apenas para validar a experiência da pesquisa.' : 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.')}
+                {submitMessage || 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.'}
               </p>
 
               {survey.rewardEnabled ? (
@@ -975,12 +933,8 @@ export function PublicSurveyPage() {
                     <>
                       <p className="mt-2 text-sm text-slate-300">
                         {canSpinReward
-                          ? previewMode
-                            ? 'No modo teste, o giro é simulado para você revisar visual, cupom e mensagens.'
-                            : 'O resultado já será decidido no servidor assim que você girar. A animação abaixo apenas revela esse resultado.'
-                          : previewMode
-                            ? 'O teste já foi processado. Confira abaixo o resultado simulado deste giro.'
-                            : 'A participação já foi processada. Confira abaixo o resultado registrado para este giro.'}
+                          ? 'O resultado já será decidido no servidor assim que você girar. A animação abaixo apenas revela esse resultado.'
+                          : 'A participação já foi processada. Confira abaixo o resultado registrado para este giro.'}
                       </p>
 
                       <div className="mt-6">
@@ -1132,7 +1086,7 @@ export function PublicSurveyPage() {
               {previewMode ? (
                 <div className="mt-5 flex justify-center">
                   <button type="button" onClick={resetPreviewSession} className="admin-button">
-                    Testar novamente
+                    Responder novamente
                   </button>
                 </div>
               ) : null}
@@ -1143,17 +1097,15 @@ export function PublicSurveyPage() {
 
       {survey.rewardEnabled && wheelModalOpen ? (
         <div className="fixed inset-0 z-50 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.22)_0%,rgba(15,23,42,0.92)_36%,rgba(2,6,23,0.98)_100%)]">
-          <div className="absolute inset-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-            <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col justify-between rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-4 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:p-6 lg:p-8">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="absolute inset-0 overflow-y-auto p-2 sm:px-6 sm:py-6">
+            <div className="mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-7xl flex-col justify-between rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-3 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:min-h-full sm:rounded-[28px] sm:p-6 lg:p-8">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="max-w-2xl">
                   <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Momento do prêmio</p>
-                  <h2 className="mt-3 font-display text-3xl text-white sm:text-4xl lg:text-5xl">Roleta premium em tela cheia</h2>
-                  <p className="mt-3 text-sm text-slate-300 sm:text-base">
+                  <h2 className="mt-2 font-display text-2xl text-white sm:mt-3 sm:text-4xl lg:text-5xl">Roleta premium em tela cheia</h2>
+                  <p className="mt-2 text-sm text-slate-300 sm:mt-3 sm:text-base">
                     {canSpinReward
-                      ? previewMode
-                        ? 'Toque em girar para validar a roleta em um cenário de teste, sem afetar nenhuma participação real.'
-                        : 'Toque em girar para revelar o resultado desta campanha com destaque total.'
+                      ? 'Toque em girar para revelar o resultado desta campanha com destaque total.'
                       : wheelSpinning
                         ? 'A roleta está girando e o resultado está sendo revelado agora.'
                         : rewardResult?.won
@@ -1176,8 +1128,8 @@ export function PublicSurveyPage() {
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1fr)_420px]">
-                <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-3 py-6 sm:px-6 sm:py-8">
+              <div className="mt-3 grid flex-1 gap-3 lg:mt-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1fr)_420px]">
+                <div className="flex min-h-[calc(100dvh-270px)] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-3 sm:min-h-0 sm:px-4 sm:py-6 lg:rounded-[28px] lg:px-6 lg:py-8">
                   <PrizeWheel
                     segments={wheelSegments}
                     rotation={wheelRotation}
@@ -1203,9 +1155,7 @@ export function PublicSurveyPage() {
                       <p className="mt-2 text-sm text-slate-300">
                         {wheelSpinning
                           ? 'Segure esse momento. O resultado já está sendo revelado.'
-                          : previewMode
-                            ? 'Quando você tocar em girar, um resultado simulado será mostrado aqui para revisão.'
-                            : 'Quando você tocar em girar, o resultado salvo no servidor será mostrado aqui.'}
+                          : 'Quando você tocar em girar, o resultado salvo no servidor será mostrado aqui.'}
                       </p>
                     </div>
                   ) : rewardResult.won ? (
@@ -1237,7 +1187,7 @@ export function PublicSurveyPage() {
                           {savingRewardProof ? 'Gerando imagem...' : 'Salvar comprovante em imagem'}
                         </button>
                         <p className="text-center text-xs text-slate-300">
-                          {previewMode ? 'Use essa imagem para validar o layout do comprovante antes da publicação.' : 'Salve no celular para apresentar no resgate do prêmio.'}
+                            Salve no celular para apresentar no resgate do prêmio.
                         </p>
                       </div>
                     </div>

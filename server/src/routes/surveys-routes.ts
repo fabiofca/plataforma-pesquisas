@@ -16,6 +16,7 @@ import { makeId, signSurveyPreviewToken } from '../utils/security.js'
 
 export const surveysRouter = Router()
 const SURVEY_PREVIEW_REWARD_LIMIT = 3
+const FLOW_ON_ANSWER = '__answer__'
 
 const surveyUploadKeys = new Set(['logo', 'banner'])
 const surveyUploadDir = path.resolve(process.cwd(), 'uploads', 'surveys')
@@ -234,11 +235,6 @@ function validateSurveyQuestionFlows(questions: SurveyQuestionPayload[]) {
       continue
     }
 
-    const supportsFlow = question.type === 'yes_no' || question.type === 'single_choice'
-    if (!supportsFlow) {
-      return 'Fluxos condicionais só podem ser usados em perguntas de Sim/Não ou Escolha única.'
-    }
-
     const allowedValues =
       question.type === 'yes_no'
         ? ['Sim', 'Não']
@@ -246,12 +242,20 @@ function validateSurveyQuestionFlows(questions: SurveyQuestionPayload[]) {
     const seenValues = new Set<string>()
 
     for (const rule of flowRules) {
-      if (!allowedValues.includes(rule.value)) {
+      const isGenericRule = rule.value === FLOW_ON_ANSWER
+
+      if (!isGenericRule && !['yes_no', 'single_choice'].includes(question.type)) {
+        return `A pergunta "${question.title}" só aceita o fluxo geral após responder.`
+      }
+
+      if (!isGenericRule && !allowedValues.includes(rule.value)) {
         return `A opção "${rule.value}" não é válida para a pergunta "${question.title}".`
       }
 
       if (seenValues.has(rule.value)) {
-        return `A pergunta "${question.title}" possui fluxo duplicado para a opção "${rule.value}".`
+        return isGenericRule
+          ? `A pergunta "${question.title}" possui fluxo geral duplicado após resposta.`
+          : `A pergunta "${question.title}" possui fluxo duplicado para a opção "${rule.value}".`
       }
 
       seenValues.add(rule.value)

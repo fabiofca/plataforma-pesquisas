@@ -23,7 +23,7 @@ import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
-import { FLOW_END, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
+import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
 import type { QuestionType, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
 type BuilderQuestion = {
@@ -272,9 +272,12 @@ export function SurveyBuilderPage() {
               ? question.options.map((item) => item.trim()).filter(Boolean)
               : [],
           flowRules:
-            question.type === 'yes_no' || question.type === 'single_choice'
-              ? question.flowRules.filter((rule) => rule.value.trim() && rule.nextQuestionId.trim())
-              : [],
+            question.flowRules.filter(
+              (rule) =>
+                rule.value.trim() &&
+                rule.nextQuestionId.trim() &&
+                (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice'),
+            ),
         })),
       }
 
@@ -1302,6 +1305,8 @@ export function SurveyBuilderPage() {
               (() => {
                 const nextQuestions = form.questions.slice(index + 1)
                 const flowValues = getQuestionFlowValues(question)
+                const genericFlowTarget =
+                  question.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''
 
                 return (
                   <article key={question.id} className="builder-question-card">
@@ -1379,7 +1384,10 @@ export function SurveyBuilderPage() {
                                   ...current,
                                   type,
                                   options: needsOptions ? (current.options.length ? current.options : ['']) : [],
-                                  flowRules: [],
+                                  flowRules:
+                                    type === 'yes_no' || type === 'single_choice'
+                                      ? current.flowRules
+                                      : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
                                 }
                               })
                             }
@@ -1458,13 +1466,43 @@ export function SurveyBuilderPage() {
                         </div>
                       ) : null}
 
+                      <div className="builder-soft-panel">
+                        <div className="mb-4">
+                          <p className="text-sm font-semibold text-slate-950">Ação após responder</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Defina o que acontece assim que esta pergunta for respondida: seguir normalmente, encerrar a pesquisa ou ir para outro ponto do formulário.
+                          </p>
+                        </div>
+
+                        <label className="grid gap-2 text-sm">
+                          <span className="text-slate-600">Depois que o cliente responder esta pergunta</span>
+                          <select
+                            className="admin-select"
+                            value={genericFlowTarget}
+                            onChange={(event) =>
+                              updateQuestion(index, (current) => ({
+                                ...current,
+                                flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
+                              }))
+                            }
+                          >
+                            <option value="">Seguir para a próxima pergunta normal</option>
+                            <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
+                            {nextQuestions.map((targetQuestion, targetIndex) => (
+                              <option key={`generic-${targetQuestion.id}`} value={targetQuestion.id}>
+                                Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
                       {supportsQuestionFlow(question.type) ? (
                         <div className="builder-soft-panel">
                           <div className="mb-4">
-                            <p className="text-sm font-semibold text-slate-950">Fluxo da pergunta</p>
+                            <p className="text-sm font-semibold text-slate-950">Fluxo por resposta específica</p>
                             <p className="mt-1 text-sm text-slate-600">
-                              Defina para onde o formulário vai quando esta pergunta receber uma resposta específica. Este fluxo vale para
-                              perguntas de Sim/Não e Escolha única.
+                              Para perguntas de Sim/Não e Escolha única, você também pode escolher caminhos diferentes dependendo da resposta.
                             </p>
                           </div>
 

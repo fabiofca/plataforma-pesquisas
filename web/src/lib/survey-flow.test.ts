@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { FLOW_END, getVisibleSurveyQuestions, isQuestionAnswered } from '@/lib/survey-flow'
+import { FLOW_END, FLOW_ON_ANSWER, getVisibleSurveyQuestions, isQuestionAnswered } from '@/lib/survey-flow'
 import type { SurveyQuestion } from '@/types/domain'
 
 const questions: SurveyQuestion[] = [
@@ -19,6 +19,7 @@ const questions: SurveyQuestion[] = [
     title: 'O que você mais gostou?',
     type: 'short_text',
     required: true,
+    flowRules: [{ value: FLOW_ON_ANSWER, nextQuestionId: 'q4' }],
   },
   {
     id: 'q3',
@@ -48,6 +49,14 @@ describe('survey flow', () => {
     expect(getVisibleSurveyQuestions(questions, { q1: 'Sim' }).map((question) => question.id)).toEqual(['q1', 'q2'])
   })
 
+  it('permite usar fluxo generico apos responder qualquer tipo de pergunta', () => {
+    expect(getVisibleSurveyQuestions(questions, { q1: 'Sim', q2: 'Atendimento gentil' }).map((question) => question.id)).toEqual([
+      'q1',
+      'q2',
+      'q4',
+    ])
+  })
+
   it('encerra o caminho quando a regra aponta para fim da pesquisa', () => {
     expect(getVisibleSurveyQuestions(questions, { q1: 'Não', q3: 'Encerrar' }).map((question) => question.id)).toEqual([
       'q1',
@@ -61,6 +70,27 @@ describe('survey flow', () => {
       'q3',
       'q4',
     ])
+  })
+
+  it('prioriza fluxo especifico antes do fluxo generico quando ambos existem', () => {
+    const mixedQuestions: SurveyQuestion[] = [
+      {
+        id: 'q1',
+        title: 'Você recomenda?',
+        type: 'single_choice',
+        required: true,
+        options: ['Sim', 'Talvez'],
+        flowRules: [
+          { value: FLOW_ON_ANSWER, nextQuestionId: 'q3' },
+          { value: 'Sim', nextQuestionId: 'q2' },
+        ],
+      },
+      { id: 'q2', title: 'Ótimo', type: 'short_text', required: false },
+      { id: 'q3', title: 'Fallback', type: 'short_text', required: false },
+    ]
+
+    expect(getVisibleSurveyQuestions(mixedQuestions, { q1: 'Sim' }).map((question) => question.id)).toEqual(['q1', 'q2'])
+    expect(getVisibleSurveyQuestions(mixedQuestions, { q1: 'Talvez' }).map((question) => question.id)).toEqual(['q1', 'q3'])
   })
 
   it('detecta se a resposta obrigatória foi preenchida de verdade', () => {

@@ -183,15 +183,17 @@ export function PrizeWheel({
   const angle = 360 / segments.length
   const gradient = buildWheelGradient(segments, primaryColor)
   const dividerOverlay = buildWheelOverlay(segments)
-  const labelDistance = isFullscreen ? 'clamp(110px, 25vw, 168px)' : '94px'
-  const labelWidth = isFullscreen ? 'clamp(150px, 34vw, 224px)' : '124px'
+  const labelDistance = isFullscreen ? 'clamp(116px, 28vw, 182px)' : '94px'
+  const labelWidth = isFullscreen ? 'clamp(156px, 38vw, 240px)' : '124px'
   const pointerBaseClass = isFullscreen
     ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
     : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)]'
   const pointerTipClass = isFullscreen
     ? 'absolute left-1/2 top-[18px] z-40 h-0 w-0 -translate-x-1/2 border-l-[18px] border-r-[18px] border-t-[32px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)] sm:top-[20px] sm:border-l-[20px] sm:border-r-[20px] sm:border-t-[36px]'
     : 'absolute left-1/2 top-[16px] z-40 h-0 w-0 -translate-x-1/2 border-l-[16px] border-r-[16px] border-t-[30px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)]'
-  const wheelWrapperClass = isFullscreen ? 'mx-auto w-full max-w-[520px] sm:max-w-[620px]' : 'mx-auto w-full max-w-[430px]'
+  const wheelWrapperClass = isFullscreen
+    ? 'mx-auto w-full max-w-[calc(100vw-1rem)] sm:max-w-[720px] lg:max-w-[760px]'
+    : 'mx-auto w-full max-w-[430px]'
 
   return (
     <div className={wheelWrapperClass}>
@@ -273,10 +275,10 @@ export function PrizeWheel({
                       fontSize:
                         isRewardSegment || isRetrySegment
                           ? isFullscreen
-                            ? 'clamp(14px, 1.9vw, 24px)'
+                            ? 'clamp(14px, 2.15vw, 26px)'
                             : 'clamp(12px, 1.28vw, 18px)'
                           : isFullscreen
-                            ? 'clamp(12px, 1.55vw, 19px)'
+                            ? 'clamp(12px, 1.7vw, 20px)'
                             : 'clamp(10px, 1.05vw, 15px)',
                       fontWeight: isRewardSegment || isRetrySegment ? '900' : '800',
                       lineHeight: isRewardSegment || isRetrySegment ? '1.03' : '1.06',
@@ -308,7 +310,7 @@ export function PrizeWheel({
           onClick={onSpin}
           disabled={disabled || isSpinning}
           className={`rounded-full bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#e2e8f0_100%)] font-bold uppercase text-slate-950 shadow-[0_10px_18px_rgba(255,255,255,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 ${
-            isFullscreen ? 'px-8 py-3 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
+            isFullscreen ? 'px-8 py-3.5 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
           }`}
         >
           {isSpinning ? 'Girando' : spinLabel || 'Girar'}

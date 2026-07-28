@@ -1,6 +1,7 @@
 import type { QuestionType, SurveyFlowTarget, SurveyQuestion, SurveyQuestionFlowRule } from '@/types/domain'
 
 export const FLOW_END = '__end__' as const
+export const FLOW_ON_ANSWER = '__answer__' as const
 
 type SurveyAnswerValue = string | string[] | number | boolean | undefined
 
@@ -22,11 +23,18 @@ export function getQuestionFlowValues(question: Pick<SurveyQuestion, 'type' | 'o
   return []
 }
 
+export function getQuestionGenericFlowRule(question: FlowQuestion) {
+  return (question.flowRules ?? []).find((rule) => rule.value === FLOW_ON_ANSWER) ?? null
+}
+
 export function normalizeFlowRules(question: FlowQuestion): SurveyQuestionFlowRule[] {
   const allowedValues = new Set(getQuestionFlowValues(question))
 
   return (question.flowRules ?? []).filter(
-    (rule) => rule.value.trim() && allowedValues.has(rule.value) && rule.nextQuestionId.trim() !== '',
+    (rule) =>
+      rule.value.trim() &&
+      rule.nextQuestionId.trim() !== '' &&
+      (rule.value === FLOW_ON_ANSWER || allowedValues.has(rule.value)),
   )
 }
 
@@ -51,17 +59,25 @@ export function isQuestionAnswered(question: Pick<SurveyQuestion, 'type'>, answe
 }
 
 function resolveFlowTarget(question: FlowQuestion, answer: SurveyAnswerValue): SurveyFlowTarget | null {
-  if (!supportsQuestionFlow(question.type) || typeof answer !== 'string') {
+  if (!isQuestionAnswered(question, answer)) {
     return null
   }
 
-  const normalizedAnswer = answer.trim()
-  if (!normalizedAnswer) {
-    return null
+  const rules = normalizeFlowRules(question)
+
+  if (supportsQuestionFlow(question.type) && typeof answer === 'string') {
+    const normalizedAnswer = answer.trim()
+
+    if (normalizedAnswer) {
+      const specificRule = rules.find((entry) => entry.value === normalizedAnswer)
+
+      if (specificRule) {
+        return specificRule.nextQuestionId
+      }
+    }
   }
 
-  const rule = normalizeFlowRules(question).find((entry) => entry.value === normalizedAnswer)
-  return rule?.nextQuestionId ?? null
+  return rules.find((entry) => entry.value === FLOW_ON_ANSWER)?.nextQuestionId ?? null
 }
 
 export function getVisibleSurveyQuestions(
