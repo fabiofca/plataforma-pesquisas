@@ -1081,6 +1081,10 @@ export function PublicSurveyPage() {
           : `Aguarde ${currentRetryTaskRemainingSeconds}s`
   const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
 
+  function openRetryTaskLink(task: RewardRetryTask) {
+    window.location.assign(task.url)
+  }
+
   function startRetryTask(task: RewardRetryTask) {
     const nextRetryTaskProgressMap = {
       ...retryTaskProgressMap,
@@ -1099,7 +1103,25 @@ export function PublicSurveyPage() {
       wheelModalOpen: true,
     })
 
-    window.location.assign(task.url)
+    openRetryTaskLink(task)
+  }
+
+  function handleRetryTaskCardClick(input: {
+    task: RewardRetryTask
+    taskProgress?: { startedAt: number; returnedAt: number | null }
+    canConfirm: boolean
+    isLoading: boolean
+  }) {
+    if (input.isLoading || input.canConfirm) {
+      return
+    }
+
+    if (input.taskProgress) {
+      openRetryTaskLink(input.task)
+      return
+    }
+
+    startRetryTask(input.task)
   }
 
   function getRetryTaskProgress(taskId: string) {
@@ -1636,7 +1658,10 @@ export function PublicSurveyPage() {
                             {rewardResult.retryAvailable ? (
                               <div className="mt-5 space-y-4 border border-white/10 bg-white/5 px-4 py-4 text-left" style={{ borderRadius: 6 }}>
                                 <div>
-                                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
+                                  <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/35 bg-[linear-gradient(90deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.24)_100%)] px-3 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-amber-50 shadow-[0_0_24px_rgba(250,204,21,0.14)]">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Mais uma chance
+                                  </p>
                                   <p className="mt-2 text-sm text-slate-200">
                                     Abra cada tarefa, volte para esta página, aguarde alguns segundos e toque em "Já concluí" para liberar o segundo giro.
                                   </p>
@@ -1843,7 +1868,10 @@ export function PublicSurveyPage() {
                     <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
                       <div className="absolute inset-0 rounded-[inherit] bg-slate-950/58 backdrop-blur-[3px]" />
                       <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-sky-300/30 bg-[linear-gradient(180deg,rgba(15,23,42,0.22)_0%,rgba(15,23,42,0.78)_12%,rgba(59,130,246,0.18)_56%,rgba(15,23,42,0.98)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.48)] backdrop-blur-md sm:px-7 sm:py-8">
-                        <p className="text-xs uppercase tracking-[0.26em] text-sky-100">Mais uma chance</p>
+                        <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-[linear-gradient(90deg,rgba(250,204,21,0.24)_0%,rgba(236,72,153,0.3)_100%)] px-4 py-2 text-xs font-black uppercase tracking-[0.24em] text-amber-50 shadow-[0_0_28px_rgba(250,204,21,0.18)]">
+                          <Sparkles className="h-4 w-4" />
+                          Mais uma chance
+                        </p>
                         <p className="mt-3 text-base font-semibold text-white sm:text-lg">
                           {rewardResult?.landedLabel ? `A roleta parou em ${rewardResult.landedLabel}.` : 'Você não ganhou neste giro.'}
                         </p>
@@ -1851,12 +1879,44 @@ export function PublicSurveyPage() {
                           Conclua esta tarefa, volte para a página e confirme aqui na frente da roleta para liberar o próximo giro.
                         </p>
 
-                        <div className="mt-5 rounded-[20px] border border-white/12 bg-slate-950/35 px-4 py-4 text-left">
+                        <div
+                          className={`mt-5 rounded-[20px] border px-4 py-4 text-left transition ${
+                            currentRetryTaskCanConfirm || currentRetryTaskIsLoading
+                              ? 'border-white/12 bg-slate-950/35'
+                              : 'cursor-pointer border-sky-300/28 bg-[linear-gradient(180deg,rgba(14,165,233,0.18)_0%,rgba(15,23,42,0.46)_100%)] hover:border-sky-200/45 hover:bg-[linear-gradient(180deg,rgba(56,189,248,0.22)_0%,rgba(15,23,42,0.54)_100%)]'
+                          }`}
+                          role="button"
+                          tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
+                          onClick={() =>
+                            handleRetryTaskCardClick({
+                              task: currentRetryTask,
+                              taskProgress: currentRetryTaskProgress ?? undefined,
+                              canConfirm: currentRetryTaskCanConfirm,
+                              isLoading: currentRetryTaskIsLoading,
+                            })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleRetryTaskCardClick({
+                                task: currentRetryTask,
+                                taskProgress: currentRetryTaskProgress ?? undefined,
+                                canConfirm: currentRetryTaskCanConfirm,
+                                isLoading: currentRetryTaskIsLoading,
+                              })
+                            }
+                          }}
+                        >
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Tarefa atual</p>
                           <p className="mt-2 text-lg font-semibold text-white">{currentRetryTask.title}</p>
                           <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">
                             {getRetryTaskTypeLabel(currentRetryTask.type)}
                           </p>
+                          {!currentRetryTaskCanConfirm && !currentRetryTaskIsLoading ? (
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
+                              Toque aqui para ir direto para a tarefa
+                            </p>
+                          ) : null}
                         </div>
 
                         <div className="mt-4 flex items-center justify-center">
@@ -1875,11 +1935,15 @@ export function PublicSurveyPage() {
                           <button
                             type="button"
                             disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
-                            onClick={() =>
-                              currentRetryTaskProgress
-                                ? void retryTaskClickMutation.mutateAsync(currentRetryTask)
-                                : startRetryTask(currentRetryTask)
-                            }
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              if (currentRetryTaskProgress) {
+                                void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                return
+                              }
+
+                              startRetryTask(currentRetryTask)
+                            }}
                             className="admin-button-primary w-full justify-center disabled:opacity-60"
                           >
                             {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
@@ -1964,7 +2028,10 @@ export function PublicSurveyPage() {
 
                   {rewardResult?.retryAvailable ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-left">
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
+                      <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/35 bg-[linear-gradient(90deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.24)_100%)] px-3 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-amber-50 shadow-[0_0_24px_rgba(250,204,21,0.14)]">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Mais uma chance
+                      </p>
                       {canSpinReward ? (
                         <div className="mt-4 rounded-[18px] border border-emerald-300/25 bg-emerald-500/10 px-4 py-4">
                           <p className="text-sm font-semibold text-emerald-100">Nova tentativa liberada</p>
@@ -1973,9 +2040,41 @@ export function PublicSurveyPage() {
                           </p>
                         </div>
                       ) : currentRetryTask ? (
-                        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4">
+                        <div
+                          className={`mt-4 rounded-[18px] border px-4 py-4 transition ${
+                            currentRetryTaskCanConfirm || currentRetryTaskIsLoading
+                              ? 'border-white/10 bg-slate-950/30'
+                              : 'cursor-pointer border-sky-300/25 bg-[linear-gradient(180deg,rgba(14,165,233,0.15)_0%,rgba(15,23,42,0.42)_100%)] hover:border-sky-200/45 hover:bg-[linear-gradient(180deg,rgba(56,189,248,0.22)_0%,rgba(15,23,42,0.5)_100%)]'
+                          }`}
+                          role="button"
+                          tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
+                          onClick={() =>
+                            handleRetryTaskCardClick({
+                              task: currentRetryTask,
+                              taskProgress: currentRetryTaskProgress ?? undefined,
+                              canConfirm: currentRetryTaskCanConfirm,
+                              isLoading: currentRetryTaskIsLoading,
+                            })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleRetryTaskCardClick({
+                                task: currentRetryTask,
+                                taskProgress: currentRetryTaskProgress ?? undefined,
+                                canConfirm: currentRetryTaskCanConfirm,
+                                isLoading: currentRetryTaskIsLoading,
+                              })
+                            }
+                          }}
+                        >
                           <p className="text-sm font-semibold text-white">{currentRetryTask.title}</p>
                           <p className="mt-1 text-xs text-slate-400">{getRetryTaskTypeLabel(currentRetryTask.type)}</p>
+                          {!currentRetryTaskCanConfirm && !currentRetryTaskIsLoading ? (
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
+                              Toque aqui para abrir a tarefa
+                            </p>
+                          ) : null}
                           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <span
                               className={`admin-badge ${
@@ -1989,11 +2088,15 @@ export function PublicSurveyPage() {
                             <button
                               type="button"
                               disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
-                              onClick={() =>
-                                currentRetryTaskProgress
-                                  ? void retryTaskClickMutation.mutateAsync(currentRetryTask)
-                                  : startRetryTask(currentRetryTask)
-                              }
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (currentRetryTaskProgress) {
+                                  void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                  return
+                                }
+
+                                startRetryTask(currentRetryTask)
+                              }}
                               className="admin-button-primary justify-center disabled:opacity-60"
                             >
                               {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
