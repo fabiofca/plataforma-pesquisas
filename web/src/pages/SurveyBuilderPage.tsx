@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckCircle2,
   FileImage,
-  FileText,
-  Link2,
   Palette,
-  Plus,
-  Settings2,
   Share2,
   Sparkles,
   Trash2,
@@ -24,7 +19,7 @@ import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
-import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
+import { FLOW_ON_ANSWER } from '@/lib/survey-flow'
 import { mergeFlowLayout, sortIdsByFlowLayout } from '@/lib/survey-visual-flow'
 import type { QuestionType, SurveyBuilderMode, SurveyFlowLayout, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
@@ -55,21 +50,6 @@ type BuilderState = {
   questions: BuilderQuestion[]
 }
 
-const questionTypes: Array<{ value: QuestionType; label: string }> = [
-  { value: 'short_text', label: 'Texto curto' },
-  { value: 'long_text', label: 'Texto longo' },
-  { value: 'single_choice', label: 'Única escolha' },
-  { value: 'multiple_choice', label: 'Múltipla escolha' },
-  { value: 'yes_no', label: 'Sim / Não' },
-  { value: 'rating_1_5', label: 'Nota de 1 a 5' },
-  { value: 'nps', label: 'NPS' },
-]
-
-const questionTypeLabels = Object.fromEntries(questionTypes.map((item) => [item.value, item.label])) as Record<
-  QuestionType,
-  string
->
-
 const surveyColorPresets = ['#0b5cff', '#11284a', '#0f766e', '#7c3aed', '#d97706', '#dc2626']
 
 type SurveyUploadTarget = 'logo' | 'banner'
@@ -84,17 +64,6 @@ function makeQuestion(type: QuestionType = 'short_text'): BuilderQuestion {
     options: type === 'single_choice' || type === 'multiple_choice' ? [''] : [],
     flowRules: [],
   }
-}
-
-function updateFlowRuleList(flowRules: SurveyQuestionFlowRule[], value: string, nextQuestionId: string) {
-  const normalizedValue = value.trim()
-  const nextRules = flowRules.filter((rule) => rule.value !== normalizedValue)
-
-  if (!nextQuestionId) {
-    return nextRules
-  }
-
-  return [...nextRules, { value: normalizedValue, nextQuestionId }]
 }
 
 function removeRulesThatPointToQuestion(flowRules: SurveyQuestionFlowRule[], targetQuestionId: string) {
@@ -129,7 +98,7 @@ function makeEmptyBuilderState(): BuilderState {
     participationMode: 'identified',
     rewardEnabled: false,
     preventDuplicateResponses: false,
-    builderMode: 'classic',
+    builderMode: 'visual',
     flowLayout: mergeFlowLayout(initialQuestions.map((question) => question.id), { version: 1, nodes: [] }),
     questions: initialQuestions,
   }
@@ -160,7 +129,7 @@ function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
     participationMode: 'identified',
     rewardEnabled: survey.rewardEnabled,
     preventDuplicateResponses: false,
-    builderMode: survey.builderMode ?? 'classic',
+    builderMode: 'visual',
     flowLayout: mergeFlowLayout(
       questions.map((question) => question.id),
       survey.flowLayout ?? { version: 1, nodes: [] },
@@ -301,7 +270,7 @@ export function SurveyBuilderPage() {
         closingMessage: form.closingMessage.trim(),
         rewardEnabled: form.rewardEnabled,
         preventDuplicateResponses: false,
-        builderMode: form.builderMode,
+        builderMode: 'visual',
         flowLayout: normalizedFlowLayout,
         questions: orderedQuestions.map((question, index) => ({
           id: question.id,
@@ -766,8 +735,8 @@ export function SurveyBuilderPage() {
 
   return (
     <AppShell
-      title={params.id ? 'Editor de pesquisa' : 'Nova pesquisa'}
-      subtitle="Organize sua pesquisa em blocos claros, revise as perguntas e publique somente quando tudo estiver pronto."
+      title={params.id ? 'Fluxo da pesquisa' : 'Nova pesquisa'}
+      subtitle="Monte o fluxo visual e salve quando estiver pronto."
       backHref={params.id ? `/app/pesquisas/${params.id}` : '/app/pesquisas'}
       backLabel={params.id ? 'Voltar para a pesquisa' : 'Voltar para pesquisas'}
       breadcrumbs={
@@ -796,156 +765,6 @@ export function SurveyBuilderPage() {
         >
           {feedback}
         </div>
-      ) : null}
-
-      <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Criação guiada</p>
-          <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
-            Monte a pesquisa em um editor mais limpo e fácil de entender.
-          </h2>
-          <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
-            A ideia aqui é deixar cada bloco com uma função clara: dados da pesquisa, visual, regras e perguntas em sequência.
-          </p>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-3">
-          <div className="admin-inline-stat">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Perguntas</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{form.questions.length}</p>
-          </div>
-          <div className="admin-inline-stat">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Roleta</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{form.rewardEnabled ? 'Ativada' : 'Desligada'}</p>
-          </div>
-          <div className="admin-inline-stat">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Slug</p>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-950">{form.slug || 'Ainda não definido'}</p>
-          </div>
-        </div>
-      </section>
-
-      {false ? (
-      <section className="mb-6 overflow-hidden border border-slate-200 bg-white shadow-card" style={{ borderRadius: 8 }}>
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">PrÃ©via visual</p>
-            <p className="mt-1 text-sm text-slate-600">Acompanhe ao vivo como a identidade da pesquisa estÃ¡ ficando.</p>
-          </div>
-          <span className="builder-question-meta builder-question-meta-primary">Atualiza automaticamente</span>
-        </div>
-
-        <div className="grid gap-4 p-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <div
-            className="overflow-hidden border border-slate-200"
-            style={{
-              borderRadius: 8,
-              backgroundImage: form.bannerUrl
-                ? `linear-gradient(180deg, rgba(15,23,42,0.18) 0%, rgba(15,23,42,0.7) 100%), url(${form.bannerUrl})`
-                : `linear-gradient(135deg, ${form.primaryColor || '#0b5cff'} 0%, #0f172a 100%)`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          >
-            <div className="flex min-h-[260px] flex-col justify-between px-5 py-5 text-white">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  {form.logoUrl ? (
-                    <div className="flex h-14 w-14 items-center justify-center overflow-hidden border border-white/30 bg-white/90" style={{ borderRadius: 8 }}>
-                      <img src={form.logoUrl} alt="Logo da prÃ©via da pesquisa" className="h-full w-full object-contain" />
-                    </div>
-                  ) : (
-                    <div
-                      className="flex h-14 w-14 items-center justify-center border border-white/30 bg-white/15 text-sm font-semibold"
-                      style={{ borderRadius: 8 }}
-                    >
-                      {getBrandInitials(form.brandName)}
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-white/70">
-                      {form.brandName.trim() || 'Sua marca'}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-white/90">
-                      /s/{form.slug.trim() || 'seu-link-aqui'}
-                    </p>
-                  </div>
-                </div>
-
-                <span className="border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ borderRadius: 999 }}>
-                  {form.rewardEnabled ? 'Com roleta' : 'Pesquisa simples'}
-                </span>
-              </div>
-
-              <div className="max-w-2xl">
-                <h3 className="text-2xl font-semibold leading-tight sm:text-3xl">
-                  {form.title.trim() || 'O tÃ­tulo da sua pesquisa aparecerÃ¡ aqui'}
-                </h3>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-white/85">
-                  {form.description.trim() || 'Use a descriÃ§Ã£o para explicar rapidamente o objetivo da pesquisa e orientar o participante.'}
-                </p>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                    Nome e WhatsApp obrigatÃ³rios
-                  </span>
-                  <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                    {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4">
-            <div className="border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Como o participante percebe</p>
-              <div className="mt-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-                <p className="text-sm font-semibold text-slate-950">
-                  {form.questions[0]?.title?.trim() || 'A primeira pergunta aparecerÃ¡ aqui'}
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  {form.questions[0]?.description?.trim() || 'VocÃª pode usar a descriÃ§Ã£o de apoio para orientar a resposta do cliente.'}
-                </p>
-                <div className="mt-4 grid gap-2">
-                  <div className="h-10 border border-slate-200 bg-slate-50" style={{ borderRadius: 6 }} />
-                  <div
-                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white"
-                    style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                  >
-                    Continuar
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Resumo da identidade</p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-                  <p className="text-xs text-slate-500">Cor principal</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div
-                      className="h-8 w-8 border border-slate-200"
-                      style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                    />
-                    <span className="text-sm font-medium text-slate-900">{form.primaryColor || '#0b5cff'}</span>
-                  </div>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-                  <p className="text-xs text-slate-500">Logo</p>
-                  <p className="mt-2 text-sm font-medium text-slate-900">{form.logoUrl ? 'Enviada' : 'Pendente'}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-                  <p className="text-xs text-slate-500">Banner</p>
-                  <p className="mt-2 text-sm font-medium text-slate-900">{form.bannerUrl ? 'Enviado' : 'Pendente'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
       ) : null}
 
       {params.id && form.slug && isPublishedSurvey ? (
@@ -977,14 +796,26 @@ export function SurveyBuilderPage() {
         </div>
       ) : null}
 
-      <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
-        <strong>Salvar rascunho</strong> salva tudo o que você fez, mas <strong>não publica</strong> a pesquisa.
-        Use <strong>Salvar e publicar</strong> somente quando o link já puder receber respostas.
-      </div>
+      <section className="mb-6 grid gap-3 xl:grid-cols-[1fr_auto] xl:items-center">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Perguntas</p>
+            <p className="mt-1 text-sm font-semibold text-slate-950">{form.questions.length}</p>
+          </div>
+          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Slug</p>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-950">{form.slug || 'Ainda não definido'}</p>
+          </div>
+          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Roleta</p>
+            <p className="mt-1 text-sm font-semibold text-slate-950">{form.rewardEnabled ? 'Ativada' : 'Desligada'}</p>
+          </div>
+        </div>
 
-      <div className="mb-6 flex flex-wrap gap-3">
-        {actionButtons}
-      </div>
+        <div className="flex flex-wrap gap-3">
+          {actionButtons}
+        </div>
+      </section>
 
       <AdminModal
         open={previewOpen}
@@ -995,61 +826,7 @@ export function SurveyBuilderPage() {
         {previewContent}
       </AdminModal>
 
-      <section className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <article className="builder-step-card builder-step-card-blue">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-blue">
-              <FileText className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 1</p>
-              <p className="text-sm font-semibold text-slate-950">Dados principais</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Defina título, descrição e o nome que vai aparecer para o cliente.</p>
-        </article>
-
-        <article className="builder-step-card builder-step-card-violet">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-violet">
-              <Link2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 2</p>
-              <p className="text-sm font-semibold text-slate-950">Link e visual</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Escolha o slug, a cor principal e envie a logo e o banner da pesquisa.</p>
-        </article>
-
-        <article className="builder-step-card builder-step-card-amber">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-amber">
-              <Settings2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 3</p>
-              <p className="text-sm font-semibold text-slate-950">Perguntas</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Adicione as perguntas na ordem da resposta e ajuste opções e fluxo quando precisar.</p>
-        </article>
-
-        <article className="builder-step-card builder-step-card-emerald">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-emerald">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 4</p>
-              <p className="text-sm font-semibold text-slate-950">Salvar</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Use rascunho para continuar depois. Publique somente quando o link estiver pronto.</p>
-        </article>
-      </section>
-
-      <div className="builder-sheet">
+      <div className="flex flex-col-reverse gap-6">
         <SectionCard
           eyebrow="Configuração"
           title="Dados principais"
@@ -1371,354 +1148,22 @@ export function SurveyBuilderPage() {
         <SectionCard
           eyebrow="Estrutura"
           title="Perguntas da pesquisa"
-          description={
-            form.builderMode === 'visual'
-              ? 'Monte o fluxo arrastando os blocos no canvas e ajuste as saídas pelo inspector lateral.'
-              : 'Cada pergunta fica em um bloco próprio para facilitar leitura, edição e revisão.'
-          }
+          description="Arraste os blocos, conecte as saídas e edite a pergunta na lateral."
         >
-          <div className="mb-4 rounded-[18px] border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-slate-950">Modo de edição das perguntas</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Use o clássico para formulário em sequência ou o visual para montar o fluxo com blocos arrastáveis.
-                </p>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
-                  <input
-                    type="radio"
-                    name="survey-builder-mode"
-                    checked={form.builderMode === 'classic'}
-                    onChange={() => updateForm('builderMode', 'classic')}
-                  />
-                  <span>
-                    <strong className="block text-slate-900">Editor simples</strong>
-                    <span className="text-xs text-slate-500">Lista tradicional de perguntas em sequência.</span>
-                  </span>
-                </label>
-
-                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
-                  <input
-                    type="radio"
-                    name="survey-builder-mode"
-                    checked={form.builderMode === 'visual'}
-                    onChange={() =>
-                      setForm((current) => ({
-                        ...current,
-                        builderMode: 'visual',
-                        flowLayout: mergeFlowLayout(
-                          current.questions.map((question) => question.id),
-                          current.flowLayout,
-                        ),
-                      }))
-                    }
-                  />
-                  <span>
-                    <strong className="block text-slate-900">Fluxo visual</strong>
-                    <span className="text-xs text-slate-500">Blocos arrastáveis com conexões e saídas por resposta.</span>
-                  </span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {form.builderMode === 'visual' ? (
-            <SurveyVisualFlowEditor
-              primaryColor={form.primaryColor}
-              questions={form.questions}
-              flowLayout={form.flowLayout}
-              selectedQuestionId={selectedVisualQuestionId}
-              onSelectQuestion={setSelectedVisualQuestionId}
-              onAddQuestion={addQuestion}
-              onRemoveQuestion={removeQuestionById}
-              onUpdateQuestion={updateQuestionById}
-              onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
-            />
-          ) : (
-            <>
-              <div className="admin-alert mb-4 border-amber-200 bg-amber-50 text-amber-900">
-                Dica: comece pelas perguntas mais importantes. Se uma resposta precisar pular etapas, use o fluxo condicional.
-              </div>
-
-              <div className="space-y-4">
-                {form.questions.map((question, index) => (
-                  (() => {
-                    const nextQuestions = form.questions.slice(index + 1)
-                    const flowValues = getQuestionFlowValues(question)
-                    const genericFlowTarget =
-                      question.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''
-
-                    return (
-                      <article key={question.id} className="builder-question-card">
-                        <div
-                          className="builder-section-topbar"
-                          style={{
-                            background: `linear-gradient(90deg, ${form.primaryColor || '#0b5cff'} 0%, rgba(255,255,255,0.95) 100%)`,
-                          }}
-                        />
-                        <div className="p-5">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Pergunta {index + 1}</p>
-                            <p className="mt-2 font-semibold text-slate-950">{question.title || 'Sem título ainda'}</p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <span className="builder-question-meta builder-question-meta-primary">{questionTypeLabels[question.type]}</span>
-                            <span className="builder-question-meta builder-question-meta-muted">
-                              {question.required ? 'Obrigatória' : 'Opcional'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removeQuestion(index)}
-                              className="admin-button-danger px-3 py-1 text-xs"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Remover
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 grid gap-4">
-                          <label className="grid gap-2 text-sm">
-                            <span className="text-slate-600">Título da pergunta</span>
-                            <input
-                              className="admin-input"
-                              value={question.title}
-                              placeholder="Ex.: Como você avalia seu atendimento?"
-                              onChange={(event) =>
-                                updateQuestion(index, (current) => ({
-                                  ...current,
-                                  title: event.target.value,
-                                }))
-                              }
-                            />
-                          </label>
-
-                          <label className="grid gap-2 text-sm">
-                            <span className="text-slate-600">Descrição de apoio</span>
-                            <textarea
-                              className="admin-input min-h-20"
-                              value={question.description}
-                              placeholder="Use esse campo se quiser orientar o cliente sobre como responder."
-                              onChange={(event) =>
-                                updateQuestion(index, (current) => ({
-                                  ...current,
-                                  description: event.target.value,
-                                }))
-                              }
-                            />
-                          </label>
-
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <label className="grid gap-2 text-sm">
-                              <span className="text-slate-600">Tipo</span>
-                              <select
-                                className="admin-select"
-                                value={question.type}
-                                onChange={(event) =>
-                                  updateQuestion(index, (current) => {
-                                    const type = event.target.value as QuestionType
-                                    const needsOptions = type === 'single_choice' || type === 'multiple_choice'
-
-                                    return {
-                                      ...current,
-                                      type,
-                                      options: needsOptions ? (current.options.length ? current.options : ['']) : [],
-                                      flowRules:
-                                        type === 'yes_no' || type === 'single_choice'
-                                          ? current.flowRules
-                                          : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
-                                    }
-                                  })
-                                }
-                              >
-                                {questionTypes.map((item) => (
-                                  <option key={item.value} value={item.value}>
-                                    {item.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-
-                            <label className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
-                              <input
-                                type="checkbox"
-                                checked={question.required}
-                                onChange={(event) =>
-                                  updateQuestion(index, (current) => ({
-                                    ...current,
-                                    required: event.target.checked,
-                                  }))
-                                }
-                              />
-                              Obrigatória
-                            </label>
-                          </div>
-
-                          {question.type === 'single_choice' || question.type === 'multiple_choice' ? (
-                            <div className="builder-soft-panel">
-                              <div className="mb-4 flex items-center justify-between gap-3">
-                                <p className="text-sm font-semibold text-slate-950">Opções de resposta</p>
-                                <button
-                                  type="button"
-                                  onClick={() => addOption(index)}
-                                  className="admin-button px-3 py-2 text-xs"
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                  Nova opção
-                                </button>
-                              </div>
-
-                              <div className="space-y-3">
-                                {question.options.map((option, optionIndex) => (
-                                  <div key={`${question.id}-${optionIndex}`} className="flex gap-3">
-                                    <input
-                                      className="admin-input flex-1 bg-slate-50"
-                                      value={option}
-                                      placeholder={`Opção ${optionIndex + 1}`}
-                                      onChange={(event) =>
-                                        updateQuestion(index, (current) => {
-                                          const previousValue = current.options[optionIndex] ?? ''
-                                          const nextValue = event.target.value
-
-                                          return {
-                                            ...current,
-                                            options: current.options.map((item, itemIndex) =>
-                                              itemIndex === optionIndex ? nextValue : item,
-                                            ),
-                                            flowRules: current.flowRules.map((rule) =>
-                                              rule.value === previousValue ? { ...rule, value: nextValue } : rule,
-                                            ),
-                                          }
-                                        })
-                                      }
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => removeOption(index, optionIndex)}
-                                      className="admin-button-danger px-3 py-2 text-xs"
-                                    >
-                                      Remover
-                                    </button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="builder-soft-panel">
-                            <div className="mb-4">
-                              <p className="text-sm font-semibold text-slate-950">Ação após responder</p>
-                              <p className="mt-1 text-sm text-slate-600">
-                                Defina o que acontece assim que esta pergunta for respondida: seguir normalmente, encerrar a pesquisa ou ir para outro ponto do formulário.
-                              </p>
-                            </div>
-
-                            <label className="grid gap-2 text-sm">
-                              <span className="text-slate-600">Depois que o cliente responder esta pergunta</span>
-                              <select
-                                className="admin-select"
-                                value={genericFlowTarget}
-                                onChange={(event) =>
-                                  updateQuestion(index, (current) => ({
-                                    ...current,
-                                    flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
-                                  }))
-                                }
-                              >
-                                <option value="">Seguir para a próxima pergunta normal</option>
-                                <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
-                                {nextQuestions.map((targetQuestion, targetIndex) => (
-                                  <option key={`generic-${targetQuestion.id}`} value={targetQuestion.id}>
-                                    Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </div>
-
-                          {supportsQuestionFlow(question.type) ? (
-                            <div className="builder-soft-panel">
-                              <div className="mb-4">
-                                <p className="text-sm font-semibold text-slate-950">Fluxo por resposta específica</p>
-                                <p className="mt-1 text-sm text-slate-600">
-                                  Para perguntas de Sim/Não e Escolha única, você também pode escolher caminhos diferentes dependendo da resposta.
-                                </p>
-                              </div>
-
-                              {flowValues.length ? (
-                                <div className="space-y-3">
-                                  {flowValues.map((flowValue) => {
-                                    const selectedTarget =
-                                      question.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId ?? ''
-
-                                    return (
-                                      <label key={`${question.id}-${flowValue}`} className="grid gap-2 text-sm">
-                                        <span className="text-slate-600">Se responder "{flowValue}", ir para</span>
-                                        <select
-                                          className="admin-select"
-                                          value={selectedTarget}
-                                          onChange={(event) =>
-                                            updateQuestion(index, (current) => ({
-                                              ...current,
-                                              flowRules: updateFlowRuleList(current.flowRules, flowValue, event.target.value),
-                                            }))
-                                          }
-                                        >
-                                          <option value="">Próxima pergunta normal</option>
-                                          <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
-                                          {nextQuestions.map((targetQuestion, targetIndex) => (
-                                            <option key={targetQuestion.id} value={targetQuestion.id}>
-                                              Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                    )
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="builder-soft-panel">
-                                  Preencha as opções da pergunta para liberar o fluxo condicional.
-                                </div>
-                              )}
-                            </div>
-                          ) : null}
-                        </div>
-                        </div>
-                      </article>
-                    )
-                  })()
-                ))}
-              </div>
-
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  onClick={addQuestion}
-                  className="admin-button border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
-                >
-                  <Plus className="h-4 w-4" />
-                  Adicionar pergunta
-                </button>
-              </div>
-            </>
-          )}
+          <SurveyVisualFlowEditor
+            primaryColor={form.primaryColor}
+            questions={form.questions}
+            flowLayout={form.flowLayout}
+            selectedQuestionId={selectedVisualQuestionId}
+            onSelectQuestion={setSelectedVisualQuestionId}
+            onAddQuestion={addQuestion}
+            onRemoveQuestion={removeQuestionById}
+            onUpdateQuestion={updateQuestionById}
+            onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
+          />
         </SectionCard>
       </div>
 
-      <div className="mt-6">
-        <div className="admin-alert mb-4 border-slate-200 bg-slate-50 text-slate-700">
-          Terminou de ajustar as perguntas? <strong>Salvar rascunho</strong> guarda a pesquisa sem publicar.{' '}
-          <strong>Salvar e publicar</strong> já coloca o link no ar.
-        </div>
-        <div className="flex flex-wrap justify-end gap-3">
-          {actionButtons}
-        </div>
-      </div>
     </AppShell>
   )
 }

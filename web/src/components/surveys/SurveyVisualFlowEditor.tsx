@@ -35,7 +35,9 @@ const questionTypeLabels = Object.fromEntries(questionTypes.map((item) => [item.
 >
 
 const NODE_WIDTH = 240
-const NODE_HEIGHT = 136
+const NODE_HEADER_HEIGHT = 88
+const NODE_FLOW_ROW_HEIGHT = 34
+const NODE_BOTTOM_PADDING = 14
 const START_X = 60
 const START_Y = 90
 
@@ -56,6 +58,35 @@ type EdgeLine = {
   to: { x: number; y: number }
   label: string
   tone: 'primary' | 'branch' | 'muted'
+}
+
+function getNodeFlowValues(question: Pick<VisualQuestion, 'type' | 'options'>) {
+  return supportsQuestionFlow(question.type) ? getQuestionFlowValues(question) : []
+}
+
+function getNodeHeight(question: Pick<VisualQuestion, 'type' | 'options'>) {
+  const rowCount = 1 + getNodeFlowValues(question).length
+  return NODE_HEADER_HEIGHT + rowCount * NODE_FLOW_ROW_HEIGHT + NODE_BOTTOM_PADDING
+}
+
+function getNodeAnchorY(
+  question: Pick<VisualQuestion, 'type' | 'options'>,
+  positionY: number,
+  rowIndex: number,
+) {
+  return positionY + NODE_HEADER_HEIGHT + rowIndex * NODE_FLOW_ROW_HEIGHT + NODE_FLOW_ROW_HEIGHT / 2
+}
+
+function getFlowTargetLabel(questions: VisualQuestion[], targetId?: string | null, fallback = 'Próxima pergunta') {
+  if (!targetId) {
+    return fallback
+  }
+
+  if (targetId === FLOW_END) {
+    return 'Encerrar pesquisa'
+  }
+
+  return questions.find((question) => question.id === targetId)?.title?.trim() || 'Pergunta sem título'
 }
 
 function buildPath(from: { x: number; y: number }, to: { x: number; y: number }) {
@@ -104,16 +135,22 @@ export function SurveyVisualFlowEditor({
 
   const nodes = useMemo(
     () =>
-      questions.map((question, index) => ({
-        ...question,
-        position: getNodePosition(flowLayout, question.id, index),
-      })),
+      questions.map((question, index) => {
+        const flowValues = getNodeFlowValues(question)
+
+        return {
+          ...question,
+          flowValues,
+          height: getNodeHeight(question),
+          position: getNodePosition(flowLayout, question.id, index),
+        }
+      }),
     [flowLayout, questions],
   )
 
   const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) ?? questions[0] ?? null
   const maxX = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH), START_X + NODE_WIDTH + 80)
-  const maxY = Math.max(...nodes.map((node) => node.position.y + NODE_HEIGHT), START_Y + NODE_HEIGHT + 280)
+  const maxY = Math.max(...nodes.map((node) => node.position.y + node.height), START_Y + 420)
   const endPosition = {
     x: Math.max(START_X + 40, maxX - NODE_WIDTH),
     y: maxY - 24,
@@ -130,8 +167,8 @@ export function SurveyVisualFlowEditor({
       if (firstNode) {
         edgeLines.push({
           id: 'start-edge',
-          from: { x: START_X + NODE_WIDTH, y: START_Y + NODE_HEIGHT / 2 },
-          to: { x: firstNode.position.x, y: firstNode.position.y + NODE_HEIGHT / 2 },
+          from: { x: START_X + NODE_WIDTH, y: START_Y + 68 },
+          to: { x: firstNode.position.x, y: firstNode.position.y + firstNode.height / 2 },
           label: 'Início',
           tone: 'primary',
         })
@@ -149,21 +186,27 @@ export function SurveyVisualFlowEditor({
 
         edgeLines.push({
           id: `${node.id}-generic-${genericTargetId}`,
-          from: { x: node.position.x + NODE_WIDTH, y: node.position.y + 44 },
+          from: {
+            x: node.position.x + NODE_WIDTH,
+            y: getNodeAnchorY(node, node.position.y, 0),
+          },
           to:
             genericTargetId === FLOW_END
-              ? { x: endPosition.x, y: endPosition.y + NODE_HEIGHT / 2 }
+              ? { x: endPosition.x, y: endPosition.y + 68 }
               : {
                   x: targetNode?.position.x ?? endPosition.x,
-                  y: (targetNode?.position.y ?? endPosition.y) + NODE_HEIGHT / 2,
+                  y:
+                    targetNode
+                      ? targetNode.position.y + targetNode.height / 2
+                      : endPosition.y + 68,
                 },
           label: genericRule ? 'Após responder' : 'Sequência',
           tone: genericRule ? 'primary' : 'muted',
         })
       }
 
-      if (supportsQuestionFlow(node.type)) {
-        getQuestionFlowValues(node).forEach((flowValue) => {
+      if (node.flowValues.length) {
+        node.flowValues.forEach((flowValue, flowIndex) => {
           const specificRule = node.flowRules.find((rule) => rule.value === flowValue)
 
           if (!specificRule) {
@@ -174,13 +217,19 @@ export function SurveyVisualFlowEditor({
 
           edgeLines.push({
             id: `${node.id}-${flowValue}-${specificRule.nextQuestionId}`,
-            from: { x: node.position.x + NODE_WIDTH, y: node.position.y + 92 },
+            from: {
+              x: node.position.x + NODE_WIDTH,
+              y: getNodeAnchorY(node, node.position.y, flowIndex + 1),
+            },
             to:
               specificRule.nextQuestionId === FLOW_END
-                ? { x: endPosition.x, y: endPosition.y + NODE_HEIGHT / 2 }
+                ? { x: endPosition.x, y: endPosition.y + 68 }
                 : {
                     x: targetNode?.position.x ?? endPosition.x,
-                    y: (targetNode?.position.y ?? endPosition.y) + NODE_HEIGHT / 2,
+                    y:
+                      targetNode
+                        ? targetNode.position.y + targetNode.height / 2
+                        : endPosition.y + 68,
                   },
             label: flowValue,
             tone: 'branch',
@@ -236,14 +285,11 @@ export function SurveyVisualFlowEditor({
   }, [draggingNode, flowLayout, onUpdateFlowLayout])
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_340px]">
+    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
       <div className="admin-panel grid gap-4 p-4">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Blocos</p>
-          <h3 className="mt-1 text-sm font-semibold text-slate-950">Construtor visual</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            Arraste as perguntas no canvas, conecte saídas e ajuste o fluxo sem sair da tela.
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Fluxo</p>
+          <h3 className="mt-1 text-sm font-semibold text-slate-950">Canvas principal</h3>
         </div>
 
         <div className="grid gap-3">
@@ -257,33 +303,21 @@ export function SurveyVisualFlowEditor({
             className="admin-button justify-center"
           >
             <Move className="h-4 w-4" />
-            Organizar automaticamente
+            Organizar
           </button>
         </div>
 
-        <div className="grid gap-3">
-          <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Como funciona</p>
-            <ul className="mt-2 space-y-2 text-sm text-slate-600">
-              <li>Arraste os blocos para mudar a sequência visual.</li>
-              <li>Na lateral direita você edita a pergunta selecionada.</li>
-              <li>Conexões específicas aparecem para `Sim/Não` e `Única escolha`.</li>
-            </ul>
-          </div>
-
-          <div className="rounded-[16px] border border-slate-200 bg-white p-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Resumo</p>
-            <div className="mt-3 grid gap-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Perguntas</span>
-                <strong className="text-slate-950">{questions.length}</strong>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Com desvio</span>
-                <strong className="text-slate-950">
-                  {questions.filter((question) => question.flowRules.length > 0).length}
-                </strong>
-              </div>
+        <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+          <div className="grid gap-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Perguntas</span>
+              <strong className="text-slate-950">{questions.length}</strong>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Desvios</span>
+              <strong className="text-slate-950">
+                {questions.filter((question) => question.flowRules.length > 0).length}
+              </strong>
             </div>
           </div>
         </div>
@@ -293,14 +327,17 @@ export function SurveyVisualFlowEditor({
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Canvas</p>
-            <p className="mt-1 text-sm text-slate-600">O fluxo principal segue de cima para baixo. Os desvios aparecem nas conexões.</p>
+            <p className="mt-1 text-sm text-slate-600">Arraste os blocos e organize a sequência.</p>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
             Arraste os blocos
           </span>
         </div>
 
-        <div ref={canvasRef} className="relative h-[780px] overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px]">
+        <div
+          ref={canvasRef}
+          className="relative h-[calc(100vh-260px)] min-h-[720px] overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px]"
+        >
           <div className="relative" style={{ width: Math.max(1100, maxX + 140), height: Math.max(760, maxY + 200) }}>
             <svg className="pointer-events-none absolute inset-0 h-full w-full">
               <defs>
@@ -369,42 +406,45 @@ export function SurveyVisualFlowEditor({
               const isSelected = selectedQuestion?.id === node.id
 
               return (
-                <button
+                <div
                   key={node.id}
-                  type="button"
                   onClick={() => onSelectQuestion(node.id)}
-                  onMouseDown={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect()
-                    setDraggingNode({
-                      id: node.id,
-                      offsetX: event.clientX - rect.left,
-                      offsetY: event.clientY - rect.top,
-                    })
-                  }}
-                  className={`absolute flex h-[136px] w-[240px] flex-col justify-between rounded-[20px] border bg-white p-4 text-left shadow-sm transition ${
+                  className={`absolute flex min-h-[136px] w-[240px] flex-col justify-between rounded-[20px] border bg-white p-4 text-left shadow-sm transition ${
                     isSelected ? 'border-sky-400 ring-2 ring-sky-100' : 'border-slate-200 hover:border-sky-200'
                   }`}
-                  style={{ left: node.position.x, top: node.position.y }}
+                  style={{ left: node.position.x, top: node.position.y, height: node.height }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        Pergunta
-                      </p>
-                      <p className="mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
-                        {node.title || 'Sem título ainda'}
-                      </p>
-                    </div>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                      {questionTypeLabels[node.type]}
-                    </span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSelectQuestion(node.id)}
+                    onMouseDown={(event) => {
+                      const rect = event.currentTarget.parentElement?.getBoundingClientRect()
+                      if (!rect) {
+                        return
+                      }
 
-                  <div className="grid gap-2">
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <GitBranch className="h-3.5 w-3.5" />
-                      {node.flowRules.length ? `${node.flowRules.length} regra(s) de fluxo` : 'Segue em sequência normal'}
+                      setDraggingNode({
+                        id: node.id,
+                        offsetX: event.clientX - rect.left,
+                        offsetY: event.clientY - rect.top,
+                      })
+                    }}
+                    className="grid gap-2 text-left"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          Pergunta
+                        </p>
+                        <p className="mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
+                          {node.title || 'Sem título ainda'}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                        {questionTypeLabels[node.type]}
+                      </span>
                     </div>
+
                     <div className="flex items-center justify-between text-xs text-slate-500">
                       <span>{node.required ? 'Obrigatória' : 'Opcional'}</span>
                       <span className="inline-flex items-center gap-1">
@@ -412,8 +452,100 @@ export function SurveyVisualFlowEditor({
                         Arraste
                       </span>
                     </div>
+                  </button>
+
+                  <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
+                    <div className="grid gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="min-w-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                          Padrão
+                        </span>
+                        {isSelected ? (
+                          <select
+                            className="admin-select h-8 min-w-0 flex-1 py-1 text-xs"
+                            value={node.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) =>
+                              onUpdateQuestion(node.id, (current) => ({
+                                ...current,
+                                flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
+                              }))
+                            }
+                          >
+                            <option value="">Próxima pergunta</option>
+                            <option value={FLOW_END}>Encerrar pesquisa</option>
+                            {orderedQuestionIds
+                              .filter((id) => id !== node.id)
+                              .map((questionId) => {
+                                const targetQuestion = questions.find((question) => question.id === questionId)
+                                return (
+                                  <option key={`${node.id}-default-${questionId}`} value={questionId}>
+                                    {targetQuestion?.title || 'Pergunta sem título'}
+                                  </option>
+                                )
+                              })}
+                          </select>
+                        ) : (
+                          <span className="truncate text-xs text-slate-600">
+                            {getFlowTargetLabel(
+                              questions,
+                              node.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId,
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {node.flowValues.map((flowValue) => (
+                      <div key={`${node.id}-${flowValue}`} className="flex items-center gap-2">
+                        <span className="min-w-0 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700">
+                          {flowValue}
+                        </span>
+                        {isSelected ? (
+                          <select
+                            className="admin-select h-8 min-w-0 flex-1 py-1 text-xs"
+                            value={node.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId ?? ''}
+                            onMouseDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                            onChange={(event) =>
+                              onUpdateQuestion(node.id, (current) => ({
+                                ...current,
+                                flowRules: updateFlowRuleList(current.flowRules, flowValue, event.target.value),
+                              }))
+                            }
+                          >
+                            <option value="">Usar saída padrão</option>
+                            <option value={FLOW_END}>Encerrar pesquisa</option>
+                            {orderedQuestionIds
+                              .filter((id) => id !== node.id)
+                              .map((questionId) => {
+                                const targetQuestion = questions.find((question) => question.id === questionId)
+                                return (
+                                  <option key={`${node.id}-${flowValue}-${questionId}`} value={questionId}>
+                                    {targetQuestion?.title || 'Pergunta sem título'}
+                                  </option>
+                                )
+                              })}
+                          </select>
+                        ) : (
+                          <span className="truncate text-xs text-slate-600">
+                            {getFlowTargetLabel(
+                              questions,
+                              node.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId,
+                              'Usa saída padrão',
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+
+                    <div className="flex items-center gap-2 pt-1 text-xs text-slate-500">
+                      <GitBranch className="h-3.5 w-3.5" />
+                      {node.flowRules.length ? `${node.flowRules.length} regra(s) ativas` : 'Sem desvio extra'}
+                    </div>
                   </div>
-                </button>
+                </div>
               )
             })}
 
