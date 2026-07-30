@@ -29,6 +29,8 @@ type RewardRetryTask = {
   url: string
 }
 
+type RewardRedemptionMethod = 'address_only' | 'address_and_whatsapp'
+
 const maxRealRewards = 3
 const maxWheelOptions = 6
 const neutralLabels = [
@@ -109,6 +111,10 @@ function getFrequencySummary(item: RewardFormItem) {
   return `Entrega aproximada de 1 prêmio a cada ${item.customFrequencyTarget || 100} participações.`
 }
 
+function getRedemptionMethodLabel(method: RewardRedemptionMethod) {
+  return method === 'address_only' ? 'Somente retirada no endereço' : 'Retirada no endereço + WhatsApp'
+}
+
 export function RewardsPage() {
   const { id } = useParams()
   const queryClient = useQueryClient()
@@ -118,6 +124,7 @@ export function RewardsPage() {
     expiresAt: '',
     pickupAddress: '',
     contactWhatsApp: '',
+    redemptionMethod: 'address_and_whatsapp' as RewardRedemptionMethod,
     retryUnlockEnabled: false,
     retryUnlockTasks: [] as RewardRetryTask[],
   })
@@ -142,6 +149,7 @@ export function RewardsPage() {
           expires_at?: string | null
           pickup_address?: string | null
           contact_whatsapp?: string | null
+          redemption_method?: RewardRedemptionMethod | null
           retry_unlock_enabled?: boolean
           retry_unlock_tasks_json?: RewardRetryTask[]
           spin_count?: number
@@ -188,6 +196,7 @@ export function RewardsPage() {
         expiresAt: rewardsQuery.data.campaign.expires_at ?? '',
         pickupAddress: rewardsQuery.data.campaign.pickup_address ?? '',
         contactWhatsApp: rewardsQuery.data.campaign.contact_whatsapp ?? '',
+        redemptionMethod: rewardsQuery.data.campaign.redemption_method ?? 'address_and_whatsapp',
         retryUnlockEnabled: rewardsQuery.data.campaign.retry_unlock_enabled ?? false,
         retryUnlockTasks: rewardsQuery.data.campaign.retry_unlock_tasks_json ?? [],
       })
@@ -197,6 +206,7 @@ export function RewardsPage() {
         expiresAt: '',
         pickupAddress: '',
         contactWhatsApp: '',
+        redemptionMethod: 'address_and_whatsapp',
         retryUnlockEnabled: false,
         retryUnlockTasks: [],
       })
@@ -390,7 +400,15 @@ export function RewardsPage() {
         ['Opções na roleta', `${maxWheelOptions} no total`],
         ['Validade', rewardsQuery.data.campaign.expires_at ? rewardsQuery.data.campaign.expires_at : 'Sem validade'],
         ['Retirada', rewardsQuery.data.campaign.pickup_address ? rewardsQuery.data.campaign.pickup_address : 'Não informada'],
-        ['WhatsApp de resgate', rewardsQuery.data.campaign.contact_whatsapp ? rewardsQuery.data.campaign.contact_whatsapp : 'Não informado'],
+        ['Resgate no comprovante', getRedemptionMethodLabel(rewardsQuery.data.campaign.redemption_method ?? 'address_and_whatsapp')],
+        [
+          'WhatsApp de resgate',
+          rewardsQuery.data.campaign.redemption_method === 'address_only'
+            ? 'Desligado nesta campanha'
+            : rewardsQuery.data.campaign.contact_whatsapp
+              ? rewardsQuery.data.campaign.contact_whatsapp
+              : 'Não informado',
+        ],
         ['Chance extra', rewardsQuery.data.campaign.retry_unlock_enabled ? `${rewardsQuery.data.campaign.retry_unlock_tasks_json?.length ?? 0} tarefa(s)` : 'Desligada'],
       ]
     : [
@@ -399,7 +417,15 @@ export function RewardsPage() {
         ['Opções na roleta', `${maxWheelOptions} no total`],
         ['Validade', campaignForm.expiresAt ? campaignForm.expiresAt : 'Sem validade'],
         ['Retirada', campaignForm.pickupAddress ? campaignForm.pickupAddress : 'Não informada'],
-        ['WhatsApp de resgate', campaignForm.contactWhatsApp ? campaignForm.contactWhatsApp : 'Não informado'],
+        ['Resgate no comprovante', getRedemptionMethodLabel(campaignForm.redemptionMethod)],
+        [
+          'WhatsApp de resgate',
+          campaignForm.redemptionMethod === 'address_only'
+            ? 'Desligado nesta campanha'
+            : campaignForm.contactWhatsApp
+              ? campaignForm.contactWhatsApp
+              : 'Não informado',
+        ],
         ['Chance extra', campaignForm.retryUnlockEnabled ? `${campaignForm.retryUnlockTasks.length} tarefa(s)` : 'Desligada'],
       ]
 
@@ -644,21 +670,70 @@ export function RewardsPage() {
               />
             </label>
 
-            <label className="admin-subcard grid gap-2 text-sm text-slate-700">
-              <span className="text-slate-600">WhatsApp para resgate do prêmio</span>
-              <input
-                type="tel"
-                className="admin-input"
-                placeholder="Ex: 5511999998888 ou (11) 99999-8888"
-                value={campaignForm.contactWhatsApp}
-                onChange={(event) =>
-                  setCampaignForm((current) => ({
-                    ...current,
-                    contactWhatsApp: event.target.value,
-                  }))
-                }
-              />
-            </label>
+            <div className="admin-subcard grid gap-3 text-sm text-slate-700">
+              <span className="text-slate-600">Como o comprovante vai orientar o resgate</span>
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <input
+                  type="radio"
+                  name="reward-redemption-method"
+                  checked={campaignForm.redemptionMethod === 'address_and_whatsapp'}
+                  onChange={() =>
+                    setCampaignForm((current) => ({
+                      ...current,
+                      redemptionMethod: 'address_and_whatsapp',
+                    }))
+                  }
+                />
+                <span>
+                  <strong className="block text-slate-900">Permitir WhatsApp da loja</strong>
+                  <span className="text-xs text-slate-500">
+                    O comprovante mostra o endereço e também libera o botão de resgate pelo WhatsApp.
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <input
+                  type="radio"
+                  name="reward-redemption-method"
+                  checked={campaignForm.redemptionMethod === 'address_only'}
+                  onChange={() =>
+                    setCampaignForm((current) => ({
+                      ...current,
+                      redemptionMethod: 'address_only',
+                    }))
+                  }
+                />
+                <span>
+                  <strong className="block text-slate-900">Somente retirada presencial</strong>
+                  <span className="text-xs text-slate-500">
+                    O comprovante informa apenas o endereço da loja para retirada.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {campaignForm.redemptionMethod === 'address_and_whatsapp' ? (
+              <label className="admin-subcard grid gap-2 text-sm text-slate-700">
+                <span className="text-slate-600">WhatsApp para resgate do prêmio</span>
+                <input
+                  type="tel"
+                  className="admin-input"
+                  placeholder="Ex: 5511999998888 ou (11) 99999-8888"
+                  value={campaignForm.contactWhatsApp}
+                  onChange={(event) =>
+                    setCampaignForm((current) => ({
+                      ...current,
+                      contactWhatsApp: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ) : (
+              <div className="admin-subcard text-sm text-slate-600">
+                O comprovante vai mostrar apenas o endereço de retirada configurado acima.
+              </div>
+            )}
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
               <label className="flex items-center gap-3">

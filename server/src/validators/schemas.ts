@@ -180,9 +180,26 @@ export const rewardCampaignSchema = z.object({
   expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
   pickupAddress: z.string().max(500).optional().or(z.literal('')),
   contactWhatsApp: z.string().max(30).optional().or(z.literal('')),
+  redemptionMethod: z.enum(['address_only', 'address_and_whatsapp']).default('address_and_whatsapp'),
   retryUnlockEnabled: z.boolean().default(false),
   retryUnlockTasks: z.array(rewardRetryTaskSchema).max(2, 'Cadastre no máximo 2 tarefas para liberar mais uma chance.').default([]),
 }).superRefine((value, context) => {
+  if (!value.pickupAddress?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['pickupAddress'],
+      message: 'Informe o endereço de retirada para aparecer no comprovante do prêmio.',
+    })
+  }
+
+  if (value.redemptionMethod === 'address_and_whatsapp' && !value.contactWhatsApp?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['contactWhatsApp'],
+      message: 'Informe o WhatsApp da loja para liberar o botão de resgate pelo comprovante.',
+    })
+  }
+
   if (value.retryUnlockEnabled && value.retryUnlockTasks.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

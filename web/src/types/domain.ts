@@ -91,6 +91,7 @@ export interface SurveyItem {
   rewardRetryUnlockEnabled?: boolean
   rewardPickupAddress?: string
   rewardContactWhatsApp?: string
+  rewardRedemptionMethod?: 'address_only' | 'address_and_whatsapp'
   rewardRetryTasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'

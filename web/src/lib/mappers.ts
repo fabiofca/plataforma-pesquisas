@@ -129,6 +129,7 @@ export function mapApiSurvey(item: {
   reward_retry_unlock_enabled?: boolean
   reward_pickup_address?: string | null
   reward_contact_whatsapp?: string | null
+  reward_redemption_method?: 'address_only' | 'address_and_whatsapp' | null
   reward_retry_tasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'
@@ -163,6 +164,7 @@ export function mapApiSurvey(item: {
     rewardRetryUnlockEnabled: item.reward_retry_unlock_enabled ?? false,
     rewardPickupAddress: item.reward_pickup_address ?? undefined,
     rewardContactWhatsApp: item.reward_contact_whatsapp ?? undefined,
+    rewardRedemptionMethod: item.reward_redemption_method ?? undefined,
     rewardRetryTasks: item.reward_retry_tasks ?? [],
   }
 }

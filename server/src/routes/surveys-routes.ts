@@ -155,7 +155,9 @@ async function loadSurveyPreview(surveyId: string) {
     closing_message: string | null
     reward_enabled: boolean
     reward_campaign_id: string | null
+    reward_pickup_address: string | null
     reward_contact_whatsapp: string | null
+    reward_redemption_method: 'address_only' | 'address_and_whatsapp' | null
     reward_retry_unlock_enabled: boolean | null
     reward_retry_unlock_tasks_json:
       | Array<{
@@ -179,7 +181,9 @@ async function loadSurveyPreview(surveyId: string) {
         surveys.closing_message,
         surveys.reward_enabled,
         reward_campaigns.id as reward_campaign_id,
+        reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
+        reward_campaigns.redemption_method as reward_redemption_method,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys

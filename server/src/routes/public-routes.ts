@@ -35,6 +35,7 @@ type PublicSurveyRecord = {
   reward_campaign_expires_at: string | null
   reward_pickup_address: string | null
   reward_contact_whatsapp: string | null
+  reward_redemption_method: 'address_only' | 'address_and_whatsapp' | null
   reward_retry_unlock_enabled: boolean | null
   reward_retry_unlock_tasks_json:
     | Array<{
@@ -58,8 +59,10 @@ type RewardSessionResult = {
   item?: string
   landedLabel?: string
   couponCode?: string
+  awardedAt?: string
   pickupAddress?: string
   contactWhatsApp?: string
+  redemptionMethod?: 'address_only' | 'address_and_whatsapp'
   retryAvailable?: boolean
   retryUnlocked?: boolean
   retryTasks?: RewardRetryTask[]
@@ -106,6 +109,7 @@ async function getSurveyBySlug(slug: string) {
         cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
+        reward_campaigns.redemption_method as reward_redemption_method,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -198,6 +202,7 @@ async function getSurveyPreviewById(surveyId: string) {
         cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
+        reward_campaigns.redemption_method as reward_redemption_method,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -392,18 +397,22 @@ async function getRewardSessionState(
     outcome_type: 'win' | 'no_prize'
     wheel_label: string
     coupon_code: string | null
+    awarded_at: string | null
     item_title: string | null
     pickup_address: string | null
     contact_whatsapp: string | null
+    redemption_method: 'address_only' | 'address_and_whatsapp' | null
   }>(
     `select
         reward_spin_logs.spin_attempt,
         reward_spin_logs.outcome_type,
         reward_spin_logs.wheel_label,
         reward_wins.coupon_code,
+        cast(reward_wins.awarded_at as text) as awarded_at,
         reward_items.title as item_title,
         reward_campaigns.pickup_address,
-        reward_campaigns.contact_whatsapp
+        reward_campaigns.contact_whatsapp,
+        reward_campaigns.redemption_method
      from reward_spin_logs
      left join reward_wins on reward_wins.response_id = reward_spin_logs.response_id
      left join reward_items on reward_items.id = reward_spin_logs.reward_item_id
@@ -439,8 +448,10 @@ async function getRewardSessionState(
       item: latestSpin.item_title ?? undefined,
       landedLabel: latestSpin.wheel_label,
       couponCode: latestSpin.coupon_code ?? undefined,
+      awardedAt: latestSpin.awarded_at ?? undefined,
       pickupAddress: latestSpin.pickup_address ?? undefined,
       contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+      redemptionMethod: latestSpin.redemption_method ?? undefined,
       retryAvailable: false,
       retryUnlocked: false,
       retryTasks,
@@ -474,6 +485,7 @@ async function getRewardSessionState(
         landedLabel: latestSpin.wheel_label,
         pickupAddress: latestSpin.pickup_address ?? undefined,
         contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+        redemptionMethod: latestSpin.redemption_method ?? undefined,
         retryAvailable: false,
         retryUnlocked: false,
         retryTasks,
@@ -827,18 +839,22 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       outcome_type: 'win' | 'no_prize'
       wheel_label: string
       coupon_code: string | null
+      awarded_at: string | null
       item_title: string | null
       pickup_address: string | null
       contact_whatsapp: string | null
+      redemption_method: 'address_only' | 'address_and_whatsapp' | null
     }>(
       `select
           reward_spin_logs.spin_attempt,
           reward_spin_logs.outcome_type,
           reward_spin_logs.wheel_label,
           reward_wins.coupon_code,
+          cast(reward_wins.awarded_at as text) as awarded_at,
           reward_items.title as item_title,
           reward_campaigns.pickup_address,
-          reward_campaigns.contact_whatsapp
+          reward_campaigns.contact_whatsapp,
+          reward_campaigns.redemption_method
        from reward_spin_logs
        left join reward_wins on reward_wins.response_id = reward_spin_logs.response_id
        left join reward_items on reward_items.id = reward_spin_logs.reward_item_id
@@ -866,8 +882,10 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         item: latestSpin?.item_title ?? undefined,
         landedLabel: latestSpin?.wheel_label,
         couponCode: latestSpin?.coupon_code ?? undefined,
+        awardedAt: latestSpin?.awarded_at ?? undefined,
         pickupAddress: latestSpin?.pickup_address ?? undefined,
         contactWhatsApp: latestSpin?.contact_whatsapp ?? undefined,
+        redemptionMethod: latestSpin?.redemption_method ?? undefined,
         spinAttempt: latestSpin?.spin_attempt ?? maxAttempts,
         maxAttempts,
         finalAttempt: true,
@@ -886,8 +904,10 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         item: latestSpin.item_title ?? undefined,
         landedLabel: latestSpin.wheel_label,
         couponCode: latestSpin.coupon_code ?? undefined,
+        awardedAt: latestSpin.awarded_at ?? undefined,
         pickupAddress: latestSpin.pickup_address ?? undefined,
         contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+        redemptionMethod: latestSpin.redemption_method ?? undefined,
         spinAttempt: latestSpin.spin_attempt,
         maxAttempts,
         finalAttempt: true,
@@ -921,6 +941,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           landedLabel: latestSpin.wheel_label,
           pickupAddress: latestSpin.pickup_address ?? undefined,
           contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
+          redemptionMethod: latestSpin.redemption_method ?? undefined,
           spinAttempt: latestSpin.spin_attempt,
           maxAttempts,
           finalAttempt: latestSpin.spin_attempt >= maxAttempts,
@@ -1236,9 +1257,10 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
        where id = $1`,
       [campaign.id, currentSpin],
     )
-    await client.query(
+    const rewardWinInsert = await client.query<{ awarded_at: string }>(
       `insert into reward_wins (id, campaign_id, reward_item_id, response_id, coupon_code)
-       values ($1, $2, $3, $4, $5)`,
+       values ($1, $2, $3, $4, $5)
+       returning cast(awarded_at as text) as awarded_at`,
       [makeId(), campaign.id, selectedItem.id, responseId, couponCode],
     )
     await client.query(
@@ -1264,8 +1286,10 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       item: selectedItem.title,
       landedLabel: selectedItem.title,
       couponCode,
+      awardedAt: rewardWinInsert.rows[0]?.awarded_at ?? new Date().toISOString(),
       pickupAddress: survey.reward_pickup_address ?? undefined,
       contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
+      redemptionMethod: survey.reward_redemption_method ?? undefined,
       spinAttempt: currentAttempt,
       maxAttempts,
       finalAttempt: true,

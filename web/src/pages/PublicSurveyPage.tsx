@@ -55,8 +55,10 @@ type RewardResultState = {
   item?: string
   landedLabel?: string
   couponCode?: string
+  awardedAt?: string
   pickupAddress?: string
   contactWhatsApp?: string
+  redemptionMethod?: 'address_only' | 'address_and_whatsapp'
   retryAvailable?: boolean
   retryUnlocked?: boolean
   retryTasks?: RewardRetryTask[]
@@ -92,6 +94,7 @@ type PersistedPublicSurveySession = {
 }
 
 const RETRY_TASK_MIN_WAIT_MS = 12000
+const REWARD_PROOF_VALIDITY_DAYS = 15
 const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
 
 function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
@@ -219,6 +222,46 @@ function fillRoundedRect(
   context.quadraticCurveTo(x, y, x + radius, y)
   context.closePath()
   context.fill()
+}
+
+function formatDatePtBr(value: string) {
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
+}
+
+function getRewardProofExpiresAt(awardedAt?: string) {
+  if (!awardedAt) {
+    return ''
+  }
+
+  const parsed = new Date(awardedAt)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return ''
+  }
+
+  parsed.setDate(parsed.getDate() + REWARD_PROOF_VALIDITY_DAYS)
+  return parsed.toISOString()
+}
+
+function getRewardRedemptionInstruction(input: {
+  redemptionMethod?: 'address_only' | 'address_and_whatsapp'
+  hasWhatsApp: boolean
+}) {
+  if (input.redemptionMethod === 'address_and_whatsapp' && input.hasWhatsApp) {
+    return 'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.'
+  }
+
+  return 'Salve o comprovante e apresente na loja dentro do prazo informado.'
 }
 
 function pickRandomItem<T>(items: T[]) {
@@ -365,6 +408,7 @@ export function PublicSurveyPage() {
           reward_enabled: boolean
           reward_pickup_address?: string | null
           reward_contact_whatsapp?: string | null
+          reward_redemption_method?: 'address_only' | 'address_and_whatsapp' | null
           reward_retry_unlock_enabled?: boolean
           reward_retry_tasks?: RewardRetryTask[]
           reward_items?: Array<{
@@ -418,8 +462,10 @@ export function PublicSurveyPage() {
         (rewardResult.won || (rewardResult.finalAttempt && !rewardResult.retryAvailable && !canSpinReward)),
     )
   const rewardPickupAddress = rewardResult?.pickupAddress ?? survey?.rewardPickupAddress
+  const rewardRedemptionMethod = rewardResult?.redemptionMethod ?? survey?.rewardRedemptionMethod ?? 'address_and_whatsapp'
+  const rewardProofExpiresAt = getRewardProofExpiresAt(rewardResult?.awardedAt)
   const rewardContactWhatsAppUrl =
-    rewardResult?.won && rewardResult.contactWhatsApp
+    rewardResult?.won && rewardRedemptionMethod === 'address_and_whatsapp' && rewardResult.contactWhatsApp
       ? buildRewardWhatsAppUrl({
           contactPhone: rewardResult.contactWhatsApp,
           participantName,
@@ -430,6 +476,10 @@ export function PublicSurveyPage() {
           surveyTitle: survey?.title,
         })
       : null
+  const rewardInstructionText = getRewardRedemptionInstruction({
+    redemptionMethod: rewardRedemptionMethod,
+    hasWhatsApp: Boolean(rewardContactWhatsAppUrl),
+  })
   const currentRetryTask = useMemo(() => {
     if (!rewardResult?.retryAvailable) {
       return null
@@ -923,7 +973,9 @@ export function PublicSurveyPage() {
           item: shouldWin ? selectedSegment.label : undefined,
           landedLabel: selectedSegment.label,
           couponCode: shouldWin ? makePreviewCouponCode() : undefined,
+          awardedAt: shouldWin ? new Date().toISOString() : undefined,
           contactWhatsApp: shouldWin ? survey.rewardContactWhatsApp : undefined,
+          redemptionMethod: shouldWin ? survey.rewardRedemptionMethod : undefined,
           retryAvailable: !shouldWin && !previewIsFinalAttempt && previewRemainingRetryTasks.length > 0,
           retryUnlocked: false,
           retryTasks: survey.rewardRetryTasks ?? [],
@@ -931,7 +983,7 @@ export function PublicSurveyPage() {
           spinAttempt: previewSpinAttempt,
           maxAttempts: previewMaxAttempts,
           finalAttempt: previewIsFinalAttempt,
-          pickupAddress: shouldWin ? 'Retire no balcão informado pela campanha.' : undefined,
+          pickupAddress: shouldWin ? survey.rewardPickupAddress ?? 'Retire no balcão informado pela campanha.' : undefined,
           message: shouldWin
             ? 'Parabéns! O resultado foi definido com segurança e o local de retirada já está indicado abaixo.'
             : previewIsFinalAttempt
@@ -947,8 +999,10 @@ export function PublicSurveyPage() {
         item?: string
         landedLabel?: string
         couponCode?: string
+        awardedAt?: string
         pickupAddress?: string
         contactWhatsApp?: string
+        redemptionMethod?: 'address_only' | 'address_and_whatsapp'
         retryAvailable?: boolean
         retryUnlocked?: boolean
         retryTasks?: RewardRetryTask[]
@@ -1204,7 +1258,7 @@ export function PublicSurveyPage() {
       }
 
       context.fillStyle = 'rgba(15,23,42,0.82)'
-      fillRoundedRect(context, 120, 500, 840, 140, 28)
+      fillRoundedRect(context, 120, 500, 840, 200, 28)
       context.fillStyle = '#cbd5e1'
       context.font = '600 24px Arial'
       context.fillText('Protocolo', 156, 554)
@@ -1212,20 +1266,25 @@ export function PublicSurveyPage() {
       context.font = '700 42px Arial'
       context.fillText(rewardResult.couponCode || 'Sem protocolo', 156, 610)
 
+      if (rewardProofExpiresAt) {
+        context.fillStyle = '#cbd5e1'
+        context.font = '600 24px Arial'
+        context.fillText('Validade para retirada', 156, 664)
+        context.fillStyle = '#fef3c7'
+        context.font = '700 34px Arial'
+        context.fillText(formatDatePtBr(rewardProofExpiresAt), 156, 714)
+      }
+
       context.fillStyle = 'rgba(15,23,42,0.72)'
-      fillRoundedRect(context, 120, 684, 840, 236, 28)
+      fillRoundedRect(context, 120, 744, 840, 236, 28)
       context.fillStyle = '#cbd5e1'
       context.font = '600 24px Arial'
-      context.fillText('Orientação para resgate', 156, 738)
+      context.fillText('Orientação para resgate', 156, 798)
 
       context.fillStyle = '#ffffff'
       context.font = '600 32px Arial'
-      const instructionLines = wrapCanvasText(
-        context,
-        'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.',
-        768,
-      )
-      let instructionY = 794
+      const instructionLines = wrapCanvasText(context, rewardInstructionText, 768)
+      let instructionY = 854
       for (const line of instructionLines.slice(0, 4)) {
         context.fillText(line, 156, instructionY)
         instructionY += 42
@@ -1233,15 +1292,15 @@ export function PublicSurveyPage() {
 
       if (rewardPickupAddress) {
         context.fillStyle = 'rgba(255,255,255,0.1)'
-        fillRoundedRect(context, 120, 964, 840, 188, 28)
+        fillRoundedRect(context, 120, 1024, 840, 188, 28)
         context.fillStyle = '#fef3c7'
         context.font = '600 24px Arial'
-        context.fillText('Endereço de retirada', 156, 1018)
+        context.fillText('Endereço de retirada', 156, 1078)
 
         context.fillStyle = '#ffffff'
         context.font = '500 30px Arial'
         const addressLines = wrapCanvasText(context, rewardPickupAddress, 768)
-        let addressY = 1072
+        let addressY = 1132
         for (const line of addressLines.slice(0, 4)) {
           context.fillText(line, 156, addressY)
           addressY += 38
@@ -1250,7 +1309,7 @@ export function PublicSurveyPage() {
 
       context.fillStyle = '#cbd5e1'
       context.font = '500 22px Arial'
-      context.fillText('Guarde esta imagem para apresentar no resgate do prêmio.', 120, 1224)
+      context.fillText('Guarde esta imagem e apresente no resgate do prêmio dentro do prazo.', 120, 1284)
 
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
@@ -1580,7 +1639,7 @@ export function PublicSurveyPage() {
                     : wheelSpinning
                       ? 'A roleta está girando.'
                       : rewardResult?.won
-                        ? 'Salve o comprovante ou resgate pelo WhatsApp.'
+                        ? rewardInstructionText
                         : 'Seu resultado já está disponível.'}
                 </p>
 
@@ -1620,10 +1679,17 @@ export function PublicSurveyPage() {
                           <p className="text-xs uppercase tracking-[0.22em] text-amber-700">Prêmio confirmado</p>
                           <p className="mt-3 text-base font-semibold text-slate-900 sm:text-lg">Você ganhou:</p>
                           <p className="mt-3 font-display text-3xl leading-tight text-slate-950 sm:text-4xl">{rewardResult.item}</p>
+                          <p className="mt-3 text-sm text-slate-600">{rewardInstructionText}</p>
                           {rewardResult.couponCode ? (
                             <div className="mt-5 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3">
                               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Protocolo</p>
                               <p className="mt-2 text-lg font-bold text-slate-950 sm:text-xl">{rewardResult.couponCode}</p>
+                            </div>
+                          ) : null}
+                          {rewardProofExpiresAt ? (
+                            <div className="mt-4 rounded-[18px] border border-amber-100 bg-amber-50 px-4 py-3 text-left">
+                              <p className="text-xs uppercase tracking-[0.18em] text-amber-700">Válido até</p>
+                              <p className="mt-2 text-sm font-semibold text-slate-900">{formatDatePtBr(rewardProofExpiresAt)}</p>
                             </div>
                           ) : null}
                           {rewardPickupAddress ? (

@@ -45,6 +45,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
     expires_at: string | null
     pickup_address: string | null
     contact_whatsapp: string | null
+    redemption_method: 'address_only' | 'address_and_whatsapp'
     retry_unlock_enabled: boolean
     retry_unlock_tasks_json:
       | Array<{
@@ -62,6 +63,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
         cast(expires_at as text) as expires_at,
         pickup_address,
         contact_whatsapp,
+        redemption_method,
         retry_unlock_enabled,
         retry_unlock_tasks_json,
         spin_count
@@ -207,8 +209,9 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
            expires_at = $4,
            pickup_address = $5,
            contact_whatsapp = $6,
-           retry_unlock_enabled = $7,
-           retry_unlock_tasks_json = $8::jsonb,
+           redemption_method = $7,
+           retry_unlock_enabled = $8,
+           retry_unlock_tasks_json = $9::jsonb,
            updated_at = now()
        where survey_id = $1`,
       [
@@ -218,6 +221,7 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         payload.expiresAt || null,
         payload.pickupAddress?.trim() || null,
         payload.contactWhatsApp?.trim() || null,
+        payload.redemptionMethod,
         payload.retryUnlockEnabled,
         JSON.stringify(payload.retryUnlockEnabled ? payload.retryUnlockTasks : []),
       ],
@@ -226,8 +230,8 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
     await query(
       `insert into reward_campaigns (
         id, survey_id, status, is_active, require_identification, distribution_mode, expires_at, pickup_address,
-        contact_whatsapp, retry_unlock_enabled, retry_unlock_tasks_json
-       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9::jsonb)`,
+        contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json
+       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10::jsonb)`,
       [
         makeId(),
         surveyId,
@@ -236,6 +240,7 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         payload.expiresAt || null,
         payload.pickupAddress?.trim() || null,
         payload.contactWhatsApp?.trim() || null,
+        payload.redemptionMethod,
         payload.retryUnlockEnabled,
         JSON.stringify(payload.retryUnlockEnabled ? payload.retryUnlockTasks : []),
       ],
