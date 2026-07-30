@@ -21,28 +21,28 @@ type PrizeWheelProps = {
 }
 
 const rewardSegmentPalette = [
-  { start: '#1f3a5f', end: '#2f527d', text: '#ffffff' },
-  { start: '#4c3b53', end: '#6b516f', text: '#ffffff' },
-  { start: '#24525b', end: '#326b76', text: '#ffffff' },
-  { start: '#6c5234', end: '#8b6a46', text: '#ffffff' },
-  { start: '#334155', end: '#475569', text: '#ffffff' },
-  { start: '#3f3f46', end: '#52525b', text: '#ffffff' },
+  { start: '#1d4ed8', end: '#2563eb', text: '#ffffff' },
+  { start: '#7c3aed', end: '#9333ea', text: '#ffffff' },
+  { start: '#be185d', end: '#db2777', text: '#ffffff' },
+  { start: '#c2410c', end: '#ea580c', text: '#ffffff' },
+  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
+  { start: '#0f172a', end: '#334155', text: '#ffffff' },
 ]
 
 const retrySegmentPalette = [
-  { start: '#0f4c81', end: '#2563eb', text: '#ffffff' },
-  { start: '#155e75', end: '#0f766e', text: '#ffffff' },
-  { start: '#6b7280', end: '#475569', text: '#ffffff' },
-  { start: '#0f766e', end: '#0ea5e9', text: '#ffffff' },
+  { start: '#0284c7', end: '#0ea5e9', text: '#ffffff' },
+  { start: '#0891b2', end: '#06b6d4', text: '#ffffff' },
+  { start: '#7c3aed', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#16a34a', end: '#22c55e', text: '#ffffff' },
 ]
 
 const neutralSegmentPalette = [
-  { start: '#e2e8f0', end: '#cbd5e1', text: '#1f2937' },
   { start: '#dbeafe', end: '#bfdbfe', text: '#1e3a8a' },
-  { start: '#f1f5f9', end: '#e2e8f0', text: '#334155' },
-  { start: '#ede9fe', end: '#ddd6fe', text: '#4c1d95' },
-  { start: '#fef3c7', end: '#fde68a', text: '#78350f' },
+  { start: '#ede9fe', end: '#ddd6fe', text: '#5b21b6' },
+  { start: '#fee2e2', end: '#fecaca', text: '#991b1b' },
+  { start: '#fef3c7', end: '#fde68a', text: '#92400e' },
   { start: '#dcfce7', end: '#bbf7d0', text: '#166534' },
+  { start: '#cffafe', end: '#a5f3fc', text: '#155e75' },
 ]
 
 const confettiPalette = ['#facc15', '#ff006e', '#4338ca', '#22c55e', '#38bdf8', '#ffffff']
@@ -320,7 +320,7 @@ export function PrizeWheel({
   return (
     <div className="mx-auto w-full" style={wheelWrapperStyle}>
       <div className="relative aspect-square">
-        <div className="absolute inset-[-4%] rounded-full bg-[radial-gradient(circle,_rgba(148,163,184,0.18)_0%,_rgba(255,255,255,0)_72%)] blur-xl" />
+        <div className="absolute inset-[-5%] rounded-full bg-[radial-gradient(circle,_rgba(96,165,250,0.18)_0%,_rgba(168,85,247,0.14)_30%,_rgba(244,114,182,0.12)_52%,_rgba(255,255,255,0)_76%)] blur-xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
             {confettiPieces.map((piece, index) => (
@@ -347,7 +347,8 @@ export function PrizeWheel({
         <div className={pointerTipClass} />
 
         <div className="absolute inset-0 rounded-full border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[0_22px_50px_rgba(15,23,42,0.10)]" />
-        <div className="absolute inset-[1.8%] rounded-full border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f1f5f9_100%)]" />
+        <div className="absolute inset-[1.2%] rounded-full bg-[linear-gradient(135deg,rgba(59,130,246,0.28)_0%,rgba(168,85,247,0.24)_32%,rgba(244,114,182,0.22)_62%,rgba(245,158,11,0.22)_100%)]" />
+        <div className="absolute inset-[2.1%] rounded-full border border-white/80 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]" />
         <div className="absolute inset-[4.2%] rounded-full bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.16)]" />
 
         <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[5px] border-white shadow-[0_18px_36px_rgba(15,23,42,0.14)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
@@ -451,8 +452,8 @@ export function PrizeWheel({
           <div className="absolute inset-[2%] rounded-full border border-slate-900/8" />
         </div>
 
-        <div className="absolute left-1/2 top-1/2 z-20 flex h-[56px] w-[56px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] text-center shadow-[0_10px_20px_rgba(15,23,42,0.10)] sm:h-[60px] sm:w-[60px]">
-          <div className="h-[18px] w-[18px] rounded-full bg-[linear-gradient(180deg,#cbd5e1_0%,#64748b_100%)] shadow-[inset_0_1px_2px_rgba(255,255,255,0.55)] sm:h-[20px] sm:w-[20px]" />
+        <div className="absolute left-1/2 top-1/2 z-20 flex h-[56px] w-[56px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-amber-200 bg-[radial-gradient(circle_at_30%_30%,#ffffff_0%,#fde68a_42%,#f59e0b_100%)] text-center shadow-[0_10px_20px_rgba(245,158,11,0.18)] sm:h-[60px] sm:w-[60px]">
+          <div className="h-[18px] w-[18px] rounded-full bg-[linear-gradient(180deg,#fff7ed_0%,#f59e0b_100%)] shadow-[inset_0_1px_2px_rgba(255,255,255,0.65)] sm:h-[20px] sm:w-[20px]" />
         </div>
       </div>
 
