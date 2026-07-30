@@ -20,6 +20,7 @@ type RewardFormItem = {
   wheelLabel: string
   description: string
   imageUrl: string
+  imagePreviewUrl?: string
   outcomeRole: RewardOutcomeRole
   showOnWheel: boolean
   sortOrder: number
@@ -57,6 +58,7 @@ function createDefaultRewardItem(): RewardFormItem {
     wheelLabel: 'Vale-compras',
     description: 'Exemplo de prêmio real para a roleta.',
     imageUrl: '',
+    imagePreviewUrl: '',
     outcomeRole: 'prize',
     showOnWheel: true,
     sortOrder: 1,
@@ -74,6 +76,7 @@ function createEmptyRewardItem(): RewardFormItem {
     wheelLabel: '',
     description: '',
     imageUrl: '',
+    imagePreviewUrl: '',
     outcomeRole: 'prize',
     showOnWheel: true,
     sortOrder: 1,
@@ -92,6 +95,16 @@ function createRewardRetryTask(index: number): RewardRetryTask {
     title: '',
     url: '',
   }
+}
+
+function revokeObjectPreview(url?: string) {
+  if (url?.startsWith('blob:')) {
+    URL.revokeObjectURL(url)
+  }
+}
+
+function getRewardImagePreview(item: Pick<RewardFormItem, 'imageUrl' | 'imagePreviewUrl'>) {
+  return item.imagePreviewUrl || item.imageUrl
 }
 
 function buildDemoWheelSegments(items: RewardFormItem[], wheelMode: RewardWheelMode) {
@@ -190,6 +203,8 @@ export function RewardsPage() {
   const { id } = useParams()
   const queryClient = useQueryClient()
   const demoTimeoutRef = useRef<number | null>(null)
+  const itemPreviewUrlsRef = useRef<string[]>([])
+  const newItemPreviewUrlRef = useRef('')
   const [campaignForm, setCampaignForm] = useState({
     status: 'active' as 'active' | 'paused' | 'ended',
     wheelMode: 'standard' as RewardWheelMode,
@@ -306,6 +321,7 @@ export function RewardsPage() {
       wheelLabel: item.wheel_label ?? item.title,
       description: item.description ?? '',
       imageUrl: item.image_url ?? '',
+      imagePreviewUrl: '',
       outcomeRole: item.outcome_role ?? 'prize',
       showOnWheel: item.show_on_wheel ?? true,
       sortOrder: item.sort_order ?? index + 1,
@@ -316,20 +332,33 @@ export function RewardsPage() {
       customFrequencyTarget: item.frequency_target,
     }))
 
-    setItemsForm(
-      mappedItems.length
+    setItemsForm((current) => {
+      current.forEach((item) => revokeObjectPreview(item.imagePreviewUrl))
+
+      return mappedItems.length
         ? mappedItems
         : (rewardsQuery.data?.campaign?.wheel_mode ?? 'standard') === 'advanced'
           ? []
-          : [createDefaultRewardItem()],
-    )
+          : [createDefaultRewardItem()]
+    })
   }, [rewardsQuery.data])
+
+  useEffect(() => {
+    itemPreviewUrlsRef.current = itemsForm.map((item) => item.imagePreviewUrl || '').filter(Boolean)
+  }, [itemsForm])
+
+  useEffect(() => {
+    newItemPreviewUrlRef.current = newRewardForm.imagePreviewUrl || ''
+  }, [newRewardForm.imagePreviewUrl])
 
   useEffect(() => {
     return () => {
       if (demoTimeoutRef.current) {
         window.clearTimeout(demoTimeoutRef.current)
       }
+
+      itemPreviewUrlsRef.current.forEach((url) => revokeObjectPreview(url))
+      revokeObjectPreview(newItemPreviewUrlRef.current)
     }
   }, [])
 
@@ -482,6 +511,7 @@ export function RewardsPage() {
   }
 
   function handleCloseCreateRewardModal() {
+    revokeObjectPreview(newRewardForm.imagePreviewUrl)
     setIsCreateRewardModalOpen(false)
     setNewRewardForm(createEmptyRewardItem())
   }
@@ -519,6 +549,7 @@ export function RewardsPage() {
 
   function removeLocalItem(index: number) {
     setItemsForm((current) => {
+      revokeObjectPreview(current[index]?.imagePreviewUrl)
       const nextItems = current.filter((_, currentIndex) => currentIndex !== index)
       if (nextItems.length) {
         return nextItems.map((item, itemIndex) => ({ ...item, sortOrder: itemIndex + 1 }))
@@ -534,12 +565,38 @@ export function RewardsPage() {
       return
     }
 
-    const currentImage = itemsForm[index]?.imageUrl ?? ''
-    const result = await uploadItemImageMutation.mutateAsync({ file, previousValue: currentImage })
+    const previewUrl = URL.createObjectURL(file)
 
     setItemsForm((current) =>
-      current.map((entry, entryIndex) => (entryIndex === index ? { ...entry, imageUrl: result.value } : entry)),
+      current.map((entry, entryIndex) => {
+        if (entryIndex !== index) {
+          return entry
+        }
+
+        revokeObjectPreview(entry.imagePreviewUrl)
+        return { ...entry, imagePreviewUrl: previewUrl }
+      }),
     )
+
+    try {
+      const currentImage = itemsForm[index]?.imageUrl ?? ''
+      const result = await uploadItemImageMutation.mutateAsync({ file, previousValue: currentImage })
+
+      setItemsForm((current) =>
+        current.map((entry, entryIndex) =>
+          entryIndex === index ? { ...entry, imageUrl: result.value, imagePreviewUrl: '' } : entry,
+        ),
+      )
+      revokeObjectPreview(previewUrl)
+    } catch (error) {
+      setItemsForm((current) =>
+        current.map((entry, entryIndex) =>
+          entryIndex === index ? { ...entry, imagePreviewUrl: '' } : entry,
+        ),
+      )
+      revokeObjectPreview(previewUrl)
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível enviar a imagem agora.')
+    }
   }
 
   async function handleNewItemImageChange(file?: File) {
@@ -547,8 +604,22 @@ export function RewardsPage() {
       return
     }
 
-    const result = await uploadItemImageMutation.mutateAsync({ file, previousValue: newRewardForm.imageUrl })
-    setNewRewardForm((current) => ({ ...current, imageUrl: result.value }))
+    const previewUrl = URL.createObjectURL(file)
+
+    setNewRewardForm((current) => {
+      revokeObjectPreview(current.imagePreviewUrl)
+      return { ...current, imagePreviewUrl: previewUrl }
+    })
+
+    try {
+      const result = await uploadItemImageMutation.mutateAsync({ file, previousValue: newRewardForm.imageUrl })
+      setNewRewardForm((current) => ({ ...current, imageUrl: result.value, imagePreviewUrl: '' }))
+      revokeObjectPreview(previewUrl)
+    } catch (error) {
+      setNewRewardForm((current) => ({ ...current, imagePreviewUrl: '' }))
+      revokeObjectPreview(previewUrl)
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível enviar a imagem agora.')
+    }
   }
 
   const activeRewardsCount = useMemo(
@@ -674,8 +745,12 @@ export function RewardsPage() {
 
           <div className="grid gap-2 text-sm">
             <span className="text-slate-600">Imagem do prêmio (opcional)</span>
-            {newRewardForm.imageUrl ? (
-              <img src={newRewardForm.imageUrl} alt={newRewardForm.title || 'Imagem do item'} className="h-32 w-full rounded-[16px] border border-slate-200 object-cover" />
+            {getRewardImagePreview(newRewardForm) ? (
+              <img
+                src={getRewardImagePreview(newRewardForm)}
+                alt={newRewardForm.title || 'Imagem do item'}
+                className="h-32 w-full rounded-[16px] border border-slate-200 object-cover"
+              />
             ) : (
               <div className="flex h-32 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
                 <ImagePlus className="mr-2 h-4 w-4" />
@@ -1420,8 +1495,12 @@ export function RewardsPage() {
 
                       <div className="grid gap-2">
                         <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem opcional</span>
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.title || 'Imagem do item'} className="h-36 w-full rounded-[16px] border border-slate-200 object-cover" />
+                        {getRewardImagePreview(item) ? (
+                          <img
+                            src={getRewardImagePreview(item)}
+                            alt={item.title || 'Imagem do item'}
+                            className="h-36 w-full rounded-[16px] border border-slate-200 object-cover"
+                          />
                         ) : (
                           <div className="flex h-24 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
                             <ImagePlus className="mr-2 h-4 w-4" />
