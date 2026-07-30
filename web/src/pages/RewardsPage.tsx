@@ -122,6 +122,7 @@ export function RewardsPage() {
   const [campaignForm, setCampaignForm] = useState({
     status: 'active' as 'active' | 'paused' | 'ended',
     expiresAt: '',
+    redemptionExpirationDays: 15,
     pickupAddress: '',
     contactWhatsApp: '',
     redemptionMethod: 'address_and_whatsapp' as RewardRedemptionMethod,
@@ -147,6 +148,7 @@ export function RewardsPage() {
           id?: string
           status: 'active' | 'paused' | 'ended'
           expires_at?: string | null
+          redemption_expiration_days?: number | null
           pickup_address?: string | null
           contact_whatsapp?: string | null
           redemption_method?: RewardRedemptionMethod | null
@@ -194,6 +196,7 @@ export function RewardsPage() {
       setCampaignForm({
         status: rewardsQuery.data.campaign.status,
         expiresAt: rewardsQuery.data.campaign.expires_at ?? '',
+        redemptionExpirationDays: rewardsQuery.data.campaign.redemption_expiration_days ?? 15,
         pickupAddress: rewardsQuery.data.campaign.pickup_address ?? '',
         contactWhatsApp: rewardsQuery.data.campaign.contact_whatsapp ?? '',
         redemptionMethod: rewardsQuery.data.campaign.redemption_method ?? 'address_and_whatsapp',
@@ -204,6 +207,7 @@ export function RewardsPage() {
       setCampaignForm({
         status: 'active',
         expiresAt: '',
+        redemptionExpirationDays: 15,
         pickupAddress: '',
         contactWhatsApp: '',
         redemptionMethod: 'address_and_whatsapp',
@@ -399,6 +403,7 @@ export function RewardsPage() {
         ['Prêmios ativos', `${activeRewardsCount}/${maxRealRewards}`],
         ['Opções na roleta', `${maxWheelOptions} no total`],
         ['Validade', rewardsQuery.data.campaign.expires_at ? rewardsQuery.data.campaign.expires_at : 'Sem validade'],
+        ['Prazo do comprovante', `${rewardsQuery.data.campaign.redemption_expiration_days ?? 15} dia(s)`],
         ['Retirada', rewardsQuery.data.campaign.pickup_address ? rewardsQuery.data.campaign.pickup_address : 'Não informada'],
         ['Resgate no comprovante', getRedemptionMethodLabel(rewardsQuery.data.campaign.redemption_method ?? 'address_and_whatsapp')],
         [
@@ -416,6 +421,7 @@ export function RewardsPage() {
         ['Prêmios ativos', `${activeRewardsCount}/${maxRealRewards}`],
         ['Opções na roleta', `${maxWheelOptions} no total`],
         ['Validade', campaignForm.expiresAt ? campaignForm.expiresAt : 'Sem validade'],
+        ['Prazo do comprovante', `${campaignForm.redemptionExpirationDays} dia(s)`],
         ['Retirada', campaignForm.pickupAddress ? campaignForm.pickupAddress : 'Não informada'],
         ['Resgate no comprovante', getRedemptionMethodLabel(campaignForm.redemptionMethod)],
         [
@@ -653,6 +659,29 @@ export function RewardsPage() {
                   }))
                 }
               />
+            </label>
+
+            <label className="admin-subcard grid gap-2 text-sm text-slate-700">
+              <span className="text-slate-600">Prazo do comprovante após a premiação</span>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  className="admin-input"
+                  value={campaignForm.redemptionExpirationDays}
+                  onChange={(event) =>
+                    setCampaignForm((current) => ({
+                      ...current,
+                      redemptionExpirationDays: Math.min(365, Math.max(1, Number(event.target.value) || 15)),
+                    }))
+                  }
+                />
+                <span className="text-sm text-slate-500">dias</span>
+              </div>
+              <span className="text-xs text-slate-500">
+                Padrão sugerido: 15 dias. Esse prazo será usado para definir a data limite no comprovante.
+              </span>
             </label>
 
             <label className="admin-subcard grid gap-2 text-sm text-slate-700">

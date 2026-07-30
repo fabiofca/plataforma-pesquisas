@@ -8,6 +8,7 @@ import { ensureSurveyAccess } from '../services/survey-access.js'
 import { reportPeriodSchema } from '../validators/schemas.js'
 
 export const reportsRouter = Router()
+const REWARD_EXPIRATION_DAYS = 15
 
 type ReportRange = {
   startDate: string
@@ -110,6 +111,8 @@ type RewardStockItem = {
 type RewardWinnerItem = {
   id: string
   awardedAt: string
+  expiresAt: string
+  isExpired: boolean
   deliveredAt: string | null
   name: string | null
   phone: string | null
@@ -184,6 +187,26 @@ function parsePositiveInt(value: unknown, fallback: number, { min = 1, max = Num
   }
 
   return Math.min(parsed, max)
+}
+
+function getRewardExpirationInfo(input: { awardedAt: string; redemptionExpiresAt: string | null }) {
+  const expirationDate = input.redemptionExpiresAt ? new Date(input.redemptionExpiresAt) : new Date(input.awardedAt)
+
+  if (Number.isNaN(expirationDate.getTime())) {
+    return {
+      expiresAt: input.redemptionExpiresAt ?? input.awardedAt,
+      isExpired: false,
+    }
+  }
+
+  if (!input.redemptionExpiresAt) {
+    expirationDate.setUTCDate(expirationDate.getUTCDate() + REWARD_EXPIRATION_DAYS)
+  }
+
+  return {
+    expiresAt: expirationDate.toISOString(),
+    isExpired: expirationDate.getTime() < Date.now(),
+  }
 }
 
 function getPaginationQuery(
@@ -1009,6 +1032,7 @@ async function getRewardReportData(
     query<{
       id: string
       awarded_at: string
+      redemption_expires_at: string | null
       delivered_at: string | null
       participant_name: string | null
       participant_phone: string | null
@@ -1021,6 +1045,7 @@ async function getRewardReportData(
       `select
           reward_wins.id,
           cast(reward_wins.awarded_at as text) as awarded_at,
+          cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
           cast(reward_wins.delivered_at as text) as delivered_at,
           survey_responses.participant_name,
           survey_responses.participant_phone,
@@ -1067,18 +1092,27 @@ async function getRewardReportData(
       remainingStock: Math.max(item.quantity_total - item.quantity_awarded, 0),
       winsInRange: Number(item.wins_in_range ?? 0),
     })),
-    winners: winnersResult.rows.map((row) => ({
-      id: row.id,
-      awardedAt: row.awarded_at,
-      deliveredAt: row.delivered_at,
-      name: row.participant_name,
-      phone: row.participant_phone,
-      email: row.participant_email,
-      itemTitle: row.item_title,
-      couponCode: row.coupon_code,
-      redemptionStatus: row.redemption_status,
-      redemptionNotes: row.redemption_notes,
-    })),
+    winners: winnersResult.rows.map((row) => {
+      const expiration = getRewardExpirationInfo({
+        awardedAt: row.awarded_at,
+        redemptionExpiresAt: row.redemption_expires_at,
+      })
+
+      return {
+        id: row.id,
+        awardedAt: row.awarded_at,
+        expiresAt: expiration.expiresAt,
+        isExpired: expiration.isExpired,
+        deliveredAt: row.delivered_at,
+        name: row.participant_name,
+        phone: row.participant_phone,
+        email: row.participant_email,
+        itemTitle: row.item_title,
+        couponCode: row.coupon_code,
+        redemptionStatus: row.redemption_status,
+        redemptionNotes: row.redemption_notes,
+      }
+    }),
     winnersPagination: options?.includeAllWinners
       ? {
           page: 1,
@@ -1317,11 +1351,13 @@ function buildCsvReportContent(input: {
   if (input.rewards.winners.length) {
     lines.push([])
     lines.push(['Ganhadores'])
-    lines.push(['Data', 'Nome', 'WhatsApp', 'E-mail', 'Prêmio', 'Protocolo', 'Status', 'Retirado em', 'Observações'])
+    lines.push(['Data', 'Validade', 'Expirado', 'Nome', 'WhatsApp', 'E-mail', 'Prêmio', 'Protocolo', 'Status', 'Retirado em', 'Observações'])
 
     for (const winner of input.rewards.winners) {
       lines.push([
         winner.awardedAt,
+        winner.expiresAt,
+        winner.isExpired ? 'Sim' : 'Não',
         winner.name ?? '',
         winner.phone ?? '',
         winner.email ?? '',
@@ -1533,6 +1569,8 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
       .fontSize(10)
       .fillColor('#111827')
       .text(`Data: ${winner.awardedAt}`)
+      .text(`Validade: ${winner.expiresAt}`)
+      .text(`Expirado: ${winner.isExpired ? 'Sim' : 'Não'}`)
       .text(`Nome: ${winner.name ?? '-'}`)
       .text(`WhatsApp: ${winner.phone ?? '-'}`)
       .text(`E-mail: ${winner.email ?? '-'}`)

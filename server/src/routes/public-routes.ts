@@ -36,6 +36,7 @@ type PublicSurveyRecord = {
   reward_pickup_address: string | null
   reward_contact_whatsapp: string | null
   reward_redemption_method: 'address_only' | 'address_and_whatsapp' | null
+  reward_redemption_expiration_days: number | null
   reward_retry_unlock_enabled: boolean | null
   reward_retry_unlock_tasks_json:
     | Array<{
@@ -60,6 +61,7 @@ type RewardSessionResult = {
   landedLabel?: string
   couponCode?: string
   awardedAt?: string
+  redemptionExpiresAt?: string
   pickupAddress?: string
   contactWhatsApp?: string
   redemptionMethod?: 'address_only' | 'address_and_whatsapp'
@@ -110,6 +112,7 @@ async function getSurveyBySlug(slug: string) {
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
         reward_campaigns.redemption_method as reward_redemption_method,
+        reward_campaigns.redemption_expiration_days as reward_redemption_expiration_days,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -203,6 +206,7 @@ async function getSurveyPreviewById(surveyId: string) {
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
         reward_campaigns.redemption_method as reward_redemption_method,
+        reward_campaigns.redemption_expiration_days as reward_redemption_expiration_days,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -398,6 +402,7 @@ async function getRewardSessionState(
     wheel_label: string
     coupon_code: string | null
     awarded_at: string | null
+    redemption_expires_at: string | null
     item_title: string | null
     pickup_address: string | null
     contact_whatsapp: string | null
@@ -409,6 +414,7 @@ async function getRewardSessionState(
         reward_spin_logs.wheel_label,
         reward_wins.coupon_code,
         cast(reward_wins.awarded_at as text) as awarded_at,
+        cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
         reward_items.title as item_title,
         reward_campaigns.pickup_address,
         reward_campaigns.contact_whatsapp,
@@ -449,6 +455,7 @@ async function getRewardSessionState(
       landedLabel: latestSpin.wheel_label,
       couponCode: latestSpin.coupon_code ?? undefined,
       awardedAt: latestSpin.awarded_at ?? undefined,
+      redemptionExpiresAt: latestSpin.redemption_expires_at ?? undefined,
       pickupAddress: latestSpin.pickup_address ?? undefined,
       contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
       redemptionMethod: latestSpin.redemption_method ?? undefined,
@@ -840,6 +847,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       wheel_label: string
       coupon_code: string | null
       awarded_at: string | null
+      redemption_expires_at: string | null
       item_title: string | null
       pickup_address: string | null
       contact_whatsapp: string | null
@@ -851,6 +859,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           reward_spin_logs.wheel_label,
           reward_wins.coupon_code,
           cast(reward_wins.awarded_at as text) as awarded_at,
+          cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
           reward_items.title as item_title,
           reward_campaigns.pickup_address,
           reward_campaigns.contact_whatsapp,
@@ -883,6 +892,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         landedLabel: latestSpin?.wheel_label,
         couponCode: latestSpin?.coupon_code ?? undefined,
         awardedAt: latestSpin?.awarded_at ?? undefined,
+        redemptionExpiresAt: latestSpin?.redemption_expires_at ?? undefined,
         pickupAddress: latestSpin?.pickup_address ?? undefined,
         contactWhatsApp: latestSpin?.contact_whatsapp ?? undefined,
         redemptionMethod: latestSpin?.redemption_method ?? undefined,
@@ -905,6 +915,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         landedLabel: latestSpin.wheel_label,
         couponCode: latestSpin.coupon_code ?? undefined,
         awardedAt: latestSpin.awarded_at ?? undefined,
+        redemptionExpiresAt: latestSpin.redemption_expires_at ?? undefined,
         pickupAddress: latestSpin.pickup_address ?? undefined,
         contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
         redemptionMethod: latestSpin.redemption_method ?? undefined,
@@ -1257,11 +1268,13 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
        where id = $1`,
       [campaign.id, currentSpin],
     )
-    const rewardWinInsert = await client.query<{ awarded_at: string }>(
-      `insert into reward_wins (id, campaign_id, reward_item_id, response_id, coupon_code)
-       values ($1, $2, $3, $4, $5)
-       returning cast(awarded_at as text) as awarded_at`,
-      [makeId(), campaign.id, selectedItem.id, responseId, couponCode],
+    const rewardExpirationDays = Math.max(1, survey.reward_redemption_expiration_days ?? 15)
+    const rewardWinInsert = await client.query<{ awarded_at: string; redemption_expires_at: string }>(
+      `insert into reward_wins (id, campaign_id, reward_item_id, response_id, coupon_code, redemption_expires_at)
+       values ($1, $2, $3, $4, $5, now() + make_interval(days => $6))
+       returning cast(awarded_at as text) as awarded_at,
+                 cast(redemption_expires_at as text) as redemption_expires_at`,
+      [makeId(), campaign.id, selectedItem.id, responseId, couponCode, rewardExpirationDays],
     )
     await client.query(
       `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
@@ -1287,6 +1300,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       landedLabel: selectedItem.title,
       couponCode,
       awardedAt: rewardWinInsert.rows[0]?.awarded_at ?? new Date().toISOString(),
+      redemptionExpiresAt: rewardWinInsert.rows[0]?.redemption_expires_at ?? undefined,
       pickupAddress: survey.reward_pickup_address ?? undefined,
       contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
       redemptionMethod: survey.reward_redemption_method ?? undefined,

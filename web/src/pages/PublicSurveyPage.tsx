@@ -56,6 +56,7 @@ type RewardResultState = {
   landedLabel?: string
   couponCode?: string
   awardedAt?: string
+  redemptionExpiresAt?: string
   pickupAddress?: string
   contactWhatsApp?: string
   redemptionMethod?: 'address_only' | 'address_and_whatsapp'
@@ -94,7 +95,6 @@ type PersistedPublicSurveySession = {
 }
 
 const RETRY_TASK_MIN_WAIT_MS = 12000
-const REWARD_PROOF_VALIDITY_DAYS = 15
 const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
 
 function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
@@ -238,18 +238,26 @@ function formatDatePtBr(value: string) {
   }).format(parsed)
 }
 
-function getRewardProofExpiresAt(awardedAt?: string) {
-  if (!awardedAt) {
+function getRewardProofExpiresAt(input: {
+  awardedAt?: string
+  redemptionExpiresAt?: string
+  redemptionExpirationDays?: number
+}) {
+  if (input.redemptionExpiresAt) {
+    return input.redemptionExpiresAt
+  }
+
+  if (!input.awardedAt) {
     return ''
   }
 
-  const parsed = new Date(awardedAt)
+  const parsed = new Date(input.awardedAt)
 
   if (Number.isNaN(parsed.getTime())) {
     return ''
   }
 
-  parsed.setDate(parsed.getDate() + REWARD_PROOF_VALIDITY_DAYS)
+  parsed.setDate(parsed.getDate() + Math.max(1, input.redemptionExpirationDays ?? 15))
   return parsed.toISOString()
 }
 
@@ -409,6 +417,7 @@ export function PublicSurveyPage() {
           reward_pickup_address?: string | null
           reward_contact_whatsapp?: string | null
           reward_redemption_method?: 'address_only' | 'address_and_whatsapp' | null
+          reward_redemption_expiration_days?: number | null
           reward_retry_unlock_enabled?: boolean
           reward_retry_tasks?: RewardRetryTask[]
           reward_items?: Array<{
@@ -463,7 +472,11 @@ export function PublicSurveyPage() {
     )
   const rewardPickupAddress = rewardResult?.pickupAddress ?? survey?.rewardPickupAddress
   const rewardRedemptionMethod = rewardResult?.redemptionMethod ?? survey?.rewardRedemptionMethod ?? 'address_and_whatsapp'
-  const rewardProofExpiresAt = getRewardProofExpiresAt(rewardResult?.awardedAt)
+  const rewardProofExpiresAt = getRewardProofExpiresAt({
+    awardedAt: rewardResult?.awardedAt,
+    redemptionExpiresAt: rewardResult?.redemptionExpiresAt,
+    redemptionExpirationDays: survey?.rewardRedemptionExpirationDays,
+  })
   const rewardContactWhatsAppUrl =
     rewardResult?.won && rewardRedemptionMethod === 'address_and_whatsapp' && rewardResult.contactWhatsApp
       ? buildRewardWhatsAppUrl({
@@ -974,6 +987,12 @@ export function PublicSurveyPage() {
           landedLabel: selectedSegment.label,
           couponCode: shouldWin ? makePreviewCouponCode() : undefined,
           awardedAt: shouldWin ? new Date().toISOString() : undefined,
+          redemptionExpiresAt: shouldWin
+            ? getRewardProofExpiresAt({
+                awardedAt: new Date().toISOString(),
+                redemptionExpirationDays: survey.rewardRedemptionExpirationDays,
+              })
+            : undefined,
           contactWhatsApp: shouldWin ? survey.rewardContactWhatsApp : undefined,
           redemptionMethod: shouldWin ? survey.rewardRedemptionMethod : undefined,
           retryAvailable: !shouldWin && !previewIsFinalAttempt && previewRemainingRetryTasks.length > 0,
@@ -1000,6 +1019,7 @@ export function PublicSurveyPage() {
         landedLabel?: string
         couponCode?: string
         awardedAt?: string
+        redemptionExpiresAt?: string
         pickupAddress?: string
         contactWhatsApp?: string
         redemptionMethod?: 'address_only' | 'address_and_whatsapp'
@@ -1219,36 +1239,39 @@ export function PublicSurveyPage() {
       }
 
       const background = context.createLinearGradient(0, 0, 0, canvas.height)
-      background.addColorStop(0, '#1e293b')
-      background.addColorStop(0.45, '#0f172a')
-      background.addColorStop(1, '#020617')
+      background.addColorStop(0, '#ffffff')
+      background.addColorStop(0.58, '#f8fafc')
+      background.addColorStop(1, '#fefce8')
       context.fillStyle = background
       context.fillRect(0, 0, canvas.width, canvas.height)
 
-      const glow = context.createRadialGradient(220, 180, 40, 220, 180, 460)
-      glow.addColorStop(0, 'rgba(250,204,21,0.34)')
-      glow.addColorStop(0.4, 'rgba(236,72,153,0.18)')
-      glow.addColorStop(1, 'rgba(15,23,42,0)')
+      const glow = context.createRadialGradient(220, 180, 40, 220, 180, 520)
+      glow.addColorStop(0, 'rgba(59,130,246,0.10)')
+      glow.addColorStop(0.42, 'rgba(245,158,11,0.12)')
+      glow.addColorStop(1, 'rgba(255,255,255,0)')
       context.fillStyle = glow
       context.fillRect(0, 0, canvas.width, canvas.height)
 
-      context.fillStyle = 'rgba(255,255,255,0.08)'
+      context.fillStyle = '#ffffff'
       fillRoundedRect(context, 72, 72, 936, 1206, 36)
 
-      context.fillStyle = '#fef3c7'
+      context.fillStyle = '#e2e8f0'
+      fillRoundedRect(context, 72, 72, 936, 12, 6)
+
+      context.fillStyle = '#92400e'
       context.font = '700 28px Arial'
       context.fillText('Comprovante do prêmio', 120, 152)
 
       const brandName = survey?.brandName || survey?.title || 'Campanha'
-      context.fillStyle = '#e2e8f0'
+      context.fillStyle = '#64748b'
       context.font = '500 24px Arial'
       context.fillText(brandName, 120, 196)
 
-      context.fillStyle = '#86efac'
+      context.fillStyle = '#15803d'
       context.font = '700 36px Arial'
       context.fillText(`Parabéns, ${participantName || 'participante'}!`, 120, 280)
 
-      context.fillStyle = '#ffffff'
+      context.fillStyle = '#0f172a'
       context.font = '700 66px Arial'
       const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 840)
       let currentY = 370
@@ -1257,31 +1280,31 @@ export function PublicSurveyPage() {
         currentY += 78
       }
 
-      context.fillStyle = 'rgba(15,23,42,0.82)'
+      context.fillStyle = '#f8fafc'
       fillRoundedRect(context, 120, 500, 840, 200, 28)
-      context.fillStyle = '#cbd5e1'
+      context.fillStyle = '#64748b'
       context.font = '600 24px Arial'
       context.fillText('Protocolo', 156, 554)
-      context.fillStyle = '#ffffff'
+      context.fillStyle = '#0f172a'
       context.font = '700 42px Arial'
       context.fillText(rewardResult.couponCode || 'Sem protocolo', 156, 610)
 
       if (rewardProofExpiresAt) {
-        context.fillStyle = '#cbd5e1'
+        context.fillStyle = '#64748b'
         context.font = '600 24px Arial'
         context.fillText('Validade para retirada', 156, 664)
-        context.fillStyle = '#fef3c7'
+        context.fillStyle = '#b45309'
         context.font = '700 34px Arial'
         context.fillText(formatDatePtBr(rewardProofExpiresAt), 156, 714)
       }
 
-      context.fillStyle = 'rgba(15,23,42,0.72)'
+      context.fillStyle = '#f8fafc'
       fillRoundedRect(context, 120, 744, 840, 236, 28)
-      context.fillStyle = '#cbd5e1'
+      context.fillStyle = '#64748b'
       context.font = '600 24px Arial'
       context.fillText('Orientação para resgate', 156, 798)
 
-      context.fillStyle = '#ffffff'
+      context.fillStyle = '#0f172a'
       context.font = '600 32px Arial'
       const instructionLines = wrapCanvasText(context, rewardInstructionText, 768)
       let instructionY = 854
@@ -1291,13 +1314,13 @@ export function PublicSurveyPage() {
       }
 
       if (rewardPickupAddress) {
-        context.fillStyle = 'rgba(255,255,255,0.1)'
+        context.fillStyle = '#fff7ed'
         fillRoundedRect(context, 120, 1024, 840, 188, 28)
-        context.fillStyle = '#fef3c7'
+        context.fillStyle = '#9a3412'
         context.font = '600 24px Arial'
         context.fillText('Endereço de retirada', 156, 1078)
 
-        context.fillStyle = '#ffffff'
+        context.fillStyle = '#0f172a'
         context.font = '500 30px Arial'
         const addressLines = wrapCanvasText(context, rewardPickupAddress, 768)
         let addressY = 1132
@@ -1307,7 +1330,7 @@ export function PublicSurveyPage() {
         }
       }
 
-      context.fillStyle = '#cbd5e1'
+      context.fillStyle = '#64748b'
       context.font = '500 22px Arial'
       context.fillText('Guarde esta imagem e apresente no resgate do prêmio dentro do prazo.', 120, 1284)
 

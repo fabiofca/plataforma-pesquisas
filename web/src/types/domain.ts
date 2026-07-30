@@ -92,6 +92,7 @@ export interface SurveyItem {
   rewardPickupAddress?: string
   rewardContactWhatsApp?: string
   rewardRedemptionMethod?: 'address_only' | 'address_and_whatsapp'
+  rewardRedemptionExpirationDays?: number
   rewardRetryTasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'

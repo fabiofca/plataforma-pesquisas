@@ -21,28 +21,28 @@ type PrizeWheelProps = {
 }
 
 const rewardSegmentPalette = [
-  { start: '#1d4ed8', end: '#2563eb', text: '#ffffff' },
-  { start: '#7c3aed', end: '#9333ea', text: '#ffffff' },
-  { start: '#be185d', end: '#db2777', text: '#ffffff' },
-  { start: '#c2410c', end: '#ea580c', text: '#ffffff' },
-  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
-  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+  { start: '#2563eb', end: '#2563eb', text: '#ffffff' },
+  { start: '#8b5cf6', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#db2777', end: '#db2777', text: '#ffffff' },
+  { start: '#ea580c', end: '#ea580c', text: '#ffffff' },
+  { start: '#14b8a6', end: '#14b8a6', text: '#ffffff' },
+  { start: '#334155', end: '#334155', text: '#ffffff' },
 ]
 
 const retrySegmentPalette = [
-  { start: '#0284c7', end: '#0ea5e9', text: '#ffffff' },
-  { start: '#0891b2', end: '#06b6d4', text: '#ffffff' },
-  { start: '#7c3aed', end: '#8b5cf6', text: '#ffffff' },
-  { start: '#16a34a', end: '#22c55e', text: '#ffffff' },
+  { start: '#0ea5e9', end: '#0ea5e9', text: '#ffffff' },
+  { start: '#06b6d4', end: '#06b6d4', text: '#ffffff' },
+  { start: '#8b5cf6', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#22c55e', end: '#22c55e', text: '#ffffff' },
 ]
 
 const neutralSegmentPalette = [
-  { start: '#dbeafe', end: '#bfdbfe', text: '#1e3a8a' },
-  { start: '#ede9fe', end: '#ddd6fe', text: '#5b21b6' },
-  { start: '#fee2e2', end: '#fecaca', text: '#991b1b' },
-  { start: '#fef3c7', end: '#fde68a', text: '#92400e' },
-  { start: '#dcfce7', end: '#bbf7d0', text: '#166534' },
-  { start: '#cffafe', end: '#a5f3fc', text: '#155e75' },
+  { start: '#bfdbfe', end: '#bfdbfe', text: '#1e3a8a' },
+  { start: '#ddd6fe', end: '#ddd6fe', text: '#5b21b6' },
+  { start: '#fecaca', end: '#fecaca', text: '#991b1b' },
+  { start: '#fde68a', end: '#fde68a', text: '#92400e' },
+  { start: '#bbf7d0', end: '#bbf7d0', text: '#166534' },
+  { start: '#a5f3fc', end: '#a5f3fc', text: '#155e75' },
 ]
 
 const confettiPalette = ['#facc15', '#ff006e', '#4338ca', '#22c55e', '#38bdf8', '#ffffff']
@@ -136,23 +136,22 @@ function buildWheelGradient(segments: PrizeWheelSegment[], primaryColor: string)
   return segments
     .map((segment, index) => {
       const start = index * angle
-      const mid = start + angle * 0.48
       const end = start + angle
       const colors = getSegmentColors(segment, index, primaryColor)
-      return `${colors.start} ${start}deg, ${colors.end} ${mid}deg, ${colors.start} ${end}deg`
+      return `${colors.start} ${start}deg ${end}deg`
     })
     .join(', ')
 }
 
 function buildWheelOverlay(segments: PrizeWheelSegment[]) {
-  const dividerWidth = Math.max(0.9, Math.min(1.8, 7 / segments.length))
+  const dividerWidth = Math.max(1.2, Math.min(2.2, 8 / segments.length))
   const angle = 360 / segments.length
 
   return segments
     .map((_, index) => {
       const start = index * angle
       const end = start + dividerWidth
-      return `rgba(255,255,255,0.22) ${start}deg ${end}deg`
+      return `rgba(255,255,255,0.56) ${start}deg ${end}deg`
     })
     .join(', ')
 }
@@ -354,8 +353,6 @@ export function PrizeWheel({
         <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[5px] border-white shadow-[0_18px_36px_rgba(15,23,42,0.14)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
           style={{
             background: `
-              radial-gradient(circle at 50% 18%, rgba(255,255,255,0.28), transparent 24%),
-              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.06), transparent 70%),
               conic-gradient(${dividerOverlay}),
               conic-gradient(${gradient})
             `,

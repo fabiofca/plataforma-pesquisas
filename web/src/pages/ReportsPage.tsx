@@ -110,6 +110,8 @@ type RewardsResponse = {
   winners: Array<{
     id: string
     awardedAt: string
+    expiresAt: string
+    isExpired: boolean
     deliveredAt?: string | null
     name?: string | null
     phone?: string | null
@@ -161,6 +163,44 @@ function getQuestionTypeLabel(type: string) {
   }
 
   return labels[type] ?? type
+}
+
+function formatDateTimeLabel(value?: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
 }
 
 function buildReportParams(
@@ -1073,13 +1113,21 @@ export function ReportsPage() {
                           : winner.redemptionStatus === 'cancelled'
                             ? 'border-rose-200 bg-rose-50 text-rose-700'
                             : 'bg-white'
+                      const expirationLabel = winner.isExpired ? 'Expirado' : 'No prazo'
+                      const expirationClass = winner.isExpired
+                        ? 'border-rose-200 bg-rose-50 text-rose-700'
+                        : 'border-sky-200 bg-sky-50 text-sky-700'
 
                       return (
                         <article key={winner.id} className="report-table-row">
                           <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_220px]">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
-                              <p className="truncate text-xs text-slate-500">{winner.awardedAt}</p>
+                              <p className="truncate text-xs text-slate-500">{formatDateTimeLabel(winner.awardedAt)}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <span className={`admin-badge ${expirationClass}`}>{expirationLabel}</span>
+                                <span className="text-xs text-slate-500">Válido até {formatDateLabel(winner.expiresAt)}</span>
+                              </div>
                             </div>
                             <div className="min-w-0 text-sm text-slate-700">{winner.phone || '-'}</div>
                             <div className="min-w-0 truncate text-sm text-slate-700">{winner.email || '-'}</div>
@@ -1088,7 +1136,7 @@ export function ReportsPage() {
                             <div>
                               <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
                             </div>
-                            <div className="text-sm text-slate-500">{winner.deliveredAt || '-'}</div>
+                            <div className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</div>
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
@@ -1122,6 +1170,10 @@ export function ReportsPage() {
                               <div className="min-w-0">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Ganhador</p>
                                 <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <span className={`admin-badge ${expirationClass}`}>{expirationLabel}</span>
+                                  <span className="text-xs text-slate-500">Válido até {formatDateLabel(winner.expiresAt)}</span>
+                                </div>
                               </div>
                               <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
                             </div>
@@ -1145,12 +1197,21 @@ export function ReportsPage() {
                               </div>
                               <div>
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Premiação</p>
-                                <p className="text-sm text-slate-500">{winner.awardedAt}</p>
+                                <p className="text-sm text-slate-500">{formatDateTimeLabel(winner.awardedAt)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Validade</p>
+                                <p className="text-sm text-slate-700">{formatDateLabel(winner.expiresAt)}</p>
                               </div>
                               <div>
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
-                                <p className="text-sm text-slate-500">{winner.deliveredAt || '-'}</p>
+                                <p className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</p>
                               </div>
+                            </div>
+
+                            <div>
+                              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prazo</p>
+                              <span className={`admin-badge mt-1 ${expirationClass}`}>{expirationLabel}</span>
                             </div>
 
                             <div className="flex flex-wrap gap-2">

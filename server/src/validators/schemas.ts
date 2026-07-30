@@ -178,6 +178,7 @@ export const planAssignmentSchema = z.object({
 export const rewardCampaignSchema = z.object({
   status: z.enum(['active', 'paused', 'ended']).default('active'),
   expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  redemptionExpirationDays: z.number().int().min(1).max(365).default(15),
   pickupAddress: z.string().max(500).optional().or(z.literal('')),
   contactWhatsApp: z.string().max(30).optional().or(z.literal('')),
   redemptionMethod: z.enum(['address_only', 'address_and_whatsapp']).default('address_and_whatsapp'),
