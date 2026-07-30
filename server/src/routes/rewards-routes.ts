@@ -420,7 +420,7 @@ rewardsRouter.post('/surveys/:id/rewards/items', async (request: AuthenticatedRe
       odds_weight,
       is_visual_only,
       grants_extra_spin
-     ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $13, 0, $14, 1, $15, false)`,
+     ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $13, $14, 0, $15, 1, $16, false)`,
     [
       makeId(),
       campaign.id,
