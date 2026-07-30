@@ -10,6 +10,9 @@ import {
   createNextReleaseSpin,
   getAvailableRewardItems,
   getFrequencyTarget,
+  isAdvancedPrizeItem,
+  isWheelVisibleItem,
+  selectAdvancedNoPrizeItem,
   selectDueRewardItem,
   selectNoPrizeLabel,
   type RewardDrawItem,
@@ -32,6 +35,8 @@ type PublicSurveyRecord = {
   reward_enabled: boolean
   reward_campaign_id: string | null
   reward_campaign_status: 'active' | 'paused' | 'ended' | null
+  reward_wheel_mode: 'standard' | 'advanced' | null
+  reward_final_spin_mode: 'allow_no_prize' | 'guaranteed_prize' | null
   reward_campaign_expires_at: string | null
   reward_pickup_address: string | null
   reward_contact_whatsapp: string | null
@@ -59,6 +64,8 @@ type RewardSessionResult = {
   won: boolean
   item?: string
   landedLabel?: string
+  landedSegmentId?: string
+  itemImageUrl?: string
   couponCode?: string
   awardedAt?: string
   redemptionExpiresAt?: string
@@ -73,6 +80,18 @@ type RewardSessionResult = {
   maxAttempts?: number
   finalAttempt?: boolean
   message?: string
+}
+
+type RewardPreviewItemRecord = {
+  id: string
+  title: string
+  wheel_label: string | null
+  image_url: string | null
+  outcome_role: 'prize' | 'no_prize' | 'showcase'
+  show_on_wheel: boolean
+  sort_order: number
+  quantity_total: number
+  quantity_awarded: number
 }
 
 function normalizeRewardRetryTasks(value: PublicSurveyRecord['reward_retry_unlock_tasks_json']): RewardRetryTask[] {
@@ -93,6 +112,53 @@ function normalizeRewardRetryTasks(value: PublicSurveyRecord['reward_retry_unloc
     .slice(0, 2)
 }
 
+async function loadRewardPreviewItems(input: {
+  campaignId: string
+  wheelMode: 'standard' | 'advanced'
+}) {
+  if (input.wheelMode === 'advanced') {
+    return query<RewardPreviewItemRecord>(
+      `select
+          id,
+          title,
+          wheel_label,
+          image_url,
+          outcome_role,
+          show_on_wheel,
+          sort_order,
+          quantity_total,
+          quantity_awarded
+       from reward_items
+       where campaign_id = $1
+         and is_active = true
+         and show_on_wheel = true
+       order by sort_order asc, created_at asc
+       limit 12`,
+      [input.campaignId],
+    )
+  }
+
+  return query<RewardPreviewItemRecord>(
+    `select
+        id,
+        title,
+        wheel_label,
+        image_url,
+        outcome_role,
+        show_on_wheel,
+        sort_order,
+        quantity_total,
+        quantity_awarded
+     from reward_items
+     where campaign_id = $1
+       and is_active = true
+       and quantity_total > quantity_awarded
+     order by sort_order asc, created_at asc
+     limit $2`,
+    [input.campaignId, MAX_REAL_REWARDS],
+  )
+}
+
 async function getSurveyBySlug(slug: string) {
   const surveyResult = await query<PublicSurveyRecord>(
     `select
@@ -108,6 +174,8 @@ async function getSurveyBySlug(slug: string) {
         surveys.reward_enabled,
         reward_campaigns.id as reward_campaign_id,
         reward_campaigns.status as reward_campaign_status,
+        reward_campaigns.wheel_mode as reward_wheel_mode,
+        reward_campaigns.final_spin_mode as reward_final_spin_mode,
         cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
@@ -161,16 +229,10 @@ async function getSurveyBySlug(slug: string) {
 
   const rewardItems =
     survey.reward_enabled && survey.reward_campaign_id
-      ? await query<{ id: string; title: string }>(
-          `select reward_items.id, reward_items.title
-           from reward_items
-           where reward_items.campaign_id = $1
-             and reward_items.is_active = true
-             and reward_items.quantity_total > reward_items.quantity_awarded
-           order by reward_items.created_at asc
-           limit $2`,
-          [survey.reward_campaign_id, MAX_REAL_REWARDS],
-        )
+      ? await loadRewardPreviewItems({
+          campaignId: survey.reward_campaign_id,
+          wheelMode: survey.reward_wheel_mode ?? 'standard',
+        })
       : { rows: [] }
 
   return {
@@ -202,6 +264,8 @@ async function getSurveyPreviewById(surveyId: string) {
         surveys.reward_enabled,
         reward_campaigns.id as reward_campaign_id,
         reward_campaigns.status as reward_campaign_status,
+        reward_campaigns.wheel_mode as reward_wheel_mode,
+        reward_campaigns.final_spin_mode as reward_final_spin_mode,
         cast(reward_campaigns.expires_at as text) as reward_campaign_expires_at,
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
@@ -252,16 +316,10 @@ async function getSurveyPreviewById(surveyId: string) {
 
   const rewardItems =
     survey.reward_enabled && survey.reward_campaign_id
-      ? await query<{ id: string; title: string }>(
-          `select reward_items.id, reward_items.title
-           from reward_items
-           where reward_items.campaign_id = $1
-             and reward_items.is_active = true
-             and reward_items.quantity_total > reward_items.quantity_awarded
-           order by reward_items.created_at asc
-           limit $2`,
-          [survey.reward_campaign_id, MAX_REAL_REWARDS],
-        )
+      ? await loadRewardPreviewItems({
+          campaignId: survey.reward_campaign_id,
+          wheelMode: survey.reward_wheel_mode ?? 'standard',
+        })
       : { rows: [] }
 
   return {
@@ -333,6 +391,15 @@ async function countExistingRewardParticipants(input: {
 }
 
 function normalizeExistingItemSchedule(item: RewardDrawItem, currentSpin: number) {
+  if (!isAdvancedPrizeItem(item)) {
+    return {
+      ...item,
+      frequency_target: item.frequency_target > 0 ? item.frequency_target : 60,
+      min_gap_spins: 0,
+      next_release_spin: 0,
+    }
+  }
+
   const target = getFrequencyTarget(item.frequency_mode, item.frequency_target)
 
   return {
@@ -341,6 +408,25 @@ function normalizeExistingItemSchedule(item: RewardDrawItem, currentSpin: number
     min_gap_spins: item.min_gap_spins > 0 ? item.min_gap_spins : calculateMinimumGapSpins(target),
     next_release_spin:
       item.next_release_spin > 0 ? item.next_release_spin : createNextReleaseSpin(currentSpin, target),
+  }
+}
+
+function buildAdvancedNoPrizeOutcome(
+  items: RewardDrawItem[],
+  fallbackLabel?: string,
+) {
+  const selectedItem = selectAdvancedNoPrizeItem(items)
+
+  if (selectedItem) {
+    return {
+      rewardItemId: selectedItem.id,
+      wheelLabel: selectedItem.wheel_label ?? selectedItem.title,
+    }
+  }
+
+  return {
+    rewardItemId: null,
+    wheelLabel: fallbackLabel ?? selectNoPrizeLabel(),
   }
 }
 
@@ -399,11 +485,13 @@ async function getRewardSessionState(
   const spinLogsResult = await client.query<{
     spin_attempt: number
     outcome_type: 'win' | 'no_prize'
+    reward_item_id: string | null
     wheel_label: string
     coupon_code: string | null
     awarded_at: string | null
     redemption_expires_at: string | null
     item_title: string | null
+    image_url: string | null
     pickup_address: string | null
     contact_whatsapp: string | null
     redemption_method: 'address_only' | 'address_and_whatsapp' | null
@@ -411,11 +499,13 @@ async function getRewardSessionState(
     `select
         reward_spin_logs.spin_attempt,
         reward_spin_logs.outcome_type,
+        cast(reward_spin_logs.reward_item_id as text) as reward_item_id,
         reward_spin_logs.wheel_label,
         reward_wins.coupon_code,
         cast(reward_wins.awarded_at as text) as awarded_at,
         cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
         reward_items.title as item_title,
+        reward_items.image_url,
         reward_campaigns.pickup_address,
         reward_campaigns.contact_whatsapp,
         reward_campaigns.redemption_method
@@ -453,6 +543,8 @@ async function getRewardSessionState(
       won: true,
       item: latestSpin.item_title ?? undefined,
       landedLabel: latestSpin.wheel_label,
+      landedSegmentId: latestSpin.reward_item_id ?? undefined,
+      itemImageUrl: latestSpin.image_url ?? undefined,
       couponCode: latestSpin.coupon_code ?? undefined,
       awardedAt: latestSpin.awarded_at ?? undefined,
       redemptionExpiresAt: latestSpin.redemption_expires_at ?? undefined,
@@ -475,6 +567,7 @@ async function getRewardSessionState(
       rewardResult = {
         won: false,
         landedLabel: latestSpin.wheel_label,
+        landedSegmentId: latestSpin.reward_item_id ?? undefined,
         retryAvailable: true,
         retryUnlocked,
         retryTasks,
@@ -490,6 +583,7 @@ async function getRewardSessionState(
       rewardResult = {
         won: false,
         landedLabel: latestSpin.wheel_label,
+        landedSegmentId: latestSpin.reward_item_id ?? undefined,
         pickupAddress: latestSpin.pickup_address ?? undefined,
         contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
         redemptionMethod: latestSpin.redemption_method ?? undefined,
@@ -844,11 +938,13 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     const existingSpinLogs = await client.query<{
       spin_attempt: number
       outcome_type: 'win' | 'no_prize'
+      reward_item_id: string | null
       wheel_label: string
       coupon_code: string | null
       awarded_at: string | null
       redemption_expires_at: string | null
       item_title: string | null
+      image_url: string | null
       pickup_address: string | null
       contact_whatsapp: string | null
       redemption_method: 'address_only' | 'address_and_whatsapp' | null
@@ -856,11 +952,13 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       `select
           reward_spin_logs.spin_attempt,
           reward_spin_logs.outcome_type,
+          cast(reward_spin_logs.reward_item_id as text) as reward_item_id,
           reward_spin_logs.wheel_label,
           reward_wins.coupon_code,
           cast(reward_wins.awarded_at as text) as awarded_at,
           cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
           reward_items.title as item_title,
+          reward_items.image_url,
           reward_campaigns.pickup_address,
           reward_campaigns.contact_whatsapp,
           reward_campaigns.redemption_method
@@ -890,6 +988,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         won: latestSpin?.outcome_type === 'win',
         item: latestSpin?.item_title ?? undefined,
         landedLabel: latestSpin?.wheel_label,
+        landedSegmentId: latestSpin?.reward_item_id ?? undefined,
+        itemImageUrl: latestSpin?.image_url ?? undefined,
         couponCode: latestSpin?.coupon_code ?? undefined,
         awardedAt: latestSpin?.awarded_at ?? undefined,
         redemptionExpiresAt: latestSpin?.redemption_expires_at ?? undefined,
@@ -913,6 +1013,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         won: true,
         item: latestSpin.item_title ?? undefined,
         landedLabel: latestSpin.wheel_label,
+        landedSegmentId: latestSpin.reward_item_id ?? undefined,
+        itemImageUrl: latestSpin.image_url ?? undefined,
         couponCode: latestSpin.coupon_code ?? undefined,
         awardedAt: latestSpin.awarded_at ?? undefined,
         redemptionExpiresAt: latestSpin.redemption_expires_at ?? undefined,
@@ -934,6 +1036,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           response.json({
             won: false,
             landedLabel: latestSpin.wheel_label,
+            landedSegmentId: latestSpin.reward_item_id ?? undefined,
             message: 'Conclua a próxima tarefa para liberar um novo giro.',
             retryAvailable: true,
             retryUnlocked: false,
@@ -950,6 +1053,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         response.json({
           won: false,
           landedLabel: latestSpin.wheel_label,
+          landedSegmentId: latestSpin.reward_item_id ?? undefined,
           pickupAddress: latestSpin.pickup_address ?? undefined,
           contactWhatsApp: latestSpin.contact_whatsapp ?? undefined,
           redemptionMethod: latestSpin.redemption_method ?? undefined,
@@ -988,12 +1092,15 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     }
 
     if (!isFinalAttempt) {
-      const noPrizeLabel = selectNoPrizeLabel()
+      const noPrizeOutcome =
+        survey.reward_wheel_mode === 'advanced'
+          ? buildAdvancedNoPrizeOutcome((survey.reward_items ?? []) as RewardDrawItem[], selectNoPrizeLabel())
+          : { rewardItemId: null, wheelLabel: selectNoPrizeLabel() }
 
       await client.query(
         `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-         values ($1, $2, $3, null, 'no_prize', $4, $5)`,
-        [makeId(), survey.reward_campaign_id, responseId, noPrizeLabel, currentAttempt],
+         values ($1, $2, $3, $4, 'no_prize', $5, $6)`,
+        [makeId(), survey.reward_campaign_id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt],
       )
 
       await client.query(
@@ -1011,7 +1118,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       await client.query('commit')
       response.json({
         won: false,
-        landedLabel: noPrizeLabel,
+        landedLabel: noPrizeOutcome.wheelLabel,
+        landedSegmentId: noPrizeOutcome.rewardItemId ?? undefined,
         retryAvailable: Boolean(nextPendingTask),
         retryUnlocked: false,
         retryTasks,
@@ -1020,8 +1128,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         maxAttempts,
         finalAttempt: false,
         message: nextPendingTask
-          ? `${noPrizeLabel} Conclua a próxima tarefa para liberar outro giro.`
-          : `${noPrizeLabel} Continue participando para liberar outra chance.`,
+          ? `${noPrizeOutcome.wheelLabel} Conclua a próxima tarefa para liberar outro giro.`
+          : `${noPrizeOutcome.wheelLabel} Continue participando para liberar outra chance.`,
       })
       return
     }
@@ -1029,6 +1137,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     const campaignResult = await client.query<{
       id: string
       status: 'active' | 'paused' | 'ended'
+      wheel_mode: 'standard' | 'advanced'
+      final_spin_mode: 'allow_no_prize' | 'guaranteed_prize'
       expires_at: string | null
       retry_unlock_enabled: boolean
       retry_unlock_tasks_json: RewardRetryTask[] | null
@@ -1038,6 +1148,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       `select
           id,
           status,
+          wheel_mode,
+          final_spin_mode,
           cast(expires_at as text) as expires_at,
           retry_unlock_enabled,
           retry_unlock_tasks_json,
@@ -1062,9 +1174,14 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       `select
           id,
           title,
+          wheel_label,
+          image_url,
           quantity_total,
           quantity_awarded,
           is_active,
+          show_on_wheel,
+          outcome_role,
+          sort_order,
           frequency_mode,
           frequency_target,
           next_release_spin,
@@ -1072,7 +1189,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           min_gap_spins
        from reward_items
        where campaign_id = $1
-       order by created_at asc
+       order by sort_order asc, created_at asc
        for update`,
       [campaign.id],
     )
@@ -1096,10 +1213,25 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       )
     }
 
-    const activeTargets = getAvailableRewardItems(normalizedItems).map((item) => item.frequency_target)
+    const availablePrizeItems = getAvailableRewardItems(normalizedItems)
+    const activeTargets = availablePrizeItems.map((item) => item.frequency_target)
     const currentSpin = campaign.spin_count + 1
-    const canReleasePrize = currentSpin - campaign.last_winning_spin >= calculateCampaignMinimumGap(activeTargets)
-    const selectedItem = canReleasePrize ? selectDueRewardItem(normalizedItems, currentSpin) : null
+    const canReleasePrize =
+      campaign.wheel_mode === 'advanced' && campaign.final_spin_mode === 'guaranteed_prize'
+        ? availablePrizeItems.length > 0
+        : currentSpin - campaign.last_winning_spin >= calculateCampaignMinimumGap(activeTargets)
+    const selectedItem =
+      campaign.wheel_mode === 'advanced' && campaign.final_spin_mode === 'guaranteed_prize'
+        ? availablePrizeItems.sort((left, right) => {
+            if ((left.sort_order ?? 0) !== (right.sort_order ?? 0)) {
+              return (left.sort_order ?? 0) - (right.sort_order ?? 0)
+            }
+
+            return left.title.localeCompare(right.title)
+          })[0] ?? null
+        : canReleasePrize
+          ? selectDueRewardItem(normalizedItems, currentSpin)
+          : null
 
     await client.query(
       `update reward_campaigns
@@ -1110,14 +1242,17 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     )
 
     if (!selectedItem) {
-      const noPrizeLabel = selectNoPrizeLabel()
+      const noPrizeOutcome =
+        campaign.wheel_mode === 'advanced'
+          ? buildAdvancedNoPrizeOutcome(normalizedItems, selectNoPrizeLabel())
+          : { rewardItemId: null, wheelLabel: selectNoPrizeLabel() }
       const retryEnabledForLoss = Boolean(nextPendingTask)
       const nextRetryCount = currentAttempt > 1 ? surveyResponse.reward_retry_count + 1 : surveyResponse.reward_retry_count
 
       await client.query(
         `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-         values ($1, $2, $3, null, 'no_prize', $4, $5)`,
-        [makeId(), campaign.id, responseId, noPrizeLabel, currentAttempt],
+         values ($1, $2, $3, $4, 'no_prize', $5, $6)`,
+        [makeId(), campaign.id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt],
       )
 
       if (retryEnabledForLoss) {
@@ -1136,11 +1271,12 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         await client.query('commit')
         response.json({
           won: false,
-          landedLabel: noPrizeLabel,
+          landedLabel: noPrizeOutcome.wheelLabel,
+          landedSegmentId: noPrizeOutcome.rewardItemId ?? undefined,
           spinAttempt: currentAttempt,
           maxAttempts,
           finalAttempt: true,
-          message: `${noPrizeLabel} Conclua a próxima tarefa para liberar um novo giro.`,
+          message: `${noPrizeOutcome.wheelLabel} Conclua a próxima tarefa para liberar um novo giro.`,
           retryAvailable: true,
           retryUnlocked: false,
           retryTasks,
@@ -1163,14 +1299,15 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       await client.query('commit')
       response.json({
         won: false,
-        landedLabel: noPrizeLabel,
+        landedLabel: noPrizeOutcome.wheelLabel,
+        landedSegmentId: noPrizeOutcome.rewardItemId ?? undefined,
         spinAttempt: currentAttempt,
         maxAttempts,
         finalAttempt: true,
         message:
           maxAttempts > 1
-            ? `${noPrizeLabel} As chances desta participação já foram usadas.`
-            : `${noPrizeLabel} Não houve prêmio disponível nesta tentativa.`,
+            ? `${noPrizeOutcome.wheelLabel} As chances desta participação já foram usadas.`
+            : `${noPrizeOutcome.wheelLabel} Não houve prêmio disponível nesta tentativa.`,
       })
       return
     }
@@ -1194,14 +1331,17 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     )
 
     if (!itemUpdateResult.rows[0]) {
-      const noPrizeLabel = selectNoPrizeLabel()
+      const noPrizeOutcome =
+        campaign.wheel_mode === 'advanced'
+          ? buildAdvancedNoPrizeOutcome(normalizedItems, selectNoPrizeLabel())
+          : { rewardItemId: null, wheelLabel: selectNoPrizeLabel() }
       const retryEnabledForLoss = Boolean(nextPendingTask)
       const nextRetryCount = currentAttempt > 1 ? surveyResponse.reward_retry_count + 1 : surveyResponse.reward_retry_count
 
       await client.query(
         `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-         values ($1, $2, $3, null, 'no_prize', $4, $5)`,
-        [makeId(), campaign.id, responseId, noPrizeLabel, currentAttempt],
+         values ($1, $2, $3, $4, 'no_prize', $5, $6)`,
+        [makeId(), campaign.id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt],
       )
 
       if (retryEnabledForLoss) {
@@ -1220,11 +1360,12 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         await client.query('commit')
         response.json({
           won: false,
-          landedLabel: noPrizeLabel,
+          landedLabel: noPrizeOutcome.wheelLabel,
+          landedSegmentId: noPrizeOutcome.rewardItemId ?? undefined,
           spinAttempt: currentAttempt,
           maxAttempts,
           finalAttempt: true,
-          message: `${noPrizeLabel} Conclua a próxima tarefa para liberar um novo giro.`,
+          message: `${noPrizeOutcome.wheelLabel} Conclua a próxima tarefa para liberar um novo giro.`,
           retryAvailable: true,
           retryUnlocked: false,
           retryTasks,
@@ -1247,14 +1388,15 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       await client.query('commit')
       response.json({
         won: false,
-        landedLabel: noPrizeLabel,
+        landedLabel: noPrizeOutcome.wheelLabel,
+        landedSegmentId: noPrizeOutcome.rewardItemId ?? undefined,
         spinAttempt: currentAttempt,
         maxAttempts,
         finalAttempt: true,
         message:
           maxAttempts > 1
-            ? `${noPrizeLabel} As chances desta participação já foram usadas.`
-            : `${noPrizeLabel} Nenhum prêmio ficou disponível neste giro.`,
+            ? `${noPrizeOutcome.wheelLabel} As chances desta participação já foram usadas.`
+            : `${noPrizeOutcome.wheelLabel} Nenhum prêmio ficou disponível neste giro.`,
       })
       return
     }
@@ -1279,7 +1421,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     await client.query(
       `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
        values ($1, $2, $3, $4, 'win', $5, $6)`,
-      [makeId(), campaign.id, responseId, selectedItem.id, selectedItem.title, currentAttempt],
+      [makeId(), campaign.id, responseId, selectedItem.id, selectedItem.wheel_label ?? selectedItem.title, currentAttempt],
     )
     await client.query(
       `update survey_responses
@@ -1297,7 +1439,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     response.json({
       won: true,
       item: selectedItem.title,
-      landedLabel: selectedItem.title,
+      landedLabel: selectedItem.wheel_label ?? selectedItem.title,
+      landedSegmentId: selectedItem.id,
+      itemImageUrl: selectedItem.image_url ?? undefined,
       couponCode,
       awardedAt: rewardWinInsert.rows[0]?.awarded_at ?? new Date().toISOString(),
       redemptionExpiresAt: rewardWinInsert.rows[0]?.redemption_expires_at ?? undefined,

@@ -54,6 +54,8 @@ type RewardResultState = {
   won: boolean
   item?: string
   landedLabel?: string
+  landedSegmentId?: string
+  itemImageUrl?: string
   couponCode?: string
   awardedAt?: string
   redemptionExpiresAt?: string
@@ -92,6 +94,18 @@ type PersistedPublicSurveySession = {
   wheelModalOpen: boolean
   retryTaskProgressMap: RetryTaskProgressMap
   activeRetryTaskId: string | null
+}
+
+type PublicRewardPreviewItem = {
+  id: string
+  title: string
+  wheelLabel?: string
+  imageUrl?: string
+  outcomeRole?: 'prize' | 'no_prize' | 'showcase'
+  showOnWheel?: boolean
+  quantityTotal?: number
+  quantityAwarded?: number
+  sortOrder?: number
 }
 
 const RETRY_TASK_MIN_WAIT_MS = 12000
@@ -318,7 +332,44 @@ function getRetryTaskTypeLabel(type: RewardRetryTask['type']) {
   return 'Link personalizado'
 }
 
-function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
+function buildPrizeWheelSegments(
+  items: PublicRewardPreviewItem[],
+  wheelMode: 'standard' | 'advanced' | undefined,
+) {
+  if (wheelMode === 'advanced') {
+    const visibleItems = items
+      .filter((item) => item.showOnWheel !== false)
+      .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0))
+      .slice(0, 12)
+      .map((item) => ({
+        id: item.id,
+        label: item.wheelLabel?.trim() || item.title,
+        kind:
+          item.outcomeRole === 'no_prize'
+            ? ('neutral' as const)
+            : item.outcomeRole === 'showcase'
+              ? ('showcase' as const)
+              : ('reward' as const),
+      }))
+
+    if (!visibleItems.length) {
+      return neutralWheelLabels.map((label, index) => ({
+        id: `neutral-${index}`,
+        label,
+        kind: 'neutral' as const,
+      }))
+    }
+
+    const missingSlots = Math.max(0, 6 - visibleItems.length)
+    const fallbackSegments = Array.from({ length: missingSlots }, (_, index) => ({
+      id: `neutral-${index}`,
+      label: neutralWheelLabels[index % neutralWheelLabels.length],
+      kind: 'neutral' as const,
+    }))
+
+    return [...visibleItems, ...fallbackSegments]
+  }
+
   const rewardItems = items.slice(0, 3)
   if (!rewardItems.length) {
     return neutralWheelLabels.map((label, index) => ({
@@ -340,7 +391,7 @@ function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
     if (rewardPositions.has(index) && rewardItems[rewardIndex]) {
       segments.push({
         id: rewardItems[rewardIndex].id,
-        label: rewardItems[rewardIndex].title,
+        label: rewardItems[rewardIndex].wheelLabel?.trim() || rewardItems[rewardIndex].title,
         kind: 'reward',
       })
       rewardIndex += 1
@@ -414,6 +465,8 @@ export function PublicSurveyPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          reward_wheel_mode?: 'standard' | 'advanced' | null
+          reward_final_spin_mode?: 'allow_no_prize' | 'guaranteed_prize' | null
           reward_pickup_address?: string | null
           reward_contact_whatsapp?: string | null
           reward_redemption_method?: 'address_only' | 'address_and_whatsapp' | null
@@ -423,6 +476,13 @@ export function PublicSurveyPage() {
           reward_items?: Array<{
             id: string
             title: string
+            wheel_label?: string | null
+            image_url?: string | null
+            outcome_role?: 'prize' | 'no_prize' | 'showcase'
+            show_on_wheel?: boolean
+            quantity_total?: number
+            quantity_awarded?: number
+            sort_order?: number
           }>
           questions: Array<{
             id: string
@@ -462,7 +522,10 @@ export function PublicSurveyPage() {
     () => getVisibleSurveyQuestions(survey?.questions ?? [], answers),
     [answers, survey?.questions],
   )
-  const wheelSegments = useMemo(() => buildPrizeWheelSegments(survey?.rewardPreviewItems ?? []), [survey?.rewardPreviewItems])
+  const wheelSegments = useMemo(
+    () => buildPrizeWheelSegments(survey?.rewardPreviewItems ?? [], survey?.rewardWheelMode),
+    [survey?.rewardPreviewItems, survey?.rewardWheelMode],
+  )
   const retryTasks = rewardResult?.retryTasks ?? survey?.rewardRetryTasks ?? []
   const canCloseWheelModal =
     !wheelSpinning &&
@@ -641,9 +704,11 @@ export function PublicSurveyPage() {
         }
 
         const nextCompletedTaskIds = session.completedTaskIds ?? []
-        const restoredSegment = session.rewardResult?.landedLabel
-          ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
-          : null
+        const restoredSegment = session.rewardResult?.landedSegmentId
+          ? wheelSegments.find((segment) => segment.id === session.rewardResult?.landedSegmentId)
+          : session.rewardResult?.landedLabel
+            ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
+            : null
 
         setParticipantName((current) => current || session.participantName || '')
         setParticipantPhone((current) => current || session.participantPhone || '')
@@ -985,6 +1050,7 @@ export function PublicSurveyPage() {
           won: shouldWin,
           item: shouldWin ? selectedSegment.label : undefined,
           landedLabel: selectedSegment.label,
+          landedSegmentId: selectedSegment.id,
           couponCode: shouldWin ? makePreviewCouponCode() : undefined,
           awardedAt: shouldWin ? new Date().toISOString() : undefined,
           redemptionExpiresAt: shouldWin
@@ -1003,6 +1069,9 @@ export function PublicSurveyPage() {
           maxAttempts: previewMaxAttempts,
           finalAttempt: previewIsFinalAttempt,
           pickupAddress: shouldWin ? survey.rewardPickupAddress ?? 'Retire no balcão informado pela campanha.' : undefined,
+          itemImageUrl: shouldWin
+            ? survey.rewardPreviewItems?.find((item) => item.id === selectedSegment.id)?.imageUrl
+            : undefined,
           message: shouldWin
             ? 'Parabéns! O resultado foi definido com segurança e o local de retirada já está indicado abaixo.'
             : previewIsFinalAttempt
@@ -1017,6 +1086,8 @@ export function PublicSurveyPage() {
         won: boolean
         item?: string
         landedLabel?: string
+        landedSegmentId?: string
+        itemImageUrl?: string
         couponCode?: string
         awardedAt?: string
         redemptionExpiresAt?: string
@@ -1037,9 +1108,11 @@ export function PublicSurveyPage() {
       })
     },
     onSuccess: (result) => {
-      const rewardIndex = result.landedLabel
-        ? Math.max(wheelSegments.findIndex((segment) => segment.label === result.landedLabel), 0)
-        : 0
+      const rewardIndex = result.landedSegmentId
+        ? Math.max(wheelSegments.findIndex((segment) => segment.id === result.landedSegmentId), 0)
+        : result.landedLabel
+          ? Math.max(wheelSegments.findIndex((segment) => segment.label === result.landedLabel), 0)
+          : 0
       const selectedSegment = wheelSegments[rewardIndex]
       const nextRotation = getSegmentTargetRotation(wheelRotation, wheelSegments.length, rewardIndex)
 
@@ -1701,6 +1774,15 @@ export function PublicSurveyPage() {
                         <div className="relative w-full max-w-[min(94vw,540px)] rounded-[24px] border border-amber-200 bg-white px-5 py-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.14)] sm:px-7 sm:py-8">
                           <p className="text-xs uppercase tracking-[0.22em] text-amber-700">Prêmio confirmado</p>
                           <p className="mt-3 text-base font-semibold text-slate-900 sm:text-lg">Você ganhou:</p>
+                          {rewardResult.itemImageUrl ? (
+                            <div className="mt-5 overflow-hidden rounded-[20px] border border-amber-100 bg-amber-50">
+                              <img
+                                src={rewardResult.itemImageUrl}
+                                alt={rewardResult.item || 'Prêmio'}
+                                className="h-44 w-full object-cover sm:h-52"
+                              />
+                            </div>
+                          ) : null}
                           <p className="mt-3 font-display text-3xl leading-tight text-slate-950 sm:text-4xl">{rewardResult.item}</p>
                           <p className="mt-3 text-sm text-slate-600">{rewardInstructionText}</p>
                           {rewardResult.couponCode ? (

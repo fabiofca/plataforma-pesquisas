@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 type PrizeWheelSegment = {
   id: string
   label: string
-  kind: 'reward' | 'neutral' | 'retry'
+  kind: 'reward' | 'neutral' | 'retry' | 'showcase'
 }
 
 type PrizeWheelProps = {
@@ -34,6 +34,13 @@ const retrySegmentPalette = [
   { start: '#06b6d4', end: '#06b6d4', text: '#ffffff' },
   { start: '#8b5cf6', end: '#8b5cf6', text: '#ffffff' },
   { start: '#22c55e', end: '#22c55e', text: '#ffffff' },
+]
+
+const showcaseSegmentPalette = [
+  { start: '#f59e0b', end: '#f59e0b', text: '#ffffff' },
+  { start: '#ef4444', end: '#ef4444', text: '#ffffff' },
+  { start: '#6366f1', end: '#6366f1', text: '#ffffff' },
+  { start: '#0f766e', end: '#0f766e', text: '#ffffff' },
 ]
 
 const neutralSegmentPalette = [
@@ -125,6 +132,10 @@ function getSegmentColors(segment: PrizeWheelSegment, index: number, primaryColo
 
   if (segment.kind === 'retry') {
     return retrySegmentPalette[index % retrySegmentPalette.length]
+  }
+
+  if (segment.kind === 'showcase') {
+    return showcaseSegmentPalette[index % showcaseSegmentPalette.length]
   }
 
   return neutralSegmentPalette[index % neutralSegmentPalette.length]

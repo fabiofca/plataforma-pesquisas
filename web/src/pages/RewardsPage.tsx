@@ -1,20 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Gift, Plus, Target, Trash2 } from 'lucide-react'
+import { Gift, ImagePlus, Plus, Target, Trash2 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { apiRequest } from '@/lib/api-client'
+import { apiRequest, uploadApiFile } from '@/lib/api-client'
 
 type RewardFrequencyMode = 'frequent' | 'balanced' | 'rare' | 'custom'
+type RewardOutcomeRole = 'prize' | 'no_prize' | 'showcase'
+type RewardWheelMode = 'standard' | 'advanced'
+type RewardFinalSpinMode = 'allow_no_prize' | 'guaranteed_prize'
 
 type RewardFormItem = {
   id?: string
   title: string
+  wheelLabel: string
   description: string
+  imageUrl: string
+  outcomeRole: RewardOutcomeRole
+  showOnWheel: boolean
+  sortOrder: number
   quantityTotal: number
   isActive: boolean
   delivered: number
@@ -33,6 +41,7 @@ type RewardRedemptionMethod = 'address_only' | 'address_and_whatsapp'
 
 const maxRealRewards = 3
 const maxWheelOptions = 6
+const maxAdvancedWheelItems = 12
 const neutralLabels = [
   'Valeu!',
   'Quase!',
@@ -45,7 +54,12 @@ const neutralLabels = [
 function createDefaultRewardItem(): RewardFormItem {
   return {
     title: 'Vale-compras de R$ 50',
+    wheelLabel: 'Vale-compras',
     description: 'Exemplo de prêmio real para a roleta.',
+    imageUrl: '',
+    outcomeRole: 'prize',
+    showOnWheel: true,
+    sortOrder: 1,
     quantityTotal: 4,
     isActive: true,
     delivered: 0,
@@ -57,7 +71,12 @@ function createDefaultRewardItem(): RewardFormItem {
 function createEmptyRewardItem(): RewardFormItem {
   return {
     title: '',
+    wheelLabel: '',
     description: '',
+    imageUrl: '',
+    outcomeRole: 'prize',
+    showOnWheel: true,
+    sortOrder: 1,
     quantityTotal: 1,
     isActive: true,
     delivered: 0,
@@ -75,11 +94,39 @@ function createRewardRetryTask(index: number): RewardRetryTask {
   }
 }
 
-function buildDemoWheelSegments(items: RewardFormItem[]) {
+function buildDemoWheelSegments(items: RewardFormItem[], wheelMode: RewardWheelMode) {
+  if (wheelMode === 'advanced') {
+    const segments = items
+      .filter((item) => item.isActive && item.showOnWheel && item.wheelLabel.trim())
+      .sort((left, right) => left.sortOrder - right.sortOrder)
+      .slice(0, maxAdvancedWheelItems)
+      .map((item, index) => ({
+        id: item.id ?? `reward-${index}`,
+        label: item.wheelLabel.trim(),
+        kind:
+          item.outcomeRole === 'prize'
+            ? ('reward' as const)
+            : item.outcomeRole === 'showcase'
+              ? ('showcase' as const)
+              : ('neutral' as const),
+      }))
+    const missingSlots = Math.max(0, maxWheelOptions - segments.length)
+
+    for (let index = 0; index < missingSlots; index += 1) {
+      segments.push({
+        id: `neutral-${index}`,
+        label: neutralLabels[index % neutralLabels.length],
+        kind: 'neutral',
+      })
+    }
+
+    return segments
+  }
+
   const activeRewards = items.filter((item) => item.isActive && item.title.trim()).slice(0, maxRealRewards)
   const segments: PrizeWheelSegment[] = activeRewards.map((item, index) => ({
     id: item.id ?? `reward-${index}`,
-    label: item.title.trim(),
+    label: item.wheelLabel.trim() || item.title.trim(),
     kind: 'reward',
   }))
   const missingSlots = Math.max(0, maxWheelOptions - segments.length)
@@ -96,6 +143,14 @@ function buildDemoWheelSegments(items: RewardFormItem[]) {
 }
 
 function getFrequencySummary(item: RewardFormItem) {
+  if (item.outcomeRole === 'showcase') {
+    return 'Item de vitrine: aparece na roleta, mas nunca pode ser sorteado.'
+  }
+
+  if (item.outcomeRole === 'no_prize') {
+    return 'Resultado sem prêmio: pode aparecer na roleta e pode encerrar o giro sem pagar.'
+  }
+
   if (item.frequencyMode === 'frequent') {
     return 'Entrega aproximada de 1 prêmio a cada 30 participações.'
   }
@@ -115,12 +170,30 @@ function getRedemptionMethodLabel(method: RewardRedemptionMethod) {
   return method === 'address_only' ? 'Somente retirada no endereço' : 'Retirada no endereço + WhatsApp'
 }
 
+function getOutcomeRoleLabel(role: RewardOutcomeRole) {
+  if (role === 'prize') {
+    return 'Prêmio real'
+  }
+
+  if (role === 'showcase') {
+    return 'Somente vitrine'
+  }
+
+  return 'Sem prêmio'
+}
+
+function getFinalSpinModeLabel(mode: RewardFinalSpinMode) {
+  return mode === 'guaranteed_prize' ? 'Premiar todos no último giro' : 'Último giro pode premiar ou não'
+}
+
 export function RewardsPage() {
   const { id } = useParams()
   const queryClient = useQueryClient()
   const demoTimeoutRef = useRef<number | null>(null)
   const [campaignForm, setCampaignForm] = useState({
     status: 'active' as 'active' | 'paused' | 'ended',
+    wheelMode: 'standard' as RewardWheelMode,
+    finalSpinMode: 'allow_no_prize' as RewardFinalSpinMode,
     expiresAt: '',
     redemptionExpirationDays: 15,
     pickupAddress: '',
@@ -147,6 +220,8 @@ export function RewardsPage() {
         campaign: {
           id?: string
           status: 'active' | 'paused' | 'ended'
+          wheel_mode?: RewardWheelMode | null
+          final_spin_mode?: RewardFinalSpinMode | null
           expires_at?: string | null
           redemption_expiration_days?: number | null
           pickup_address?: string | null
@@ -159,7 +234,12 @@ export function RewardsPage() {
         items: Array<{
           id: string
           title: string
+          wheel_label?: string | null
           description?: string | null
+          image_url?: string | null
+          outcome_role?: RewardOutcomeRole
+          show_on_wheel?: boolean
+          sort_order?: number
           quantity_total: number
           quantity_awarded: number
           is_active: boolean
@@ -195,6 +275,8 @@ export function RewardsPage() {
     if (rewardsQuery.data?.campaign) {
       setCampaignForm({
         status: rewardsQuery.data.campaign.status,
+        wheelMode: rewardsQuery.data.campaign.wheel_mode ?? 'standard',
+        finalSpinMode: rewardsQuery.data.campaign.final_spin_mode ?? 'allow_no_prize',
         expiresAt: rewardsQuery.data.campaign.expires_at ?? '',
         redemptionExpirationDays: rewardsQuery.data.campaign.redemption_expiration_days ?? 15,
         pickupAddress: rewardsQuery.data.campaign.pickup_address ?? '',
@@ -206,6 +288,8 @@ export function RewardsPage() {
     } else {
       setCampaignForm({
         status: 'active',
+        wheelMode: 'standard',
+        finalSpinMode: 'allow_no_prize',
         expiresAt: '',
         redemptionExpirationDays: 15,
         pickupAddress: '',
@@ -216,10 +300,15 @@ export function RewardsPage() {
       })
     }
 
-    const mappedItems = (rewardsQuery.data?.items ?? []).map((item) => ({
+    const mappedItems = (rewardsQuery.data?.items ?? []).map((item, index) => ({
       id: item.id,
       title: item.title,
+      wheelLabel: item.wheel_label ?? item.title,
       description: item.description ?? '',
+      imageUrl: item.image_url ?? '',
+      outcomeRole: item.outcome_role ?? 'prize',
+      showOnWheel: item.show_on_wheel ?? true,
+      sortOrder: item.sort_order ?? index + 1,
       quantityTotal: item.quantity_total,
       isActive: item.is_active,
       delivered: item.quantity_awarded,
@@ -227,7 +316,13 @@ export function RewardsPage() {
       customFrequencyTarget: item.frequency_target,
     }))
 
-    setItemsForm(mappedItems.length ? mappedItems : [createDefaultRewardItem()])
+    setItemsForm(
+      mappedItems.length
+        ? mappedItems
+        : (rewardsQuery.data?.campaign?.wheel_mode ?? 'standard') === 'advanced'
+          ? []
+          : [createDefaultRewardItem()],
+    )
   }, [rewardsQuery.data])
 
   useEffect(() => {
@@ -255,10 +350,17 @@ export function RewardsPage() {
 
   const saveItemsMutation = useMutation({
     mutationFn: async () => {
-      const filledItems = itemsForm.filter((entry) => entry.title.trim())
+      const filledItems = itemsForm.filter((entry) =>
+        campaignForm.wheelMode === 'advanced' ? entry.wheelLabel.trim() && entry.title.trim() : entry.title.trim(),
+      )
+      const prizeItems = filledItems.filter((item) => item.outcomeRole === 'prize')
 
-      if (filledItems.length > maxRealRewards) {
-        throw new Error('A roleta aceita no máximo 3 tipos de prêmio.')
+      if (campaignForm.wheelMode === 'standard' && prizeItems.length > maxRealRewards) {
+        throw new Error('A roleta padrão aceita no máximo 3 tipos de prêmio.')
+      }
+
+      if (campaignForm.wheelMode === 'advanced' && filledItems.length > maxAdvancedWheelItems) {
+        throw new Error(`A roleta avançada aceita no máximo ${maxAdvancedWheelItems} itens visuais.`)
       }
 
       await apiRequest<{ ok: boolean }>(`/surveys/${id}/rewards`, {
@@ -269,12 +371,19 @@ export function RewardsPage() {
       for (const item of filledItems) {
         const payload = {
           title: item.title.trim(),
+          wheelLabel: item.wheelLabel.trim() || item.title.trim(),
           description: item.description.trim(),
-          quantityTotal: Number(item.quantityTotal),
+          imageUrl: item.imageUrl.trim(),
+          outcomeRole: item.outcomeRole,
+          showOnWheel: item.showOnWheel,
+          sortOrder: Number(item.sortOrder) || 1,
+          quantityTotal: item.outcomeRole === 'prize' ? Number(item.quantityTotal) : 1,
           isActive: item.isActive,
-          frequencyMode: item.frequencyMode,
+          frequencyMode: item.outcomeRole === 'prize' ? item.frequencyMode : 'balanced',
           customFrequencyTarget:
-            item.frequencyMode === 'custom' ? Number(item.customFrequencyTarget) || 100 : undefined,
+            item.outcomeRole === 'prize' && item.frequencyMode === 'custom'
+              ? Number(item.customFrequencyTarget) || 100
+              : undefined,
         }
 
         if (item.id) {
@@ -299,6 +408,11 @@ export function RewardsPage() {
     },
   })
 
+  const uploadItemImageMutation = useMutation({
+    mutationFn: async (payload: { file: File; previousValue: string }) =>
+      uploadApiFile('/rewards/uploads/item-image', payload.file, 'file', { previousValue: payload.previousValue }),
+  })
+
   const deleteItemMutation = useMutation({
     mutationFn: async (itemId: string) =>
       apiRequest<{ ok: boolean }>(`/rewards/items/${itemId}`, {
@@ -307,7 +421,11 @@ export function RewardsPage() {
     onSuccess: async (_result, itemId) => {
       setItemsForm((current) => {
         const nextItems = current.filter((entry) => entry.id !== itemId)
-        return nextItems.length ? nextItems : [createDefaultRewardItem()]
+        if (nextItems.length) {
+          return nextItems.map((item, index) => ({ ...item, sortOrder: index + 1 }))
+        }
+
+        return campaignForm.wheelMode === 'advanced' ? [] : [createDefaultRewardItem()]
       })
       setDeletingItemKey('')
       await queryClient.invalidateQueries({ queryKey: ['rewards', id] })
@@ -344,13 +462,22 @@ export function RewardsPage() {
   })
 
   function handleOpenCreateRewardModal() {
-    if (itemsForm.length >= maxRealRewards) {
-      setFeedback('A roleta aceita no máximo 3 tipos de prêmio.')
+    const limit = campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards
+
+    if (itemsForm.length >= limit) {
+      setFeedback(
+        campaignForm.wheelMode === 'advanced'
+          ? `A roleta avançada aceita no máximo ${maxAdvancedWheelItems} itens visuais.`
+          : 'A roleta padrão aceita no máximo 3 tipos de prêmio.',
+      )
       return
     }
 
     setFeedback('')
-    setNewRewardForm(createEmptyRewardItem())
+    setNewRewardForm({
+      ...createEmptyRewardItem(),
+      sortOrder: itemsForm.length + 1,
+    })
     setIsCreateRewardModalOpen(true)
   }
 
@@ -366,8 +493,14 @@ export function RewardsPage() {
     }
 
     setItemsForm((current) => {
-      if (current.length >= maxRealRewards) {
-        setFeedback('A roleta aceita no máximo 3 tipos de prêmio.')
+      const limit = campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards
+
+      if (current.length >= limit) {
+        setFeedback(
+          campaignForm.wheelMode === 'advanced'
+            ? `A roleta avançada aceita no máximo ${maxAdvancedWheelItems} itens visuais.`
+            : 'A roleta padrão aceita no máximo 3 tipos de prêmio.',
+        )
         return current
       }
 
@@ -376,6 +509,7 @@ export function RewardsPage() {
         {
           ...newRewardForm,
           title: newRewardForm.title.trim(),
+          wheelLabel: newRewardForm.wheelLabel.trim() || newRewardForm.title.trim(),
           description: newRewardForm.description.trim(),
         },
       ]
@@ -386,22 +520,50 @@ export function RewardsPage() {
   function removeLocalItem(index: number) {
     setItemsForm((current) => {
       const nextItems = current.filter((_, currentIndex) => currentIndex !== index)
-      return nextItems.length ? nextItems : [createDefaultRewardItem()]
+      if (nextItems.length) {
+        return nextItems.map((item, itemIndex) => ({ ...item, sortOrder: itemIndex + 1 }))
+      }
+
+      return campaignForm.wheelMode === 'advanced' ? [] : [createDefaultRewardItem()]
     })
     setFeedback('Prêmio removido com sucesso.')
   }
 
+  async function handleItemImageChange(index: number, file?: File) {
+    if (!file) {
+      return
+    }
+
+    const currentImage = itemsForm[index]?.imageUrl ?? ''
+    const result = await uploadItemImageMutation.mutateAsync({ file, previousValue: currentImage })
+
+    setItemsForm((current) =>
+      current.map((entry, entryIndex) => (entryIndex === index ? { ...entry, imageUrl: result.value } : entry)),
+    )
+  }
+
+  async function handleNewItemImageChange(file?: File) {
+    if (!file) {
+      return
+    }
+
+    const result = await uploadItemImageMutation.mutateAsync({ file, previousValue: newRewardForm.imageUrl })
+    setNewRewardForm((current) => ({ ...current, imageUrl: result.value }))
+  }
+
   const activeRewardsCount = useMemo(
-    () => itemsForm.filter((item) => item.isActive && item.title.trim()).length,
+    () => itemsForm.filter((item) => item.isActive && item.outcomeRole === 'prize' && item.title.trim()).length,
     [itemsForm],
   )
-  const demoSegments = useMemo(() => buildDemoWheelSegments(itemsForm), [itemsForm])
+  const demoSegments = useMemo(() => buildDemoWheelSegments(itemsForm, campaignForm.wheelMode), [itemsForm, campaignForm.wheelMode])
 
   const configItems = rewardsQuery.data?.campaign
     ? [
         ['Status', rewardsQuery.data.campaign.status === 'active' ? 'Ativa' : rewardsQuery.data.campaign.status === 'paused' ? 'Pausada' : 'Encerrada'],
-        ['Prêmios ativos', `${activeRewardsCount}/${maxRealRewards}`],
-        ['Opções na roleta', `${maxWheelOptions} no total`],
+        ['Modelo', rewardsQuery.data.campaign.wheel_mode === 'advanced' ? 'Roleta avançada' : 'Roleta padrão'],
+        ['Último giro', getFinalSpinModeLabel(rewardsQuery.data.campaign.final_spin_mode ?? 'allow_no_prize')],
+        ['Prêmios ativos', `${activeRewardsCount}/${rewardsQuery.data.campaign.wheel_mode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards}`],
+        ['Opções na roleta', rewardsQuery.data.campaign.wheel_mode === 'advanced' ? `${itemsForm.length} configuradas` : `${maxWheelOptions} no total`],
         ['Validade', rewardsQuery.data.campaign.expires_at ? rewardsQuery.data.campaign.expires_at : 'Sem validade'],
         ['Prazo do comprovante', `${rewardsQuery.data.campaign.redemption_expiration_days ?? 15} dia(s)`],
         ['Retirada', rewardsQuery.data.campaign.pickup_address ? rewardsQuery.data.campaign.pickup_address : 'Não informada'],
@@ -418,8 +580,10 @@ export function RewardsPage() {
       ]
     : [
         ['Status', campaignForm.status === 'active' ? 'Ativa' : campaignForm.status === 'paused' ? 'Pausada' : 'Encerrada'],
-        ['Prêmios ativos', `${activeRewardsCount}/${maxRealRewards}`],
-        ['Opções na roleta', `${maxWheelOptions} no total`],
+        ['Modelo', campaignForm.wheelMode === 'advanced' ? 'Roleta avançada' : 'Roleta padrão'],
+        ['Último giro', getFinalSpinModeLabel(campaignForm.finalSpinMode)],
+        ['Prêmios ativos', `${activeRewardsCount}/${campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards}`],
+        ['Opções na roleta', campaignForm.wheelMode === 'advanced' ? `${itemsForm.length} configuradas` : `${maxWheelOptions} no total`],
         ['Validade', campaignForm.expiresAt ? campaignForm.expiresAt : 'Sem validade'],
         ['Prazo do comprovante', `${campaignForm.redemptionExpirationDays} dia(s)`],
         ['Retirada', campaignForm.pickupAddress ? campaignForm.pickupAddress : 'Não informada'],
@@ -449,22 +613,34 @@ export function RewardsPage() {
     >
       <AdminModal
         open={isCreateRewardModalOpen}
-        title="Novo prêmio"
-        description="Cadastre um prêmio real pelo modal e depois salve a lista para aplicar na roleta."
+        title={campaignForm.wheelMode === 'advanced' ? 'Novo item da roleta' : 'Novo prêmio'}
+        description={
+          campaignForm.wheelMode === 'advanced'
+            ? 'Cadastre um item premiável, sem prêmio ou somente vitrine e depois salve a lista para publicar.'
+            : 'Cadastre um prêmio real pelo modal e depois salve a lista para aplicar na roleta.'
+        }
         onClose={handleCloseCreateRewardModal}
       >
         <div className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-slate-600">Nome do prêmio</span>
+            <span className="text-slate-600">Nome interno do item</span>
             <input
               className="admin-input"
               value={newRewardForm.title}
               onChange={(event) => setNewRewardForm((current) => ({ ...current, title: event.target.value }))}
               required
             />
-            <span className="text-xs text-slate-500">
-              Na roleta, nomes longos podem aparecer abreviados para manter a leitura.
-            </span>
+          </label>
+
+          <label className="grid gap-2 text-sm">
+            <span className="text-slate-600">Texto da fatia</span>
+            <input
+              className="admin-input"
+              value={newRewardForm.wheelLabel}
+              onChange={(event) => setNewRewardForm((current) => ({ ...current, wheelLabel: event.target.value }))}
+              placeholder="Ex: Casquinha, Sem sorte, Carro 0 km"
+            />
+            <span className="text-xs text-slate-500">Na roleta, nomes longos podem aparecer abreviados para manter a leitura.</span>
           </label>
 
           <label className="grid gap-2 text-sm">
@@ -476,56 +652,125 @@ export function RewardsPage() {
             />
           </label>
 
+          {campaignForm.wheelMode === 'advanced' ? (
+            <label className="grid gap-2 text-sm">
+              <span className="text-slate-600">Tipo do item</span>
+              <select
+                className="admin-select"
+                value={newRewardForm.outcomeRole}
+                onChange={(event) =>
+                  setNewRewardForm((current) => ({
+                    ...current,
+                    outcomeRole: event.target.value as RewardOutcomeRole,
+                  }))
+                }
+              >
+                <option value="prize">Prêmio real</option>
+                <option value="no_prize">Sem prêmio</option>
+                <option value="showcase">Somente vitrine</option>
+              </select>
+            </label>
+          ) : null}
+
+          <div className="grid gap-2 text-sm">
+            <span className="text-slate-600">Imagem do prêmio (opcional)</span>
+            {newRewardForm.imageUrl ? (
+              <img src={newRewardForm.imageUrl} alt={newRewardForm.title || 'Imagem do item'} className="h-32 w-full rounded-[16px] border border-slate-200 object-cover" />
+            ) : (
+              <div className="flex h-32 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
+                <ImagePlus className="mr-2 h-4 w-4" />
+                Nenhuma imagem enviada
+              </div>
+            )}
+            <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onChange={(event) => void handleNewItemImageChange(event.target.files?.[0])} />
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-2 text-sm">
-              <span className="text-slate-600">Estoque disponível</span>
+              <span className="text-slate-600">Ordem na roleta</span>
               <input
                 type="number"
                 min={1}
                 className="admin-input"
-                value={newRewardForm.quantityTotal}
+                value={newRewardForm.sortOrder}
                 onChange={(event) =>
-                  setNewRewardForm((current) => ({ ...current, quantityTotal: Number(event.target.value) || 1 }))
+                  setNewRewardForm((current) => ({ ...current, sortOrder: Number(event.target.value) || 1 }))
                 }
               />
             </label>
 
             <label className="grid gap-2 text-sm">
-              <span className="text-slate-600">Frequência</span>
+              <span className="text-slate-600">Exibir na roleta</span>
               <select
                 className="admin-select"
-                value={newRewardForm.frequencyMode}
+                value={newRewardForm.showOnWheel ? 'yes' : 'no'}
                 onChange={(event) =>
                   setNewRewardForm((current) => ({
                     ...current,
-                    frequencyMode: event.target.value as RewardFrequencyMode,
+                    showOnWheel: event.target.value === 'yes',
                   }))
                 }
               >
-                <option value="frequent">Prêmio frequente</option>
-                <option value="balanced">Distribuição equilibrada</option>
-                <option value="rare">Prêmio raro</option>
-                <option value="custom">Personalizado</option>
+                <option value="yes">Sim</option>
+                <option value="no">Não</option>
               </select>
             </label>
           </div>
 
-          {newRewardForm.frequencyMode === 'custom' ? (
-            <label className="grid gap-2 text-sm">
-              <span className="text-slate-600">Meta personalizada</span>
-              <input
-                type="number"
-                min={2}
-                className="admin-input"
-                value={newRewardForm.customFrequencyTarget}
-                onChange={(event) =>
-                  setNewRewardForm((current) => ({
-                    ...current,
-                    customFrequencyTarget: Number(event.target.value) || 100,
-                  }))
-                }
-              />
-            </label>
+          {newRewardForm.outcomeRole === 'prize' ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Estoque disponível</span>
+                  <input
+                    type="number"
+                    min={1}
+                    className="admin-input"
+                    value={newRewardForm.quantityTotal}
+                    onChange={(event) =>
+                      setNewRewardForm((current) => ({ ...current, quantityTotal: Number(event.target.value) || 1 }))
+                    }
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Frequência</span>
+                  <select
+                    className="admin-select"
+                    value={newRewardForm.frequencyMode}
+                    onChange={(event) =>
+                      setNewRewardForm((current) => ({
+                        ...current,
+                        frequencyMode: event.target.value as RewardFrequencyMode,
+                      }))
+                    }
+                  >
+                    <option value="frequent">Prêmio frequente</option>
+                    <option value="balanced">Distribuição equilibrada</option>
+                    <option value="rare">Prêmio raro</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </label>
+              </div>
+
+              {newRewardForm.frequencyMode === 'custom' ? (
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Meta personalizada</span>
+                  <input
+                    type="number"
+                    min={2}
+                    className="admin-input"
+                    value={newRewardForm.customFrequencyTarget}
+                    onChange={(event) =>
+                      setNewRewardForm((current) => ({
+                        ...current,
+                        customFrequencyTarget: Number(event.target.value) || 100,
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
+            </>
           ) : null}
 
           <label className="admin-checkrow">
@@ -645,6 +890,94 @@ export function RewardsPage() {
                 <option value="ended">Encerrada</option>
               </select>
             </label>
+
+            <div className="admin-subcard grid gap-3 text-sm text-slate-700">
+              <span className="text-slate-600">Modelo da roleta</span>
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <input
+                  type="radio"
+                  name="reward-wheel-mode"
+                  checked={campaignForm.wheelMode === 'standard'}
+                  onChange={() =>
+                    setCampaignForm((current) => ({
+                      ...current,
+                      wheelMode: 'standard',
+                    }))
+                  }
+                />
+                <span>
+                  <strong className="block text-slate-900">Roleta padrão</strong>
+                  <span className="text-xs text-slate-500">
+                    Mantém a lógica atual: até 3 prêmios reais e frases sem prêmio preenchidas automaticamente.
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <input
+                  type="radio"
+                  name="reward-wheel-mode"
+                  checked={campaignForm.wheelMode === 'advanced'}
+                  onChange={() =>
+                    setCampaignForm((current) => ({
+                      ...current,
+                      wheelMode: 'advanced',
+                    }))
+                  }
+                />
+                <span>
+                  <strong className="block text-slate-900">Roleta avançada</strong>
+                  <span className="text-xs text-slate-500">
+                    Permite itens premiáveis, sem prêmio e somente vitrine, com imagem opcional e controle visual completo.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {campaignForm.wheelMode === 'advanced' ? (
+              <div className="admin-subcard grid gap-3 text-sm text-slate-700">
+                <span className="text-slate-600">Comportamento do último giro</span>
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                  <input
+                    type="radio"
+                    name="reward-final-spin-mode"
+                    checked={campaignForm.finalSpinMode === 'allow_no_prize'}
+                    onChange={() =>
+                      setCampaignForm((current) => ({
+                        ...current,
+                        finalSpinMode: 'allow_no_prize',
+                      }))
+                    }
+                  />
+                  <span>
+                    <strong className="block text-slate-900">Pode premiar ou não</strong>
+                    <span className="text-xs text-slate-500">
+                      No último giro, a roleta pode encerrar em item premiável ou em item sem prêmio.
+                    </span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                  <input
+                    type="radio"
+                    name="reward-final-spin-mode"
+                    checked={campaignForm.finalSpinMode === 'guaranteed_prize'}
+                    onChange={() =>
+                      setCampaignForm((current) => ({
+                        ...current,
+                        finalSpinMode: 'guaranteed_prize',
+                      }))
+                    }
+                  />
+                  <span>
+                    <strong className="block text-slate-900">Premiar todos no último giro</strong>
+                    <span className="text-xs text-slate-500">
+                      Se houver prêmio disponível, o último giro sempre entrega um item premiável. Se o estoque acabar, a campanha continua e cai em item sem prêmio.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            ) : null}
 
             <label className="admin-subcard grid gap-2 text-sm text-slate-700">
               <span className="text-slate-600">Validade da campanha (opcional)</span>
@@ -891,19 +1224,40 @@ export function RewardsPage() {
             </div>
 
             <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
-              O sistema mantém a roleta com <strong>6 opções no total</strong>. Você cadastra até <strong>3 prêmios reais</strong>
-              e o restante é preenchido automaticamente com frases sem prêmio, sem precisar configurar estoque para isso.
+              {campaignForm.wheelMode === 'advanced' ? (
+                <>
+                  Nos giros antes do último, a roleta sempre encerra em <strong>item sem prêmio</strong>. Itens
+                  <strong> somente vitrine</strong> continuam visíveis, mas nunca entram no sorteio.
+                </>
+              ) : (
+                <>
+                  O sistema mantém a roleta com <strong>6 opções no total</strong>. Você cadastra até <strong>3 prêmios reais</strong>
+                  e o restante é preenchido automaticamente com frases sem prêmio, sem precisar configurar estoque para isso.
+                </>
+              )}
             </div>
           </div>
         </SectionCard>
 
         <SectionCard
           eyebrow="Premiação"
-          title="Prêmios reais"
-          description="Cadastre no máximo 3 prêmios. Cada prêmio pode estar ativo ou inativo e ter sua própria frequência."
+          title={campaignForm.wheelMode === 'advanced' ? 'Itens da roleta avançada' : 'Prêmios reais'}
+          description={
+            campaignForm.wheelMode === 'advanced'
+              ? 'Cadastre itens premiáveis, sem prêmio e somente vitrine. Itens esgotados continuam visíveis, mas saem do sorteio.'
+              : 'Cadastre no máximo 3 prêmios. Cada prêmio pode estar ativo ou inativo e ter sua própria frequência.'
+          }
         >
           <div className="admin-alert mb-4 border-slate-200 bg-slate-50 text-slate-700">
-            Prêmios reais cadastrados: <strong>{itemsForm.filter((item) => item.title.trim()).length}/{maxRealRewards}</strong>
+            {campaignForm.wheelMode === 'advanced' ? (
+              <>
+                Itens configurados: <strong>{itemsForm.filter((item) => item.title.trim()).length}/{maxAdvancedWheelItems}</strong>
+              </>
+            ) : (
+              <>
+                Prêmios reais cadastrados: <strong>{itemsForm.filter((item) => item.title.trim()).length}/{maxRealRewards}</strong>
+              </>
+            )}
           </div>
 
           <div className="mb-4 flex flex-wrap justify-end gap-3">
@@ -922,11 +1276,11 @@ export function RewardsPage() {
             <button
               type="button"
               onClick={handleOpenCreateRewardModal}
-              disabled={itemsForm.length >= maxRealRewards}
+              disabled={itemsForm.length >= (campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards)}
               className="admin-button disabled:opacity-60"
             >
               <Plus className="h-4 w-4" />
-              Novo prêmio
+              {campaignForm.wheelMode === 'advanced' ? 'Novo item' : 'Novo prêmio'}
             </button>
             <button
               type="button"
@@ -940,30 +1294,52 @@ export function RewardsPage() {
           </div>
 
           <div className="admin-empty-state mb-4 py-4 text-left text-slate-700">
-            Opções sem prêmio já incluídas automaticamente: <strong>{neutralLabels.join(' • ')}</strong>
+            {campaignForm.wheelMode === 'advanced' ? (
+              <>Dica: cadastre pelo menos um item <strong>Sem prêmio</strong> para os giros intermediários e um item <strong>Somente vitrine</strong> para os destaques visuais.</>
+            ) : (
+              <>Opções sem prêmio já incluídas automaticamente: <strong>{neutralLabels.join(' • ')}</strong></>
+            )}
           </div>
 
           <div className="space-y-3">
             {itemsForm.length ? (
               itemsForm.map((item, index) => (
                 <article key={item.id ?? `new-${index}`} className="admin-panel p-4">
-                  <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                     <div className="space-y-3">
-                      <input
-                        className="admin-input w-full font-semibold text-slate-950"
-                        placeholder="Nome do prêmio"
-                        value={item.title}
-                        onChange={(event) =>
-                          setItemsForm((current) =>
-                            current.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, title: event.target.value } : entry,
-                            ),
-                          )
-                        }
-                      />
-                      <p className="text-xs text-slate-500">
-                        Na roleta, nomes longos podem aparecer abreviados para manter a leitura.
-                      </p>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="grid gap-2">
+                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Nome interno</span>
+                          <input
+                            className="admin-input"
+                            placeholder="Ex: Casquinha"
+                            value={item.title}
+                            onChange={(event) =>
+                              setItemsForm((current) =>
+                                current.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, title: event.target.value } : entry,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+
+                        <label className="grid gap-2">
+                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Texto da fatia</span>
+                          <input
+                            className="admin-input"
+                            placeholder="Ex: Sem sorte"
+                            value={item.wheelLabel}
+                            onChange={(event) =>
+                              setItemsForm((current) =>
+                                current.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, wheelLabel: event.target.value } : entry,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
 
                       <textarea
                         className="admin-input min-h-20 w-full"
@@ -977,75 +1353,169 @@ export function RewardsPage() {
                           )
                         }
                       />
+
+                      {campaignForm.wheelMode === 'advanced' ? (
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <label className="grid gap-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Tipo do item</span>
+                            <select
+                              className="admin-select"
+                              value={item.outcomeRole}
+                              onChange={(event) =>
+                                setItemsForm((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index
+                                      ? { ...entry, outcomeRole: event.target.value as RewardOutcomeRole }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="prize">Prêmio real</option>
+                              <option value="no_prize">Sem prêmio</option>
+                              <option value="showcase">Somente vitrine</option>
+                            </select>
+                          </label>
+
+                          <label className="grid gap-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Ordem</span>
+                            <input
+                              type="number"
+                              min={1}
+                              className="admin-input"
+                              value={item.sortOrder}
+                              onChange={(event) =>
+                                setItemsForm((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index
+                                      ? { ...entry, sortOrder: Number(event.target.value) || 1 }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+
+                          <label className="grid gap-2">
+                            <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Mostrar na roleta</span>
+                            <select
+                              className="admin-select"
+                              value={item.showOnWheel ? 'yes' : 'no'}
+                              onChange={(event) =>
+                                setItemsForm((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index
+                                      ? { ...entry, showOnWheel: event.target.value === 'yes' }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="yes">Sim</option>
+                              <option value="no">Não</option>
+                            </select>
+                          </label>
+                        </div>
+                      ) : null}
+
+                      <div className="grid gap-2">
+                        <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem opcional</span>
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt={item.title || 'Imagem do item'} className="h-36 w-full rounded-[16px] border border-slate-200 object-cover" />
+                        ) : (
+                          <div className="flex h-24 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
+                            <ImagePlus className="mr-2 h-4 w-4" />
+                            Sem imagem
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          onChange={(event) => void handleItemImageChange(index, event.target.files?.[0])}
+                        />
+                      </div>
                     </div>
 
                     <div className="grid gap-3 text-sm">
                       <div className="admin-subcard px-4 py-3">
-                        <p className="text-xs text-slate-500">Estoque disponível</p>
-                        <input
-                          type="number"
-                          min={1}
-                          className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
-                          value={item.quantityTotal}
-                          onChange={(event) =>
-                            setItemsForm((current) =>
-                              current.map((entry, entryIndex) =>
-                                entryIndex === index
-                                  ? { ...entry, quantityTotal: Number(event.target.value) || 1 }
-                                  : entry,
-                              ),
-                            )
-                          }
-                        />
+                        <p className="text-xs text-slate-500">Situação</p>
+                        <p className="mt-1 font-semibold text-slate-950">{getOutcomeRoleLabel(item.outcomeRole)}</p>
                       </div>
 
-                        <div className="admin-subcard px-4 py-3">
-                        <p className="text-xs text-slate-500">Entregues</p>
-                        <p className="font-semibold text-slate-950">{item.delivered}</p>
-                      </div>
+                      {item.outcomeRole === 'prize' ? (
+                        <>
+                          <div className="admin-subcard px-4 py-3">
+                            <p className="text-xs text-slate-500">Estoque disponível</p>
+                            <input
+                              type="number"
+                              min={1}
+                              className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
+                              value={item.quantityTotal}
+                              onChange={(event) =>
+                                setItemsForm((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index
+                                      ? { ...entry, quantityTotal: Number(event.target.value) || 1 }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            />
+                          </div>
 
-                      <div className="admin-subcard px-4 py-3">
-                        <p className="text-xs text-slate-500">Frequência</p>
-                        <select
-                          className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
-                          value={item.frequencyMode}
-                          onChange={(event) =>
-                            setItemsForm((current) =>
-                              current.map((entry, entryIndex) =>
-                                entryIndex === index
-                                  ? { ...entry, frequencyMode: event.target.value as RewardFrequencyMode }
-                                  : entry,
-                              ),
-                            )
-                          }
-                        >
-                          <option value="frequent">Prêmio frequente</option>
-                          <option value="balanced">Distribuição equilibrada</option>
-                          <option value="rare">Prêmio raro</option>
-                          <option value="custom">Personalizado</option>
-                        </select>
-                      </div>
+                          <div className="admin-subcard px-4 py-3">
+                            <p className="text-xs text-slate-500">Entregues</p>
+                            <p className="font-semibold text-slate-950">{item.delivered}</p>
+                          </div>
 
-                      {item.frequencyMode === 'custom' ? (
-                        <div className="admin-subcard px-4 py-3">
-                          <p className="text-xs text-slate-500">Personalizado</p>
-                          <input
-                            type="number"
-                            min={2}
-                            className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
-                            value={item.customFrequencyTarget}
-                            onChange={(event) =>
-                              setItemsForm((current) =>
-                                current.map((entry, entryIndex) =>
-                                  entryIndex === index
-                                    ? { ...entry, customFrequencyTarget: Number(event.target.value) || 100 }
-                                    : entry,
-                                ),
-                              )
-                            }
-                          />
+                          <div className="admin-subcard px-4 py-3">
+                            <p className="text-xs text-slate-500">Frequência</p>
+                            <select
+                              className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
+                              value={item.frequencyMode}
+                              onChange={(event) =>
+                                setItemsForm((current) =>
+                                  current.map((entry, entryIndex) =>
+                                    entryIndex === index
+                                      ? { ...entry, frequencyMode: event.target.value as RewardFrequencyMode }
+                                      : entry,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="frequent">Prêmio frequente</option>
+                              <option value="balanced">Distribuição equilibrada</option>
+                              <option value="rare">Prêmio raro</option>
+                              <option value="custom">Personalizado</option>
+                            </select>
+                          </div>
+
+                          {item.frequencyMode === 'custom' ? (
+                            <div className="admin-subcard px-4 py-3">
+                              <p className="text-xs text-slate-500">Meta personalizada</p>
+                              <input
+                                type="number"
+                                min={2}
+                                className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
+                                value={item.customFrequencyTarget}
+                                onChange={(event) =>
+                                  setItemsForm((current) =>
+                                    current.map((entry, entryIndex) =>
+                                      entryIndex === index
+                                        ? { ...entry, customFrequencyTarget: Number(event.target.value) || 100 }
+                                        : entry,
+                                    ),
+                                  )
+                                }
+                              />
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <div className="admin-subcard px-4 py-3 text-slate-600">
+                          Esse item permanece visível na roleta, mas não usa estoque nem frequência.
                         </div>
-                      ) : null}
+                      )}
                     </div>
                   </div>
 
@@ -1063,7 +1533,7 @@ export function RewardsPage() {
                             )
                           }
                         />
-                        Participa da roleta
+                        Item ativo
                       </label>
                       <p className="mt-2 text-xs text-slate-500">{getFrequencySummary(item)}</p>
                     </div>
@@ -1083,7 +1553,7 @@ export function RewardsPage() {
                       className="admin-button-danger disabled:opacity-60"
                     >
                       <Trash2 className="h-4 w-4" />
-                      {Boolean(item.id) && deleteItemMutation.isPending && deletingItemKey === item.id ? 'Excluindo...' : 'Excluir prêmio'}
+                      {Boolean(item.id) && deleteItemMutation.isPending && deletingItemKey === item.id ? 'Excluindo...' : 'Excluir item'}
                     </button>
                   </div>
                 </article>

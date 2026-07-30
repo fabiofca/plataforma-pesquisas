@@ -1,11 +1,17 @@
 export type RewardFrequencyMode = 'frequent' | 'balanced' | 'rare' | 'custom'
+export type RewardOutcomeRole = 'prize' | 'no_prize' | 'showcase'
 
 export interface RewardDrawItem {
   id: string
   title: string
+  wheel_label?: string | null
+  image_url?: string | null
   quantity_total: number
   quantity_awarded: number
   is_active?: boolean
+  show_on_wheel?: boolean
+  outcome_role?: RewardOutcomeRole
+  sort_order?: number
   frequency_mode: RewardFrequencyMode
   frequency_target: number
   next_release_spin: number
@@ -68,8 +74,24 @@ export function isRewardAvailable(item: RewardDrawItem) {
   return (item.is_active ?? true) && item.quantity_awarded < item.quantity_total
 }
 
+export function isAdvancedPrizeItem(item: RewardDrawItem) {
+  return (item.outcome_role ?? 'prize') === 'prize'
+}
+
+export function isAdvancedNoPrizeItem(item: RewardDrawItem) {
+  return item.outcome_role === 'no_prize'
+}
+
+export function isAdvancedShowcaseItem(item: RewardDrawItem) {
+  return item.outcome_role === 'showcase'
+}
+
+export function isWheelVisibleItem(item: RewardDrawItem) {
+  return (item.is_active ?? true) && (item.show_on_wheel ?? true)
+}
+
 export function getAvailableRewardItems(items: RewardDrawItem[]) {
-  return items.filter(isRewardAvailable)
+  return items.filter((item) => isAdvancedPrizeItem(item) && isRewardAvailable(item))
 }
 
 export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number) {
@@ -90,6 +112,24 @@ export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number
 
     return left.title.localeCompare(right.title)
   })[0]
+}
+
+export function selectAdvancedNoPrizeItem(items: RewardDrawItem[]) {
+  const availableItems = items
+    .filter((item) => isAdvancedNoPrizeItem(item) && (item.is_active ?? true))
+    .sort((left, right) => {
+      if ((left.sort_order ?? 0) !== (right.sort_order ?? 0)) {
+        return (left.sort_order ?? 0) - (right.sort_order ?? 0)
+      }
+
+      return left.title.localeCompare(right.title)
+    })
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return availableItems[randomBetween(0, availableItems.length - 1)] ?? availableItems[0]
 }
 
 export function selectNoPrizeLabel() {

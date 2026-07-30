@@ -155,6 +155,8 @@ async function loadSurveyPreview(surveyId: string) {
     closing_message: string | null
     reward_enabled: boolean
     reward_campaign_id: string | null
+    reward_wheel_mode: 'standard' | 'advanced' | null
+    reward_final_spin_mode: 'allow_no_prize' | 'guaranteed_prize' | null
     reward_pickup_address: string | null
     reward_contact_whatsapp: string | null
     reward_redemption_method: 'address_only' | 'address_and_whatsapp' | null
@@ -182,6 +184,8 @@ async function loadSurveyPreview(surveyId: string) {
         surveys.closing_message,
         surveys.reward_enabled,
         reward_campaigns.id as reward_campaign_id,
+        reward_campaigns.wheel_mode as reward_wheel_mode,
+        reward_campaigns.final_spin_mode as reward_final_spin_mode,
         reward_campaigns.pickup_address as reward_pickup_address,
         reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
         reward_campaigns.redemption_method as reward_redemption_method,
@@ -203,15 +207,34 @@ async function loadSurveyPreview(surveyId: string) {
 
   const rewardItems =
     survey.reward_enabled && survey.reward_campaign_id
-      ? await query<{ id: string; title: string }>(
-          `select reward_items.id, reward_items.title
+      ? await query<{
+          id: string
+          title: string
+          wheel_label: string | null
+          image_url: string | null
+          outcome_role: 'prize' | 'no_prize' | 'showcase'
+          show_on_wheel: boolean
+          sort_order: number
+          quantity_total: number
+          quantity_awarded: number
+        }>(
+          `select
+              reward_items.id,
+              reward_items.title,
+              reward_items.wheel_label,
+              reward_items.image_url,
+              reward_items.outcome_role,
+              reward_items.show_on_wheel,
+              reward_items.sort_order,
+              reward_items.quantity_total,
+              reward_items.quantity_awarded
            from reward_items
            where reward_items.campaign_id = $1
              and reward_items.is_active = true
-             and reward_items.quantity_total > reward_items.quantity_awarded
-           order by reward_items.created_at asc
+             and ${survey.reward_wheel_mode === 'advanced' ? 'reward_items.show_on_wheel = true' : 'reward_items.quantity_total > reward_items.quantity_awarded'}
+           order by reward_items.sort_order asc, reward_items.created_at asc
            limit $2`,
-          [survey.reward_campaign_id, SURVEY_PREVIEW_REWARD_LIMIT],
+          [survey.reward_campaign_id, survey.reward_wheel_mode === 'advanced' ? 12 : SURVEY_PREVIEW_REWARD_LIMIT],
         )
       : { rows: [] }
 

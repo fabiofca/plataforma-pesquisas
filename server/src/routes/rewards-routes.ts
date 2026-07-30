@@ -1,4 +1,8 @@
-import { Router } from 'express'
+import { mkdirSync, rmSync } from 'node:fs'
+import path from 'node:path'
+
+import multer, { type FileFilterCallback } from 'multer'
+import { Router, type Request } from 'express'
 
 import { query } from '../db/pool.js'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
@@ -8,22 +12,91 @@ import { makeId } from '../utils/security.js'
 import { rewardCampaignSchema, rewardItemPatchSchema, rewardItemSchema, rewardWinRedemptionSchema } from '../validators/schemas.js'
 
 export const rewardsRouter = Router()
+const MAX_ADVANCED_WHEEL_ITEMS = 12
+const rewardUploadDir = path.resolve(process.cwd(), 'uploads', 'rewards')
+
+mkdirSync(rewardUploadDir, { recursive: true })
+
+const rewardImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_request: Request, _file: Express.Multer.File, callback: (error: Error | null, destination: string) => void) => {
+      callback(null, rewardUploadDir)
+    },
+    filename: (_request: Request, file: Express.Multer.File, callback: (error: Error | null, filename: string) => void) => {
+      const extension = path.extname(file.originalname || '').toLowerCase() || '.bin'
+      callback(null, `${makeId()}${extension}`)
+    },
+  }),
+  limits: {
+    fileSize: 3 * 1024 * 1024,
+  },
+  fileFilter: (_request: Request, file: Express.Multer.File, callback: FileFilterCallback) => {
+    const allowedMimeTypes = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
+
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      callback(new Error('Envie uma imagem PNG, JPG, SVG ou WEBP.'))
+      return
+    }
+
+    callback(null, true)
+  },
+})
 
 rewardsRouter.use(requireAuth)
 
-async function ensureRewardItemLimit(input: { campaignId: string; currentItemId?: string }) {
-  const items = await query<{ total: string }>(
+rewardsRouter.post('/uploads/item-image', rewardImageUpload.single('file'), async (request: AuthenticatedRequest, response) => {
+  if (!request.file) {
+    response.status(400).json({ message: 'Selecione uma imagem para enviar.' })
+    return
+  }
+
+  const previousValue = typeof request.body.previousValue === 'string' ? request.body.previousValue : ''
+  const publicPath = `/uploads/rewards/${request.file.filename}`
+
+  removeManagedRewardImage(previousValue)
+
+  response.json({ ok: true, key: 'item-image', value: publicPath })
+})
+
+rewardsRouter.delete('/uploads/item-image', async (request: AuthenticatedRequest, response) => {
+  const value = typeof request.body?.value === 'string' ? request.body.value : ''
+
+  removeManagedRewardImage(value)
+
+  response.json({ ok: true, key: 'item-image', value: '' })
+})
+
+function removeManagedRewardImage(value: unknown) {
+  if (typeof value !== 'string' || !value.startsWith('/uploads/rewards/')) {
+    return
+  }
+
+  const fileName = path.basename(value)
+  const filePath = path.join(rewardUploadDir, fileName)
+  rmSync(filePath, { force: true })
+}
+
+async function ensureRewardItemLimit(input: { campaignId: string; currentItemId?: string; wheelMode: 'standard' | 'advanced' }) {
+  const items = await query<{ total: string; real_total: string }>(
     `select cast(count(*) as text) as total
+          ,cast(count(*) filter (where outcome_role = 'prize') as text) as real_total
      from reward_items
      where campaign_id = $1
        and ($2::uuid is null or id <> $2::uuid)`,
     [input.campaignId, input.currentItemId ?? null],
   )
 
-  if (Number(items.rows[0]?.total ?? 0) >= MAX_REAL_REWARDS) {
+  if (input.wheelMode === 'standard' && Number(items.rows[0]?.real_total ?? 0) >= MAX_REAL_REWARDS) {
     return {
       ok: false as const,
       message: 'A roleta aceita no máximo 3 tipos de prêmio por campanha.',
+    }
+  }
+
+  if (input.wheelMode === 'advanced' && Number(items.rows[0]?.total ?? 0) >= MAX_ADVANCED_WHEEL_ITEMS) {
+    return {
+      ok: false as const,
+      message: `A roleta avançada aceita no máximo ${MAX_ADVANCED_WHEEL_ITEMS} itens visuais por campanha.`,
     }
   }
 
@@ -42,6 +115,8 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
   const campaignResult = await query<{
     id: string
     status: 'active' | 'paused' | 'ended'
+    wheel_mode: 'standard' | 'advanced'
+    final_spin_mode: 'allow_no_prize' | 'guaranteed_prize'
     expires_at: string | null
     redemption_expiration_days: number
     pickup_address: string | null
@@ -61,6 +136,8 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
     `select
         id,
         status,
+        wheel_mode,
+        final_spin_mode,
         cast(expires_at as text) as expires_at,
         redemption_expiration_days,
         pickup_address,
@@ -93,7 +170,12 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
   const items = await query<{
     id: string
     title: string
+    wheel_label: string | null
     description: string | null
+    image_url: string | null
+    outcome_role: 'prize' | 'no_prize' | 'showcase'
+    show_on_wheel: boolean
+    sort_order: number
     quantity_total: number
     quantity_awarded: number
     is_active: boolean
@@ -103,7 +185,12 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
     `select
         id,
         title,
+        wheel_label,
         description,
+        image_url,
+        outcome_role,
+        show_on_wheel,
+        sort_order,
         quantity_total,
         quantity_awarded,
         is_active,
@@ -111,7 +198,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
         frequency_target
      from reward_items
      where campaign_id = $1
-     order by created_at asc`,
+     order by sort_order asc, created_at asc`,
     [campaign.id],
   )
 
@@ -167,7 +254,10 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
       ...campaign,
       retry_unlock_tasks_json: campaign.retry_unlock_tasks_json ?? [],
     },
-    items: items.rows,
+    items: items.rows.map((item) => ({
+      ...item,
+      wheel_label: item.wheel_label ?? item.title,
+    })),
     redemptionSummary: {
       pendingCount: Number(redemptionSummary.rows[0]?.pending_count ?? 0),
       deliveredCount: Number(redemptionSummary.rows[0]?.delivered_count ?? 0),
@@ -208,19 +298,23 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
            is_active = $3,
            require_identification = true,
            distribution_mode = 'simple',
-           expires_at = $4,
-           redemption_expiration_days = $5,
-           pickup_address = $6,
-           contact_whatsapp = $7,
-           redemption_method = $8,
-           retry_unlock_enabled = $9,
-           retry_unlock_tasks_json = $10::jsonb,
+           wheel_mode = $4,
+           final_spin_mode = $5,
+           expires_at = $6,
+           redemption_expiration_days = $7,
+           pickup_address = $8,
+           contact_whatsapp = $9,
+           redemption_method = $10,
+           retry_unlock_enabled = $11,
+           retry_unlock_tasks_json = $12::jsonb,
            updated_at = now()
        where survey_id = $1`,
       [
         surveyId,
         payload.status,
         isActive,
+        payload.wheelMode,
+        payload.finalSpinMode,
         payload.expiresAt || null,
         payload.redemptionExpirationDays,
         payload.pickupAddress?.trim() || null,
@@ -234,8 +328,8 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
     await query(
       `insert into reward_campaigns (
         id, survey_id, status, is_active, require_identification, distribution_mode, expires_at, pickup_address,
-        redemption_expiration_days, contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json
-       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11::jsonb)`,
+        wheel_mode, final_spin_mode, redemption_expiration_days, contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json
+       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)`,
       [
         makeId(),
         surveyId,
@@ -243,6 +337,8 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         isActive,
         payload.expiresAt || null,
         payload.pickupAddress?.trim() || null,
+        payload.wheelMode,
+        payload.finalSpinMode,
         payload.redemptionExpirationDays,
         payload.contactWhatsApp?.trim() || null,
         payload.redemptionMethod,
@@ -273,8 +369,8 @@ rewardsRouter.post('/surveys/:id/rewards/items', async (request: AuthenticatedRe
   }
 
   const payload = rewardItemSchema.parse(request.body)
-  const campaignResult = await query<{ id: string; spin_count: number }>(
-    'select id, spin_count from reward_campaigns where survey_id = $1 limit 1',
+  const campaignResult = await query<{ id: string; spin_count: number; wheel_mode: 'standard' | 'advanced' }>(
+    'select id, spin_count, wheel_mode from reward_campaigns where survey_id = $1 limit 1',
     [surveyId],
   )
   const campaign = campaignResult.rows[0]
@@ -284,21 +380,35 @@ rewardsRouter.post('/surveys/:id/rewards/items', async (request: AuthenticatedRe
     return
   }
 
-  const itemLimit = await ensureRewardItemLimit({ campaignId: campaign.id })
+  const itemLimit = await ensureRewardItemLimit({ campaignId: campaign.id, wheelMode: campaign.wheel_mode })
 
   if (!itemLimit.ok) {
     response.status(400).json({ message: itemLimit.message })
     return
   }
 
-  const frequencyTarget = getFrequencyTarget(payload.frequencyMode, payload.customFrequencyTarget)
+  const isPrizeItem = payload.outcomeRole === 'prize'
+  const frequencyMode = isPrizeItem ? payload.frequencyMode : 'balanced'
+  const frequencyTarget = isPrizeItem ? getFrequencyTarget(payload.frequencyMode, payload.customFrequencyTarget) : 60
+  const sortOrderResult = await query<{ next_sort_order: string }>(
+    `select cast(coalesce(max(sort_order), 0) + 1 as text) as next_sort_order
+     from reward_items
+     where campaign_id = $1`,
+    [campaign.id],
+  )
+  const nextSortOrder = Number(sortOrderResult.rows[0]?.next_sort_order ?? 1)
 
   await query(
     `insert into reward_items (
       id,
       campaign_id,
       title,
+      wheel_label,
       description,
+      image_url,
+      outcome_role,
+      show_on_wheel,
+      sort_order,
       quantity_total,
       quantity_awarded,
       is_active,
@@ -310,18 +420,24 @@ rewardsRouter.post('/surveys/:id/rewards/items', async (request: AuthenticatedRe
       odds_weight,
       is_visual_only,
       grants_extra_spin
-     ) values ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, 0, $10, 1, false, false)`,
+     ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $13, 0, $14, 1, $15, false)`,
     [
       makeId(),
       campaign.id,
-      payload.title,
-      payload.description ?? null,
-      payload.quantityTotal,
+      payload.title.trim(),
+      payload.wheelLabel?.trim() || payload.title.trim(),
+      payload.description?.trim() || null,
+      payload.imageUrl?.trim() || null,
+      payload.outcomeRole,
+      payload.showOnWheel,
+      payload.sortOrder ?? nextSortOrder,
+      payload.quantityTotal ?? 1,
       payload.isActive,
-      payload.frequencyMode,
+      frequencyMode,
       frequencyTarget,
-      createNextReleaseSpin(campaign.spin_count, frequencyTarget),
-      calculateMinimumGapSpins(frequencyTarget),
+      isPrizeItem ? createNextReleaseSpin(campaign.spin_count, frequencyTarget) : 0,
+      isPrizeItem ? calculateMinimumGapSpins(frequencyTarget) : 0,
+      payload.outcomeRole === 'showcase',
     ],
   )
 
@@ -329,12 +445,13 @@ rewardsRouter.post('/surveys/:id/rewards/items', async (request: AuthenticatedRe
 })
 
 rewardsRouter.patch('/rewards/items/:id', async (request: AuthenticatedRequest, response) => {
+  const itemId = String(request.params.id)
   const itemAccess = await query<{ survey_id: string; campaign_id: string }>(
     `select reward_campaigns.survey_id, reward_campaigns.id as campaign_id
      from reward_items
      join reward_campaigns on reward_campaigns.id = reward_items.campaign_id
      where reward_items.id = $1`,
-    [request.params.id],
+    [itemId],
   )
 
   const surveyId = itemAccess.rows[0]?.survey_id
@@ -354,18 +471,38 @@ rewardsRouter.patch('/rewards/items/:id', async (request: AuthenticatedRequest, 
   const payload = rewardItemPatchSchema.parse(request.body)
   const currentItemResult = await query<{
     campaign_id: string
+    wheel_mode: 'standard' | 'advanced'
     title: string
+    wheel_label: string | null
     description: string | null
+    image_url: string | null
+    outcome_role: 'prize' | 'no_prize' | 'showcase'
+    show_on_wheel: boolean
+    sort_order: number
     quantity_total: number
     is_active: boolean
     frequency_mode: 'frequent' | 'balanced' | 'rare' | 'custom'
     frequency_target: number
   }>(
-    `select campaign_id, title, description, quantity_total, is_active, frequency_mode, frequency_target
+    `select
+        reward_items.campaign_id,
+        reward_campaigns.wheel_mode,
+        reward_items.title,
+        reward_items.wheel_label,
+        reward_items.description,
+        reward_items.image_url,
+        reward_items.outcome_role,
+        reward_items.show_on_wheel,
+        reward_items.sort_order,
+        reward_items.quantity_total,
+        reward_items.is_active,
+        reward_items.frequency_mode,
+        reward_items.frequency_target
      from reward_items
-     where id = $1
+     join reward_campaigns on reward_campaigns.id = reward_items.campaign_id
+     where reward_items.id = $1
      limit 1`,
-    [request.params.id],
+    [itemId],
   )
 
   const currentItem = currentItemResult.rows[0]
@@ -375,38 +512,64 @@ rewardsRouter.patch('/rewards/items/:id', async (request: AuthenticatedRequest, 
     return
   }
 
+  const itemLimit = await ensureRewardItemLimit({
+    campaignId: currentItem.campaign_id,
+    currentItemId: itemId,
+    wheelMode: currentItem.wheel_mode,
+  })
+
+  if (!itemLimit.ok) {
+    response.status(400).json({ message: itemLimit.message })
+    return
+  }
+
   const campaignResult = await query<{ spin_count: number }>(
     'select spin_count from reward_campaigns where id = $1 limit 1',
     [currentItem.campaign_id],
   )
   const campaignSpinCount = campaignResult.rows[0]?.spin_count ?? 0
-  const nextFrequencyMode = payload.frequencyMode ?? currentItem.frequency_mode
-  const nextFrequencyTarget = getFrequencyTarget(nextFrequencyMode, payload.customFrequencyTarget ?? currentItem.frequency_target)
+  const nextOutcomeRole = payload.outcomeRole ?? currentItem.outcome_role
+  const nextFrequencyMode = nextOutcomeRole === 'prize' ? (payload.frequencyMode ?? currentItem.frequency_mode) : 'balanced'
+  const nextFrequencyTarget =
+    nextOutcomeRole === 'prize'
+      ? getFrequencyTarget(nextFrequencyMode, payload.customFrequencyTarget ?? currentItem.frequency_target)
+      : 60
 
   await query(
     `update reward_items
      set title = coalesce($2, title),
-         description = coalesce($3, description),
-         quantity_total = coalesce($4, quantity_total),
-         is_active = coalesce($5, is_active),
-         frequency_mode = $6,
-         frequency_target = $7,
-         next_release_spin = $8,
-         min_gap_spins = $9,
+         wheel_label = $3,
+         description = $4,
+         image_url = $5,
+         outcome_role = $6,
+         show_on_wheel = $7,
+         sort_order = $8,
+         quantity_total = $9,
+         is_active = $10,
+         frequency_mode = $11,
+         frequency_target = $12,
+         next_release_spin = $13,
+         min_gap_spins = $14,
          odds_weight = 1,
-         is_visual_only = false,
+         is_visual_only = $15,
          grants_extra_spin = false
      where id = $1`,
     [
-      request.params.id,
-      payload.title,
-      payload.description,
-      payload.quantityTotal,
-      payload.isActive,
+      itemId,
+      payload.title?.trim() || currentItem.title,
+      payload.wheelLabel?.trim() || currentItem.wheel_label || payload.title?.trim() || currentItem.title,
+      payload.description?.trim() ?? currentItem.description,
+      payload.imageUrl?.trim() ?? currentItem.image_url,
+      nextOutcomeRole,
+      payload.showOnWheel ?? currentItem.show_on_wheel,
+      payload.sortOrder ?? currentItem.sort_order,
+      payload.quantityTotal ?? currentItem.quantity_total,
+      payload.isActive ?? currentItem.is_active,
       nextFrequencyMode,
       nextFrequencyTarget,
-      createNextReleaseSpin(campaignSpinCount, nextFrequencyTarget),
-      calculateMinimumGapSpins(nextFrequencyTarget),
+      nextOutcomeRole === 'prize' ? createNextReleaseSpin(campaignSpinCount, nextFrequencyTarget) : 0,
+      nextOutcomeRole === 'prize' ? calculateMinimumGapSpins(nextFrequencyTarget) : 0,
+      nextOutcomeRole === 'showcase',
     ],
   )
 
@@ -414,12 +577,13 @@ rewardsRouter.patch('/rewards/items/:id', async (request: AuthenticatedRequest, 
 })
 
 rewardsRouter.delete('/rewards/items/:id', async (request: AuthenticatedRequest, response) => {
+  const itemId = String(request.params.id)
   const itemAccess = await query<{ survey_id: string }>(
     `select reward_campaigns.survey_id
      from reward_items
      join reward_campaigns on reward_campaigns.id = reward_items.campaign_id
      where reward_items.id = $1`,
-    [request.params.id],
+    [itemId],
   )
 
   const surveyId = itemAccess.rows[0]?.survey_id
@@ -436,19 +600,23 @@ rewardsRouter.delete('/rewards/items/:id', async (request: AuthenticatedRequest,
     return
   }
 
-  await query('delete from reward_items where id = $1', [request.params.id])
+  const itemResult = await query<{ image_url: string | null }>('select image_url from reward_items where id = $1', [itemId])
+
+  removeManagedRewardImage(itemResult.rows[0]?.image_url)
+  await query('delete from reward_items where id = $1', [itemId])
 
   response.json({ ok: true })
 })
 
 rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: AuthenticatedRequest, response) => {
+  const winId = String(request.params.id)
   const winAccess = await query<{ survey_id: string }>(
     `select reward_campaigns.survey_id
      from reward_wins
      join reward_campaigns on reward_campaigns.id = reward_wins.campaign_id
      where reward_wins.id = $1
      limit 1`,
-    [request.params.id],
+    [winId],
   )
 
   const surveyId = winAccess.rows[0]?.survey_id
@@ -487,7 +655,7 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
        redemption_status,
        cast(delivered_at as text) as delivered_at,
        redemption_notes`,
-    [request.params.id, payload.status, payload.redemptionNotes?.trim() || null],
+    [winId, payload.status, payload.redemptionNotes?.trim() || null],
   )
 
   response.json({

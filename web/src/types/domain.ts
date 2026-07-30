@@ -87,7 +87,16 @@ export interface SurveyItem {
   rewardPreviewItems?: Array<{
     id: string
     title: string
+    wheelLabel?: string
+    imageUrl?: string
+    outcomeRole?: 'prize' | 'no_prize' | 'showcase'
+    showOnWheel?: boolean
+    quantityTotal?: number
+    quantityAwarded?: number
+    sortOrder?: number
   }>
+  rewardWheelMode?: 'standard' | 'advanced'
+  rewardFinalSpinMode?: 'allow_no_prize' | 'guaranteed_prize'
   rewardRetryUnlockEnabled?: boolean
   rewardPickupAddress?: string
   rewardContactWhatsApp?: string

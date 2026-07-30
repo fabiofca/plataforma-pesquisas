@@ -177,6 +177,8 @@ export const planAssignmentSchema = z.object({
 
 export const rewardCampaignSchema = z.object({
   status: z.enum(['active', 'paused', 'ended']).default('active'),
+  wheelMode: z.enum(['standard', 'advanced']).default('standard'),
+  finalSpinMode: z.enum(['allow_no_prize', 'guaranteed_prize']).default('allow_no_prize'),
   expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
   redemptionExpirationDays: z.number().int().min(1).max(365).default(15),
   pickupAddress: z.string().max(500).optional().or(z.literal('')),
@@ -213,17 +215,35 @@ export const rewardCampaignSchema = z.object({
 const rewardItemBaseSchema = z.object({
   title: z.string().min(3),
   description: z.string().optional(),
-  quantityTotal: z.number().int().positive(),
+  wheelLabel: z.string().min(1).max(150).optional(),
+  imageUrl: z.string().max(500).optional().or(z.literal('')),
+  outcomeRole: z.enum(['prize', 'no_prize', 'showcase']).default('prize'),
+  showOnWheel: z.boolean().default(true),
+  quantityTotal: z.number().int().positive().optional(),
   isActive: z.boolean().default(true),
   frequencyMode: z.enum(['frequent', 'balanced', 'rare', 'custom']).default('balanced'),
   customFrequencyTarget: z.number().int().min(2).max(100000).optional(),
+  sortOrder: z.number().int().min(0).max(999).optional(),
 })
 
 function validateRewardFrequency(
-  value: { frequencyMode?: 'frequent' | 'balanced' | 'rare' | 'custom'; customFrequencyTarget?: number },
+  value: {
+    frequencyMode?: 'frequent' | 'balanced' | 'rare' | 'custom'
+    customFrequencyTarget?: number
+    outcomeRole?: 'prize' | 'no_prize' | 'showcase'
+    quantityTotal?: number
+  },
   context: z.RefinementCtx,
 ) {
-  if (value.frequencyMode === 'custom' && !value.customFrequencyTarget) {
+  if (value.outcomeRole === 'prize' && !value.quantityTotal) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['quantityTotal'],
+      message: 'Informe o estoque do prêmio real.',
+    })
+  }
+
+  if (value.outcomeRole === 'prize' && value.frequencyMode === 'custom' && !value.customFrequencyTarget) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['customFrequencyTarget'],

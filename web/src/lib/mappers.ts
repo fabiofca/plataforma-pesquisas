@@ -125,7 +125,16 @@ export function mapApiSurvey(item: {
   reward_items?: Array<{
     id: string
     title: string
+    wheel_label?: string | null
+    image_url?: string | null
+    outcome_role?: 'prize' | 'no_prize' | 'showcase'
+    show_on_wheel?: boolean
+    quantity_total?: number
+    quantity_awarded?: number
+    sort_order?: number
   }>
+  reward_wheel_mode?: 'standard' | 'advanced' | null
+  reward_final_spin_mode?: 'allow_no_prize' | 'guaranteed_prize' | null
   reward_retry_unlock_enabled?: boolean
   reward_pickup_address?: string | null
   reward_contact_whatsapp?: string | null
@@ -161,7 +170,16 @@ export function mapApiSurvey(item: {
     rewardPreviewItems: (item.reward_items ?? []).map((rewardItem) => ({
       id: rewardItem.id,
       title: rewardItem.title,
+      wheelLabel: rewardItem.wheel_label ?? rewardItem.title,
+      imageUrl: rewardItem.image_url ?? undefined,
+      outcomeRole: rewardItem.outcome_role ?? 'prize',
+      showOnWheel: rewardItem.show_on_wheel ?? true,
+      quantityTotal: rewardItem.quantity_total,
+      quantityAwarded: rewardItem.quantity_awarded,
+      sortOrder: rewardItem.sort_order,
     })),
+    rewardWheelMode: item.reward_wheel_mode ?? undefined,
+    rewardFinalSpinMode: item.reward_final_spin_mode ?? undefined,
     rewardRetryUnlockEnabled: item.reward_retry_unlock_enabled ?? false,
     rewardPickupAddress: item.reward_pickup_address ?? undefined,
     rewardContactWhatsApp: item.reward_contact_whatsapp ?? undefined,
