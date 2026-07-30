@@ -344,7 +344,7 @@ export function SurveyBuilderPage() {
               (rule) =>
                 rule.value.trim() &&
                 rule.nextQuestionId.trim() &&
-                (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice'),
+                (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice' || question.type === 'multiple_choice'),
             ),
         })),
       }
@@ -747,52 +747,6 @@ export function SurveyBuilderPage() {
         type="button"
         onClick={() =>
           void saveMutation.mutateAsync({
-            shouldPublish: false,
-            flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
-          })
-        }
-          disabled={saveMutation.isPending || unpublishMutation.isPending}
-        className="admin-button-primary"
-      >
-        <Sparkles className="h-4 w-4" />
-        {saveMutation.isPending ? 'Salvando...' : 'Salvar fluxo'}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (!savedFlowSnapshot || !hasUnsavedFlowChanges) {
-            return
-          }
-
-          if (window.confirm('Descartar as alterações do fluxo e voltar para a última versão salva?')) {
-            setForm((current) => ({
-              ...current,
-              questions: savedFlowSnapshot.questions.map((question) => ({
-                ...question,
-                options: [...question.options],
-                flowRules: question.flowRules.map((rule) => ({ ...rule })),
-              })),
-              flowLayout: {
-                ...savedFlowSnapshot.flowLayout,
-                nodes: savedFlowSnapshot.flowLayout.nodes.map((node) => ({ ...node })),
-                viewport: savedFlowSnapshot.flowLayout.viewport
-                  ? { ...savedFlowSnapshot.flowLayout.viewport }
-                  : undefined,
-              },
-            }))
-            setFeedback('Alterações do fluxo descartadas.')
-          }
-        }}
-        disabled={!hasUnsavedFlowChanges || saveMutation.isPending || unpublishMutation.isPending}
-        className="admin-button"
-      >
-        <Trash2 className="h-4 w-4" />
-        Descartar alterações
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          void saveMutation.mutateAsync({
             shouldPublish: true,
             flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
           })
@@ -925,6 +879,36 @@ export function SurveyBuilderPage() {
             onRemoveQuestion={removeQuestionById}
             onUpdateQuestion={updateQuestionById}
             onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
+            onSaveFlow={() =>
+              void saveMutation.mutateAsync({
+                shouldPublish: false,
+                flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+              })
+            }
+            onDiscardFlow={() => {
+              if (!savedFlowSnapshot || !hasUnsavedFlowChanges) {
+                return
+              }
+
+              if (window.confirm('Descartar as alterações do fluxo e voltar para a última versão salva?')) {
+                setForm((current) => ({
+                  ...current,
+                  questions: savedFlowSnapshot.questions.map((question) => ({
+                    ...question,
+                    options: [...question.options],
+                    flowRules: question.flowRules.map((rule) => ({ ...rule })),
+                  })),
+                  flowLayout: {
+                    ...savedFlowSnapshot.flowLayout,
+                    nodes: savedFlowSnapshot.flowLayout.nodes.map((node) => ({ ...node })),
+                    viewport: savedFlowSnapshot.flowLayout.viewport
+                      ? { ...savedFlowSnapshot.flowLayout.viewport }
+                      : undefined,
+                  },
+                }))
+                setFeedback('Alterações do fluxo descartadas.')
+              }
+            }}
           />
         </SectionCard>
 

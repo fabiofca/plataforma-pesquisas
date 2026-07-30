@@ -8,7 +8,7 @@ type SurveyAnswerValue = string | string[] | number | boolean | undefined
 type FlowQuestion = Pick<SurveyQuestion, 'id' | 'type' | 'options' | 'flowRules'>
 
 export function supportsQuestionFlow(type: QuestionType) {
-  return type === 'yes_no' || type === 'single_choice'
+  return type === 'yes_no' || type === 'single_choice' || type === 'multiple_choice'
 }
 
 export function getQuestionFlowValues(question: Pick<SurveyQuestion, 'type' | 'options'>) {
@@ -16,7 +16,7 @@ export function getQuestionFlowValues(question: Pick<SurveyQuestion, 'type' | 'o
     return ['Sim', 'Não']
   }
 
-  if (question.type === 'single_choice') {
+  if (question.type === 'single_choice' || question.type === 'multiple_choice') {
     return Array.from(new Set((question.options ?? []).map((option) => option.trim()).filter(Boolean)))
   }
 
@@ -65,11 +65,15 @@ function resolveFlowTarget(question: FlowQuestion, answer: SurveyAnswerValue): S
 
   const rules = normalizeFlowRules(question)
 
-  if (supportsQuestionFlow(question.type) && typeof answer === 'string') {
-    const normalizedAnswer = answer.trim()
+  if (supportsQuestionFlow(question.type)) {
+    const values = Array.isArray(answer)
+      ? answer.map((v) => String(v).trim()).filter(Boolean)
+      : typeof answer === 'string'
+        ? [answer.trim()].filter(Boolean)
+        : []
 
-    if (normalizedAnswer) {
-      const specificRule = rules.find((entry) => entry.value === normalizedAnswer)
+    for (const val of values) {
+      const specificRule = rules.find((entry) => entry.value === val)
 
       if (specificRule) {
         return specificRule.nextQuestionId

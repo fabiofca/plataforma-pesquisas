@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { defaultBrandingSettings, useBrandingSettings } from '@/hooks/useBrandingSettings'
@@ -11,6 +11,7 @@ export function LoginPage() {
   const branding = useBrandingSettings().data ?? defaultBrandingSettings
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [hint, setHint] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -88,13 +89,24 @@ export function LoginPage() {
 
               <label className="block">
                 <span className="mb-2 block text-sm text-slate-700">Senha</span>
-                <input
-                  aria-label="Senha"
-                  type="password"
-                  className="admin-input"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    aria-label="Senha"
+                    type={showPassword ? 'text' : 'password'}
+                    className="admin-input pr-10"
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={() => setShowPassword((current) => !current)}
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 transition hover:text-slate-600"
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </label>
 
               {error ? <p className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{error}</p> : null}

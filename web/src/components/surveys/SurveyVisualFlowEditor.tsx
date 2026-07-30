@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, CheckCircle2, GitBranch, Link2, Move, Plus, Trash2 } from 'lucide-react'
+import { ArrowRight, CheckCircle2, GitBranch, GripHorizontal, Move, Plus, Save, Trash2 } from 'lucide-react'
 
 import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
 import {
@@ -35,9 +35,9 @@ const questionTypeLabels = Object.fromEntries(questionTypes.map((item) => [item.
 >
 
 const NODE_WIDTH = 240
-const NODE_HEADER_HEIGHT = 88
-const NODE_FLOW_ROW_HEIGHT = 34
-const NODE_BOTTOM_PADDING = 14
+const NODE_HEADER_HEIGHT = 68
+const NODE_FLOW_ROW_HEIGHT = 30
+const NODE_BOTTOM_PADDING = 12
 
 function updateFlowRuleList(flowRules: SurveyQuestionFlowRule[], value: string, nextQuestionId: string) {
   const normalizedValue = value.trim()
@@ -77,7 +77,8 @@ function getNodeFlowValues(question: Pick<VisualQuestion, 'type' | 'options'>) {
 }
 
 function getNodeHeight(question: Pick<VisualQuestion, 'type' | 'options'>) {
-  const rowCount = 1 + getNodeFlowValues(question).length
+  const flowValuesCount = getNodeFlowValues(question).length
+  const rowCount = flowValuesCount > 0 ? flowValuesCount + 1 : 1
   return NODE_HEADER_HEIGHT + rowCount * NODE_FLOW_ROW_HEIGHT + NODE_BOTTOM_PADDING
 }
 
@@ -125,6 +126,8 @@ export function SurveyVisualFlowEditor({
   onRemoveQuestion,
   onUpdateQuestion,
   onUpdateFlowLayout,
+  onSaveFlow,
+  onDiscardFlow,
 }: {
   primaryColor: string
   questions: VisualQuestion[]
@@ -137,6 +140,8 @@ export function SurveyVisualFlowEditor({
   onRemoveQuestion: (questionId: string) => void
   onUpdateQuestion: (questionId: string, updater: (question: VisualQuestion) => VisualQuestion) => void
   onUpdateFlowLayout: (layout: SurveyFlowLayout) => void
+  onSaveFlow: () => void
+  onDiscardFlow: () => void
 }) {
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const [draggingNode, setDraggingNode] = useState<{
@@ -210,78 +215,72 @@ export function SurveyVisualFlowEditor({
     const edgeLines: EdgeLine[] = []
 
     nodes.forEach((node) => {
-      const currentIndex = orderedQuestionIds.indexOf(node.id)
       const genericRule = node.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)
-      const fallbackTargetId = orderedQuestionIds[currentIndex + 1] ?? FLOW_END
-      const genericTargetId = genericRule?.nextQuestionId ?? fallbackTargetId
+      const genericRowIndex = node.flowValues.length
 
-      if (genericTargetId && genericTargetId !== FLOW_END) {
-        const targetNode = nodeMap.get(genericTargetId)
+      if (genericRule && genericRule.nextQuestionId !== FLOW_END) {
+        const targetNode = nodeMap.get(genericRule.nextQuestionId)
         const from = {
           x: node.position.x + NODE_WIDTH,
-          y: getNodeAnchorY(node, node.position.y, 0),
+          y: getNodeAnchorY(node, node.position.y, genericRowIndex),
         }
         const to = {
           x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
-          y: targetNode ? targetNode.position.y + targetNode.height / 2 : getNodeAnchorY(node, node.position.y, 0),
+          y: targetNode
+            ? targetNode.position.y + targetNode.height / 2
+            : getNodeAnchorY(node, node.position.y, genericRowIndex),
         }
 
         edgeLines.push({
-          id: `${node.id}-generic-${genericTargetId}`,
+          id: `${node.id}-answer-${genericRule.nextQuestionId}`,
           sourceId: node.id,
           ruleValue: FLOW_ON_ANSWER,
-          targetId: genericTargetId,
-          editable: Boolean(genericRule),
+          targetId: genericRule.nextQuestionId,
+          editable: true,
           from,
           to,
           mid: getEdgeMidpoint(from, to),
-          label: genericRule ? 'Após responder' : 'Sequência',
-          tone: genericRule ? 'primary' : 'muted',
+          label: node.flowValues.length ? 'Próxima' : 'Após responder',
+          tone: 'primary',
         })
       }
 
-      if (node.flowValues.length) {
-        node.flowValues.forEach((flowValue, flowIndex) => {
-          const specificRule = node.flowRules.find((rule) => rule.value === flowValue)
+      node.flowValues.forEach((flowValue, flowIndex) => {
+        const specificRule = node.flowRules.find((rule) => rule.value === flowValue)
 
-          if (!specificRule) {
-            return
-          }
+        if (!specificRule || specificRule.nextQuestionId === FLOW_END) {
+          return
+        }
 
-          if (specificRule.nextQuestionId === FLOW_END) {
-            return
-          }
+        const targetNode = nodeMap.get(specificRule.nextQuestionId)
+        const from = {
+          x: node.position.x + NODE_WIDTH,
+          y: getNodeAnchorY(node, node.position.y, flowIndex),
+        }
+        const to = {
+          x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
+          y: targetNode
+            ? targetNode.position.y + targetNode.height / 2
+            : getNodeAnchorY(node, node.position.y, flowIndex),
+        }
 
-          const targetNode = nodeMap.get(specificRule.nextQuestionId)
-          const from = {
-            x: node.position.x + NODE_WIDTH,
-            y: getNodeAnchorY(node, node.position.y, flowIndex + 1),
-          }
-          const to = {
-            x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
-            y: targetNode
-              ? targetNode.position.y + targetNode.height / 2
-              : getNodeAnchorY(node, node.position.y, flowIndex + 1),
-          }
-
-          edgeLines.push({
-            id: `${node.id}-${flowValue}-${specificRule.nextQuestionId}`,
-            sourceId: node.id,
-            ruleValue: flowValue,
-            targetId: specificRule.nextQuestionId,
-            editable: true,
-            from,
-            to,
-            mid: getEdgeMidpoint(from, to),
-            label: flowValue,
-            tone: 'branch',
-          })
+        edgeLines.push({
+          id: `${node.id}-${flowValue}-${specificRule.nextQuestionId}`,
+          sourceId: node.id,
+          ruleValue: flowValue,
+          targetId: specificRule.nextQuestionId,
+          editable: true,
+          from,
+          to,
+          mid: getEdgeMidpoint(from, to),
+          label: flowValue,
+          tone: 'branch',
         })
-      }
+      })
     })
 
     return edgeLines
-  }, [nodes, orderedQuestionIds])
+  }, [nodes])
 
   useEffect(() => {
     if (!draggingNode) {
@@ -411,12 +410,30 @@ export function SurveyVisualFlowEditor({
               <Plus className="h-3.5 w-3.5" />
               Nova pergunta
             </button>
+            <button
+              type="button"
+              onClick={onDiscardFlow}
+              disabled={!hasUnsavedChanges || isSaving}
+              className="admin-button px-3 py-2 text-xs"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Descartar
+            </button>
+            <button
+              type="button"
+              onClick={onSaveFlow}
+              disabled={isSaving}
+              className="admin-button-primary px-3 py-2 text-xs"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {isSaving ? 'Salvando...' : 'Salvar fluxo'}
+            </button>
           </div>
         </div>
 
         <div
           ref={canvasRef}
-          className="relative h-[calc(100vh-200px)] min-h-[640px] overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] md:min-h-[720px]"
+          className="relative h-[calc(100vh-200px)] min-h-[640px] select-none overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] md:min-h-[720px]"
         >
           <div className="relative" style={{ width: Math.max(1180, maxX + 180), height: Math.max(760, maxY + 200) }}>
             <svg className="absolute inset-0 h-full w-full">
@@ -533,7 +550,7 @@ export function SurveyVisualFlowEditor({
                 <div
                   key={node.id}
                   onClick={() => onSelectQuestion(node.id)}
-                  className={`absolute flex min-h-[136px] w-[240px] flex-col justify-between rounded-[20px] border bg-white p-4 text-left shadow-sm transition ${
+                  className={`absolute flex w-[240px] flex-col rounded-[16px] border bg-white p-3 text-left shadow-sm transition ${
                     hoveredTargetId === node.id
                       ? 'border-violet-400 ring-2 ring-violet-100'
                       : isSelected
@@ -557,190 +574,110 @@ export function SurveyVisualFlowEditor({
                         offsetY: event.clientY - rect.top,
                       })
                     }}
-                    className="grid gap-2 text-left"
+                    className="grid gap-1.5 text-left"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                            Pergunta
-                          </p>
-                          {orderedQuestionIds[0] === node.id ? (
-                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
-                              Início
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
-                          {node.title || 'Sem título ainda'}
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">
                         {questionTypeLabels[node.type]}
                       </span>
-                    </div>
-
-                    <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span>{node.required ? 'Obrigatória' : 'Opcional'}</span>
-                      <span className="inline-flex items-center gap-1">
-                        <Move className="h-3.5 w-3.5" />
-                        Arraste
+                      {orderedQuestionIds[0] === node.id ? (
+                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                          Início
+                        </span>
+                      ) : null}
+                      {node.required ? (
+                        <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-amber-700">
+                          Obrig.
+                        </span>
+                      ) : null}
+                      <span className="ml-auto inline-flex items-center gap-0.5 text-[10px] text-slate-400">
+                        <Move className="h-3 w-3" />
                       </span>
                     </div>
+                    <p className="line-clamp-2 text-[13px] font-semibold leading-tight text-slate-900">
+                      {node.title || 'Sem título ainda'}
+                    </p>
                   </button>
 
-                  <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
-                    <div className="grid gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className="min-w-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
-                          Padrão
-                        </span>
-                        {isSelected ? (
-                          <select
-                            className="admin-select h-8 min-w-0 flex-1 py-1 text-xs"
-                            value={node.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            onClick={(event) => event.stopPropagation()}
-                            onChange={(event) =>
-                              onUpdateQuestion(node.id, (current) => ({
-                                ...current,
-                                flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
-                              }))
-                            }
-                          >
-                            <option value="">Próxima pergunta</option>
-                            <option value={FLOW_END}>Encerrar pesquisa</option>
-                            {orderedQuestionIds
-                              .filter((id) => id !== node.id)
-                              .map((questionId) => {
-                                const targetQuestion = questions.find((question) => question.id === questionId)
-                                return (
-                                  <option key={`${node.id}-default-${questionId}`} value={questionId}>
-                                    {targetQuestion?.title || 'Pergunta sem título'}
-                                  </option>
-                                )
-                              })}
-                          </select>
-                        ) : (
-                          <span className="truncate text-xs text-slate-600">
-                            {getFlowTargetLabel(
-                              questions,
-                              node.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId,
-                            )}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-sky-300 hover:text-sky-600"
-                          title="Puxar ligação padrão"
-                          onMouseDown={(event) => {
-                            event.stopPropagation()
-                            const point = getCanvasPoint(event.clientX, event.clientY)
+                  <div className="mt-2 space-y-1 border-t border-slate-100 pt-2">
+                    {node.flowValues.map((flowValue, flowIndex) => (
+                      <div
+                        key={`${node.id}-${flowValue}`}
+                        className="group flex cursor-grab items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-violet-50 active:cursor-grabbing"
+                        title={`Arraste para conectar ${flowValue} a outro bloco`}
+                        onMouseDown={(event) => {
+                          event.stopPropagation()
+                          const point = getCanvasPoint(event.clientX, event.clientY)
 
-                            if (!point) {
-                              return
-                            }
+                          if (!point) {
+                            return
+                          }
 
-                            setSelectedEdgeId(null)
-                            setDragConnection({
-                              sourceId: node.id,
-                              ruleValue: FLOW_ON_ANSWER,
-                              label: 'Após responder',
-                              tone: 'primary',
-                              from: {
-                                x: node.position.x + NODE_WIDTH,
-                                y: getNodeAnchorY(node, node.position.y, 0),
-                              },
-                              to: point,
-                            })
-                          }}
-                        >
-                          <Link2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {node.flowValues.map((flowValue) => (
-                      <div key={`${node.id}-${flowValue}`} className="flex items-center gap-2">
-                        <span className="min-w-0 rounded-full bg-violet-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700">
+                          setSelectedEdgeId(null)
+                          setDragConnection({
+                            sourceId: node.id,
+                            ruleValue: flowValue,
+                            label: flowValue,
+                            tone: 'branch',
+                            from: {
+                              x: node.position.x + NODE_WIDTH,
+                              y: getNodeAnchorY(node, node.position.y, flowIndex),
+                            },
+                            to: point,
+                          })
+                        }}
+                      >
+                        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-violet-700 transition group-hover:bg-violet-200">
                           {flowValue}
                         </span>
-                        {isSelected ? (
-                          <select
-                            className="admin-select h-8 min-w-0 flex-1 py-1 text-xs"
-                            value={node.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId ?? ''}
-                            onMouseDown={(event) => event.stopPropagation()}
-                            onClick={(event) => event.stopPropagation()}
-                            onChange={(event) =>
-                              onUpdateQuestion(node.id, (current) => ({
-                                ...current,
-                                flowRules: updateFlowRuleList(current.flowRules, flowValue, event.target.value),
-                              }))
-                            }
-                          >
-                            <option value="">Usar saída padrão</option>
-                            <option value={FLOW_END}>Encerrar pesquisa</option>
-                            {orderedQuestionIds
-                              .filter((id) => id !== node.id)
-                              .map((questionId) => {
-                                const targetQuestion = questions.find((question) => question.id === questionId)
-                                return (
-                                  <option key={`${node.id}-${flowValue}-${questionId}`} value={questionId}>
-                                    {targetQuestion?.title || 'Pergunta sem título'}
-                                  </option>
-                                )
-                              })}
-                          </select>
-                        ) : (
-                          <span className="truncate text-xs text-slate-600">
-                            {getFlowTargetLabel(
-                              questions,
-                              node.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId,
-                              'Usa saída padrão',
-                            )}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white text-violet-600 transition hover:border-violet-300 hover:bg-violet-50"
-                          title={`Puxar ligação para ${flowValue}`}
-                          onMouseDown={(event) => {
-                            event.stopPropagation()
-                            const point = getCanvasPoint(event.clientX, event.clientY)
-
-                            if (!point) {
-                              return
-                            }
-
-                            setSelectedEdgeId(null)
-                            setDragConnection({
-                              sourceId: node.id,
-                              ruleValue: flowValue,
-                              label: flowValue,
-                              tone: 'branch',
-                              from: {
-                                x: node.position.x + NODE_WIDTH,
-                                y: getNodeAnchorY(node, node.position.y, node.flowValues.indexOf(flowValue) + 1),
-                              },
-                              to: point,
-                            })
-                          }}
-                        >
-                          <Link2 className="h-3.5 w-3.5" />
-                        </button>
+                        <span className="min-w-0 flex-1 truncate text-[10px] text-slate-400">
+                          {getFlowTargetLabel(
+                            questions,
+                            node.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId,
+                            '—',
+                          )}
+                        </span>
+                        <GripHorizontal className="h-3 w-3 shrink-0 text-slate-300 transition group-hover:text-violet-400" />
                       </div>
                     ))}
 
-                    <div className="flex items-center gap-2 pt-1 text-xs text-slate-500">
-                      <GitBranch className="h-3.5 w-3.5" />
-                      {node.flowRules.length ? `${node.flowRules.length} regra(s) ativas` : 'Sem desvio extra'}
-                    </div>
+                    <div
+                      className="group flex cursor-grab items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-sky-50 active:cursor-grabbing"
+                      title="Arraste para conectar ao próximo bloco"
+                      onMouseDown={(event) => {
+                        event.stopPropagation()
+                        const point = getCanvasPoint(event.clientX, event.clientY)
 
-                    {node.flowRules.some((rule) => rule.nextQuestionId === FLOW_END) ? (
-                      <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] font-medium text-slate-500">
-                        Este bloco pode encerrar a pesquisa.
-                      </div>
-                    ) : null}
+                        if (!point) {
+                          return
+                        }
+
+                        setSelectedEdgeId(null)
+                        setDragConnection({
+                          sourceId: node.id,
+                          ruleValue: FLOW_ON_ANSWER,
+                          label: node.flowValues.length ? 'Próxima' : 'Após responder',
+                          tone: 'primary',
+                          from: {
+                            x: node.position.x + NODE_WIDTH,
+                            y: getNodeAnchorY(node, node.position.y, node.flowValues.length),
+                          },
+                          to: point,
+                        })
+                      }}
+                    >
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-sky-700 transition group-hover:bg-sky-200">
+                        {node.flowValues.length ? 'Próx.' : 'Próx.'}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[10px] text-slate-400">
+                        {getFlowTargetLabel(
+                          questions,
+                          node.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId,
+                          '—',
+                        )}
+                      </span>
+                      <GripHorizontal className="h-3 w-3 shrink-0 text-slate-300 transition group-hover:text-sky-400" />
+                    </div>
                   </div>
                 </div>
               )
@@ -818,7 +755,7 @@ export function SurveyVisualFlowEditor({
                         type,
                         options: needsOptions ? (current.options.length ? current.options : ['']) : [],
                         flowRules:
-                          type === 'yes_no' || type === 'single_choice'
+                          type === 'yes_no' || type === 'single_choice' || type === 'multiple_choice'
                             ? current.flowRules
                             : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
                       }
