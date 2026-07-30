@@ -16,6 +16,7 @@ import {
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyVisualFlowEditor } from '@/components/surveys/SurveyVisualFlowEditor'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SurveyPreviewLinkCard } from '@/components/ui/SurveyPreviewLinkCard'
@@ -24,7 +25,8 @@ import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
 import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
-import type { QuestionType, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
+import { mergeFlowLayout, sortIdsByFlowLayout } from '@/lib/survey-visual-flow'
+import type { QuestionType, SurveyBuilderMode, SurveyFlowLayout, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
 type BuilderQuestion = {
   id: string
@@ -48,6 +50,8 @@ type BuilderState = {
   participationMode: 'anonymous' | 'identified'
   rewardEnabled: boolean
   preventDuplicateResponses: boolean
+  builderMode: SurveyBuilderMode
+  flowLayout: SurveyFlowLayout
   questions: BuilderQuestion[]
 }
 
@@ -112,6 +116,7 @@ function getBrandInitials(value: string) {
 }
 
 function makeEmptyBuilderState(): BuilderState {
+  const initialQuestions = [makeQuestion()]
   return {
     title: '',
     description: '',
@@ -124,11 +129,25 @@ function makeEmptyBuilderState(): BuilderState {
     participationMode: 'identified',
     rewardEnabled: false,
     preventDuplicateResponses: false,
-    questions: [makeQuestion()],
+    builderMode: 'classic',
+    flowLayout: mergeFlowLayout(initialQuestions.map((question) => question.id), { version: 1, nodes: [] }),
+    questions: initialQuestions,
   }
 }
 
 function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
+  const questions = survey.questions.length
+    ? survey.questions.map((question) => ({
+        id: question.id,
+        title: question.title,
+        description: question.description ?? '',
+        type: question.type,
+        required: question.required,
+        options: question.options?.length ? question.options : [],
+        flowRules: question.flowRules ?? [],
+      }))
+    : [makeQuestion()]
+
   return {
     title: survey.title,
     description: survey.description ?? '',
@@ -141,17 +160,12 @@ function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
     participationMode: 'identified',
     rewardEnabled: survey.rewardEnabled,
     preventDuplicateResponses: false,
-    questions: survey.questions.length
-      ? survey.questions.map((question) => ({
-          id: question.id,
-          title: question.title,
-          description: question.description ?? '',
-          type: question.type,
-          required: question.required,
-          options: question.options?.length ? question.options : [],
-          flowRules: question.flowRules ?? [],
-        }))
-      : [makeQuestion()],
+    builderMode: survey.builderMode ?? 'classic',
+    flowLayout: mergeFlowLayout(
+      questions.map((question) => question.id),
+      survey.flowLayout ?? { version: 1, nodes: [] },
+    ),
+    questions,
   }
 }
 
@@ -162,6 +176,7 @@ export function SurveyBuilderPage() {
   const queryClient = useQueryClient()
   const isEditing = Boolean(params.id)
   const [form, setForm] = useState<BuilderState>(makeEmptyBuilderState)
+  const [selectedVisualQuestionId, setSelectedVisualQuestionId] = useState('')
   const [feedback, setFeedback] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
   const [uploadingKey, setUploadingKey] = useState<SurveyUploadTarget | ''>('')
@@ -191,6 +206,8 @@ export function SurveyBuilderPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          builder_mode?: SurveyBuilderMode
+          flow_json?: SurveyFlowLayout | null
           prevent_duplicate_responses: boolean
           link_clicks: string
           qr_scans: string
@@ -246,8 +263,32 @@ export function SurveyBuilderPage() {
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate])
 
+  useEffect(() => {
+    if (!form.questions.length) {
+      setSelectedVisualQuestionId('')
+      return
+    }
+
+    if (!selectedVisualQuestionId || !form.questions.some((question) => question.id === selectedVisualQuestionId)) {
+      setSelectedVisualQuestionId(form.questions[0].id)
+    }
+  }, [form.questions, selectedVisualQuestionId])
+
   const saveMutation = useMutation({
     mutationFn: async (shouldPublish: boolean) => {
+      const normalizedFlowLayout = mergeFlowLayout(
+        form.questions.map((question) => question.id),
+        form.flowLayout,
+      )
+      const orderedQuestions =
+        form.builderMode === 'visual'
+          ? sortIdsByFlowLayout(
+              form.questions.map((question) => question.id),
+              normalizedFlowLayout,
+            )
+              .map((questionId) => form.questions.find((question) => question.id === questionId))
+              .filter((question): question is BuilderQuestion => Boolean(question))
+          : form.questions
       const payload = {
         title: form.title.trim(),
         description: form.description.trim(),
@@ -260,7 +301,9 @@ export function SurveyBuilderPage() {
         closingMessage: form.closingMessage.trim(),
         rewardEnabled: form.rewardEnabled,
         preventDuplicateResponses: false,
-        questions: form.questions.map((question, index) => ({
+        builderMode: form.builderMode,
+        flowLayout: normalizedFlowLayout,
+        questions: orderedQuestions.map((question, index) => ({
           id: question.id,
           title: question.title.trim(),
           description: question.description.trim(),
@@ -472,11 +515,29 @@ export function SurveyBuilderPage() {
     }))
   }
 
-  function addQuestion() {
+  function updateQuestionById(questionId: string, updater: (question: BuilderQuestion) => BuilderQuestion) {
     setForm((current) => ({
       ...current,
-      questions: [...current.questions, makeQuestion()],
+      questions: current.questions.map((question) => (question.id === questionId ? updater(question) : question)),
     }))
+  }
+
+  function addQuestion() {
+    const nextQuestion = makeQuestion()
+
+    setForm((current) => {
+      const nextQuestions = [...current.questions, nextQuestion]
+
+      return {
+        ...current,
+        questions: nextQuestions,
+        flowLayout: mergeFlowLayout(
+          nextQuestions.map((question) => question.id),
+          current.flowLayout,
+        ),
+      }
+    })
+    setSelectedVisualQuestionId(nextQuestion.id)
   }
 
   function removeQuestion(index: number) {
@@ -496,8 +557,24 @@ export function SurveyBuilderPage() {
               flowRules: removeRulesThatPointToQuestion(question.flowRules, removedQuestionId),
             }))
           : nextQuestions,
+        flowLayout: removedQuestionId
+          ? {
+              ...current.flowLayout,
+              nodes: current.flowLayout.nodes.filter((node) => node.id !== removedQuestionId),
+            }
+          : current.flowLayout,
       }
     })
+  }
+
+  function removeQuestionById(questionId: string) {
+    const questionIndex = form.questions.findIndex((question) => question.id === questionId)
+
+    if (questionIndex < 0) {
+      return
+    }
+
+    removeQuestion(questionIndex)
   }
 
   function addOption(questionIndex: number) {
@@ -1294,274 +1371,342 @@ export function SurveyBuilderPage() {
         <SectionCard
           eyebrow="Estrutura"
           title="Perguntas da pesquisa"
-          description="Cada pergunta fica em um bloco próprio para facilitar leitura, edição e revisão."
+          description={
+            form.builderMode === 'visual'
+              ? 'Monte o fluxo arrastando os blocos no canvas e ajuste as saídas pelo inspector lateral.'
+              : 'Cada pergunta fica em um bloco próprio para facilitar leitura, edição e revisão.'
+          }
         >
-          <div className="admin-alert mb-4 border-amber-200 bg-amber-50 text-amber-900">
-            Dica: comece pelas perguntas mais importantes. Se uma resposta precisar pular etapas, use o fluxo condicional.
+          <div className="mb-4 rounded-[18px] border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">Modo de edição das perguntas</p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Use o clássico para formulário em sequência ou o visual para montar o fluxo com blocos arrastáveis.
+                </p>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                  <input
+                    type="radio"
+                    name="survey-builder-mode"
+                    checked={form.builderMode === 'classic'}
+                    onChange={() => updateForm('builderMode', 'classic')}
+                  />
+                  <span>
+                    <strong className="block text-slate-900">Editor simples</strong>
+                    <span className="text-xs text-slate-500">Lista tradicional de perguntas em sequência.</span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                  <input
+                    type="radio"
+                    name="survey-builder-mode"
+                    checked={form.builderMode === 'visual'}
+                    onChange={() =>
+                      setForm((current) => ({
+                        ...current,
+                        builderMode: 'visual',
+                        flowLayout: mergeFlowLayout(
+                          current.questions.map((question) => question.id),
+                          current.flowLayout,
+                        ),
+                      }))
+                    }
+                  />
+                  <span>
+                    <strong className="block text-slate-900">Fluxo visual</strong>
+                    <span className="text-xs text-slate-500">Blocos arrastáveis com conexões e saídas por resposta.</span>
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-4">
-            {form.questions.map((question, index) => (
-              (() => {
-                const nextQuestions = form.questions.slice(index + 1)
-                const flowValues = getQuestionFlowValues(question)
-                const genericFlowTarget =
-                  question.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''
+          {form.builderMode === 'visual' ? (
+            <SurveyVisualFlowEditor
+              primaryColor={form.primaryColor}
+              questions={form.questions}
+              flowLayout={form.flowLayout}
+              selectedQuestionId={selectedVisualQuestionId}
+              onSelectQuestion={setSelectedVisualQuestionId}
+              onAddQuestion={addQuestion}
+              onRemoveQuestion={removeQuestionById}
+              onUpdateQuestion={updateQuestionById}
+              onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
+            />
+          ) : (
+            <>
+              <div className="admin-alert mb-4 border-amber-200 bg-amber-50 text-amber-900">
+                Dica: comece pelas perguntas mais importantes. Se uma resposta precisar pular etapas, use o fluxo condicional.
+              </div>
 
-                return (
-                  <article key={question.id} className="builder-question-card">
-                    <div
-                      className="builder-section-topbar"
-                      style={{
-                        background: `linear-gradient(90deg, ${form.primaryColor || '#0b5cff'} 0%, rgba(255,255,255,0.95) 100%)`,
-                      }}
-                    />
-                    <div className="p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Pergunta {index + 1}</p>
-                        <p className="mt-2 font-semibold text-slate-950">{question.title || 'Sem título ainda'}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="builder-question-meta builder-question-meta-primary">{questionTypeLabels[question.type]}</span>
-                        <span className="builder-question-meta builder-question-meta-muted">
-                          {question.required ? 'Obrigatória' : 'Opcional'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeQuestion(index)}
-                          className="admin-button-danger px-3 py-1 text-xs"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Remover
-                        </button>
-                      </div>
-                    </div>
+              <div className="space-y-4">
+                {form.questions.map((question, index) => (
+                  (() => {
+                    const nextQuestions = form.questions.slice(index + 1)
+                    const flowValues = getQuestionFlowValues(question)
+                    const genericFlowTarget =
+                      question.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''
 
-                    <div className="mt-4 grid gap-4">
-                      <label className="grid gap-2 text-sm">
-                        <span className="text-slate-600">Título da pergunta</span>
-                        <input
-                          className="admin-input"
-                          value={question.title}
-                          placeholder="Ex.: Como você avalia seu atendimento?"
-                          onChange={(event) =>
-                            updateQuestion(index, (current) => ({
-                              ...current,
-                              title: event.target.value,
-                            }))
-                          }
+                    return (
+                      <article key={question.id} className="builder-question-card">
+                        <div
+                          className="builder-section-topbar"
+                          style={{
+                            background: `linear-gradient(90deg, ${form.primaryColor || '#0b5cff'} 0%, rgba(255,255,255,0.95) 100%)`,
+                          }}
                         />
-                      </label>
-
-                      <label className="grid gap-2 text-sm">
-                        <span className="text-slate-600">Descrição de apoio</span>
-                        <textarea
-                          className="admin-input min-h-20"
-                          value={question.description}
-                          placeholder="Use esse campo se quiser orientar o cliente sobre como responder."
-                          onChange={(event) =>
-                            updateQuestion(index, (current) => ({
-                              ...current,
-                              description: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="grid gap-2 text-sm">
-                          <span className="text-slate-600">Tipo</span>
-                          <select
-                            className="admin-select"
-                            value={question.type}
-                            onChange={(event) =>
-                              updateQuestion(index, (current) => {
-                                const type = event.target.value as QuestionType
-                                const needsOptions = type === 'single_choice' || type === 'multiple_choice'
-
-                                return {
-                                  ...current,
-                                  type,
-                                  options: needsOptions ? (current.options.length ? current.options : ['']) : [],
-                                  flowRules:
-                                    type === 'yes_no' || type === 'single_choice'
-                                      ? current.flowRules
-                                      : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
-                                }
-                              })
-                            }
-                          >
-                            {questionTypes.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={question.required}
-                            onChange={(event) =>
-                              updateQuestion(index, (current) => ({
-                                ...current,
-                                required: event.target.checked,
-                              }))
-                            }
-                          />
-                          Obrigatória
-                        </label>
-                      </div>
-
-                      {question.type === 'single_choice' || question.type === 'multiple_choice' ? (
-                        <div className="builder-soft-panel">
-                          <div className="mb-4 flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-950">Opções de resposta</p>
+                        <div className="p-5">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Pergunta {index + 1}</p>
+                            <p className="mt-2 font-semibold text-slate-950">{question.title || 'Sem título ainda'}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="builder-question-meta builder-question-meta-primary">{questionTypeLabels[question.type]}</span>
+                            <span className="builder-question-meta builder-question-meta-muted">
+                              {question.required ? 'Obrigatória' : 'Opcional'}
+                            </span>
                             <button
                               type="button"
-                              onClick={() => addOption(index)}
-                              className="admin-button px-3 py-2 text-xs"
+                              onClick={() => removeQuestion(index)}
+                              className="admin-button-danger px-3 py-1 text-xs"
                             >
-                              <Plus className="h-3.5 w-3.5" />
-                              Nova opção
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remover
                             </button>
                           </div>
+                        </div>
 
-                          <div className="space-y-3">
-                            {question.options.map((option, optionIndex) => (
-                              <div key={`${question.id}-${optionIndex}`} className="flex gap-3">
-                                <input
-                                  className="admin-input flex-1 bg-slate-50"
-                                  value={option}
-                                  placeholder={`Opção ${optionIndex + 1}`}
-                                  onChange={(event) =>
-                                    updateQuestion(index, (current) => {
-                                      const previousValue = current.options[optionIndex] ?? ''
-                                      const nextValue = event.target.value
+                        <div className="mt-4 grid gap-4">
+                          <label className="grid gap-2 text-sm">
+                            <span className="text-slate-600">Título da pergunta</span>
+                            <input
+                              className="admin-input"
+                              value={question.title}
+                              placeholder="Ex.: Como você avalia seu atendimento?"
+                              onChange={(event) =>
+                                updateQuestion(index, (current) => ({
+                                  ...current,
+                                  title: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
 
-                                      return {
-                                        ...current,
-                                        options: current.options.map((item, itemIndex) =>
-                                          itemIndex === optionIndex ? nextValue : item,
-                                        ),
-                                        flowRules: current.flowRules.map((rule) =>
-                                          rule.value === previousValue ? { ...rule, value: nextValue } : rule,
-                                        ),
-                                      }
-                                    })
-                                  }
-                                />
+                          <label className="grid gap-2 text-sm">
+                            <span className="text-slate-600">Descrição de apoio</span>
+                            <textarea
+                              className="admin-input min-h-20"
+                              value={question.description}
+                              placeholder="Use esse campo se quiser orientar o cliente sobre como responder."
+                              onChange={(event) =>
+                                updateQuestion(index, (current) => ({
+                                  ...current,
+                                  description: event.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <label className="grid gap-2 text-sm">
+                              <span className="text-slate-600">Tipo</span>
+                              <select
+                                className="admin-select"
+                                value={question.type}
+                                onChange={(event) =>
+                                  updateQuestion(index, (current) => {
+                                    const type = event.target.value as QuestionType
+                                    const needsOptions = type === 'single_choice' || type === 'multiple_choice'
+
+                                    return {
+                                      ...current,
+                                      type,
+                                      options: needsOptions ? (current.options.length ? current.options : ['']) : [],
+                                      flowRules:
+                                        type === 'yes_no' || type === 'single_choice'
+                                          ? current.flowRules
+                                          : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
+                                    }
+                                  })
+                                }
+                              >
+                                {questionTypes.map((item) => (
+                                  <option key={item.value} value={item.value}>
+                                    {item.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+
+                            <label className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={question.required}
+                                onChange={(event) =>
+                                  updateQuestion(index, (current) => ({
+                                    ...current,
+                                    required: event.target.checked,
+                                  }))
+                                }
+                              />
+                              Obrigatória
+                            </label>
+                          </div>
+
+                          {question.type === 'single_choice' || question.type === 'multiple_choice' ? (
+                            <div className="builder-soft-panel">
+                              <div className="mb-4 flex items-center justify-between gap-3">
+                                <p className="text-sm font-semibold text-slate-950">Opções de resposta</p>
                                 <button
                                   type="button"
-                                  onClick={() => removeOption(index, optionIndex)}
-                                  className="admin-button-danger px-3 py-2 text-xs"
+                                  onClick={() => addOption(index)}
+                                  className="admin-button px-3 py-2 text-xs"
                                 >
-                                  Remover
+                                  <Plus className="h-3.5 w-3.5" />
+                                  Nova opção
                                 </button>
                               </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
 
-                      <div className="builder-soft-panel">
-                        <div className="mb-4">
-                          <p className="text-sm font-semibold text-slate-950">Ação após responder</p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            Defina o que acontece assim que esta pergunta for respondida: seguir normalmente, encerrar a pesquisa ou ir para outro ponto do formulário.
-                          </p>
-                        </div>
-
-                        <label className="grid gap-2 text-sm">
-                          <span className="text-slate-600">Depois que o cliente responder esta pergunta</span>
-                          <select
-                            className="admin-select"
-                            value={genericFlowTarget}
-                            onChange={(event) =>
-                              updateQuestion(index, (current) => ({
-                                ...current,
-                                flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
-                              }))
-                            }
-                          >
-                            <option value="">Seguir para a próxima pergunta normal</option>
-                            <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
-                            {nextQuestions.map((targetQuestion, targetIndex) => (
-                              <option key={`generic-${targetQuestion.id}`} value={targetQuestion.id}>
-                                Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      {supportsQuestionFlow(question.type) ? (
-                        <div className="builder-soft-panel">
-                          <div className="mb-4">
-                            <p className="text-sm font-semibold text-slate-950">Fluxo por resposta específica</p>
-                            <p className="mt-1 text-sm text-slate-600">
-                              Para perguntas de Sim/Não e Escolha única, você também pode escolher caminhos diferentes dependendo da resposta.
-                            </p>
-                          </div>
-
-                          {flowValues.length ? (
-                            <div className="space-y-3">
-                              {flowValues.map((flowValue) => {
-                                const selectedTarget =
-                                  question.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId ?? ''
-
-                                return (
-                                  <label key={`${question.id}-${flowValue}`} className="grid gap-2 text-sm">
-                                    <span className="text-slate-600">Se responder "{flowValue}", ir para</span>
-                                    <select
-                                      className="admin-select"
-                                      value={selectedTarget}
+                              <div className="space-y-3">
+                                {question.options.map((option, optionIndex) => (
+                                  <div key={`${question.id}-${optionIndex}`} className="flex gap-3">
+                                    <input
+                                      className="admin-input flex-1 bg-slate-50"
+                                      value={option}
+                                      placeholder={`Opção ${optionIndex + 1}`}
                                       onChange={(event) =>
-                                        updateQuestion(index, (current) => ({
-                                          ...current,
-                                          flowRules: updateFlowRuleList(current.flowRules, flowValue, event.target.value),
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Próxima pergunta normal</option>
-                                      <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
-                                      {nextQuestions.map((targetQuestion, targetIndex) => (
-                                        <option key={targetQuestion.id} value={targetQuestion.id}>
-                                          Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                )
-                              })}
-                            </div>
-                          ) : (
-                            <div className="builder-soft-panel">
-                              Preencha as opções da pergunta para liberar o fluxo condicional.
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                    </div>
-                  </article>
-                )
-              })()
-            ))}
-          </div>
+                                        updateQuestion(index, (current) => {
+                                          const previousValue = current.options[optionIndex] ?? ''
+                                          const nextValue = event.target.value
 
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={addQuestion}
-              className="admin-button border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar pergunta
-            </button>
-          </div>
+                                          return {
+                                            ...current,
+                                            options: current.options.map((item, itemIndex) =>
+                                              itemIndex === optionIndex ? nextValue : item,
+                                            ),
+                                            flowRules: current.flowRules.map((rule) =>
+                                              rule.value === previousValue ? { ...rule, value: nextValue } : rule,
+                                            ),
+                                          }
+                                        })
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeOption(index, optionIndex)}
+                                      className="admin-button-danger px-3 py-2 text-xs"
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="builder-soft-panel">
+                            <div className="mb-4">
+                              <p className="text-sm font-semibold text-slate-950">Ação após responder</p>
+                              <p className="mt-1 text-sm text-slate-600">
+                                Defina o que acontece assim que esta pergunta for respondida: seguir normalmente, encerrar a pesquisa ou ir para outro ponto do formulário.
+                              </p>
+                            </div>
+
+                            <label className="grid gap-2 text-sm">
+                              <span className="text-slate-600">Depois que o cliente responder esta pergunta</span>
+                              <select
+                                className="admin-select"
+                                value={genericFlowTarget}
+                                onChange={(event) =>
+                                  updateQuestion(index, (current) => ({
+                                    ...current,
+                                    flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
+                                  }))
+                                }
+                              >
+                                <option value="">Seguir para a próxima pergunta normal</option>
+                                <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
+                                {nextQuestions.map((targetQuestion, targetIndex) => (
+                                  <option key={`generic-${targetQuestion.id}`} value={targetQuestion.id}>
+                                    Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+
+                          {supportsQuestionFlow(question.type) ? (
+                            <div className="builder-soft-panel">
+                              <div className="mb-4">
+                                <p className="text-sm font-semibold text-slate-950">Fluxo por resposta específica</p>
+                                <p className="mt-1 text-sm text-slate-600">
+                                  Para perguntas de Sim/Não e Escolha única, você também pode escolher caminhos diferentes dependendo da resposta.
+                                </p>
+                              </div>
+
+                              {flowValues.length ? (
+                                <div className="space-y-3">
+                                  {flowValues.map((flowValue) => {
+                                    const selectedTarget =
+                                      question.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId ?? ''
+
+                                    return (
+                                      <label key={`${question.id}-${flowValue}`} className="grid gap-2 text-sm">
+                                        <span className="text-slate-600">Se responder "{flowValue}", ir para</span>
+                                        <select
+                                          className="admin-select"
+                                          value={selectedTarget}
+                                          onChange={(event) =>
+                                            updateQuestion(index, (current) => ({
+                                              ...current,
+                                              flowRules: updateFlowRuleList(current.flowRules, flowValue, event.target.value),
+                                            }))
+                                          }
+                                        >
+                                          <option value="">Próxima pergunta normal</option>
+                                          <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
+                                          {nextQuestions.map((targetQuestion, targetIndex) => (
+                                            <option key={targetQuestion.id} value={targetQuestion.id}>
+                                              Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    )
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="builder-soft-panel">
+                                  Preencha as opções da pergunta para liberar o fluxo condicional.
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                        </div>
+                      </article>
+                    )
+                  })()
+                ))}
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="admin-button border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                >
+                  <Plus className="h-4 w-4" />
+                  Adicionar pergunta
+                </button>
+              </div>
+            </>
+          )}
         </SectionCard>
       </div>
 

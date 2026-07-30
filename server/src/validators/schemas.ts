@@ -56,6 +56,24 @@ export const surveyQuestionSchema = z.object({
     .optional(),
 })
 
+const surveyFlowNodeSchema = z.object({
+  id: z.string().min(1),
+  x: z.number(),
+  y: z.number(),
+})
+
+const surveyFlowLayoutSchema = z.object({
+  version: z.number().int().default(1),
+  nodes: z.array(surveyFlowNodeSchema).default([]),
+  viewport: z
+    .object({
+      x: z.number(),
+      y: z.number(),
+      zoom: z.number().positive(),
+    })
+    .optional(),
+})
+
 export const surveySchema = z.object({
   title: z.string().min(3),
   description: z.string().optional(),
@@ -68,6 +86,8 @@ export const surveySchema = z.object({
   closingMessage: z.string().optional(),
   rewardEnabled: z.boolean().default(false),
   preventDuplicateResponses: z.boolean().default(false),
+  builderMode: z.enum(['classic', 'visual']).default('classic'),
+  flowLayout: surveyFlowLayoutSchema.optional(),
   questions: z.array(surveyQuestionSchema).min(1),
 })
 

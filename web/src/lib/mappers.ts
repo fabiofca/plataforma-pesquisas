@@ -96,6 +96,20 @@ export function mapApiSurvey(item: {
   participationMode?: string
   reward_enabled?: boolean
   rewardEnabled?: boolean
+  builder_mode?: 'classic' | 'visual'
+  flow_json?: {
+    version?: number
+    nodes?: Array<{
+      id: string
+      x: number
+      y: number
+    }>
+    viewport?: {
+      x: number
+      y: number
+      zoom: number
+    }
+  } | null
   prevent_duplicate_responses?: boolean
   preventDuplicateResponses?: boolean
   primary_color?: string
@@ -157,6 +171,14 @@ export function mapApiSurvey(item: {
     responses: Number(item.responses ?? 0),
     participationMode: mapParticipationMode(item.participation_mode ?? item.participationMode ?? 'anonymous'),
     rewardEnabled: item.reward_enabled ?? item.rewardEnabled ?? false,
+    builderMode: item.builder_mode ?? 'classic',
+    flowLayout: item.flow_json
+      ? {
+          version: item.flow_json.version ?? 1,
+          nodes: item.flow_json.nodes ?? [],
+          viewport: item.flow_json.viewport,
+        }
+      : undefined,
     primaryColor: item.primary_color ?? item.primaryColor ?? '#0b5cff',
     updatedAt: 'Atualizada agora',
     questions: (item.questions ?? []).map(mapApiQuestion),

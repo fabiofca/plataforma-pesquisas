@@ -20,10 +20,27 @@ export type QuestionType =
   | 'nps'
 
 export type SurveyFlowTarget = string | '__end__'
+export type SurveyBuilderMode = 'classic' | 'visual'
 
 export interface SurveyQuestionFlowRule {
   value: string
   nextQuestionId: SurveyFlowTarget
+}
+
+export interface SurveyFlowNodeLayout {
+  id: string
+  x: number
+  y: number
+}
+
+export interface SurveyFlowLayout {
+  version: number
+  nodes: SurveyFlowNodeLayout[]
+  viewport?: {
+    x: number
+    y: number
+    zoom: number
+  }
 }
 
 export interface AuthUser {
@@ -74,6 +91,8 @@ export interface SurveyItem {
   responses: number
   participationMode: 'Anônima' | 'Identificada'
   rewardEnabled: boolean
+  builderMode?: SurveyBuilderMode
+  flowLayout?: SurveyFlowLayout
   primaryColor: string
   updatedAt: string
   questions: SurveyQuestion[]
