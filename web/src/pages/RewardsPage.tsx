@@ -745,11 +745,13 @@ export function RewardsPage() {
           <div className="grid gap-2 text-sm">
             <span className="text-slate-600">Imagem do prêmio (opcional)</span>
             {getRewardImagePreview(newRewardForm) ? (
-              <img
-                src={getRewardImagePreview(newRewardForm)}
-                alt={newRewardForm.title || 'Imagem do item'}
-                className="h-32 w-full rounded-[16px] border border-slate-200 object-cover"
-              />
+              <div className="flex h-32 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+                <img
+                  src={getRewardImagePreview(newRewardForm)}
+                  alt={newRewardForm.title || 'Imagem do item'}
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
             ) : (
               <div className="flex h-32 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
                 <ImagePlus className="mr-2 h-4 w-4" />
@@ -1495,11 +1497,13 @@ export function RewardsPage() {
                       <div className="grid gap-2">
                         <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem opcional</span>
                         {getRewardImagePreview(item) ? (
-                          <img
-                            src={getRewardImagePreview(item)}
-                            alt={item.title || 'Imagem do item'}
-                            className="h-36 w-full rounded-[16px] border border-slate-200 object-cover"
-                          />
+                          <div className="flex h-24 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+                            <img
+                              src={getRewardImagePreview(item)}
+                              alt={item.title || 'Imagem do item'}
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </div>
                         ) : (
                           <div className="flex h-24 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
                             <ImagePlus className="mr-2 h-4 w-4" />
