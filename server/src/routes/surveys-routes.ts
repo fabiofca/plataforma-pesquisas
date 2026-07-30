@@ -275,7 +275,7 @@ function validateSurveyQuestionFlows(questions: SurveyQuestionPayload[]) {
     for (const rule of flowRules) {
       const isGenericRule = rule.value === FLOW_ON_ANSWER
 
-      if (!isGenericRule && !['yes_no', 'single_choice'].includes(question.type)) {
+      if (!isGenericRule && !['yes_no', 'single_choice', 'multiple_choice'].includes(question.type)) {
         return `A pergunta "${question.title}" só aceita o fluxo geral após responder.`
       }
 
@@ -297,11 +297,6 @@ function validateSurveyQuestionFlows(questions: SurveyQuestionPayload[]) {
 
       if (!questionIds.has(rule.nextQuestionId)) {
         return `A pergunta "${question.title}" aponta para um destino de fluxo que não existe mais.`
-      }
-
-      const targetPosition = positions.get(rule.nextQuestionId)
-      if (typeof targetPosition !== 'number' || targetPosition <= index) {
-        return `A pergunta "${question.title}" só pode apontar para perguntas abaixo dela na ordem do formulário.`
       }
     }
   }
