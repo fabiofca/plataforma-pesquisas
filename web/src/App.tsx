@@ -166,6 +166,10 @@ export default function App() {
   const bootstrapSession = useAuthStore((state) => state.bootstrapSession)
 
   useEffect(() => {
+    sessionStorage.removeItem('app:chunk-reload-once')
+  }, [])
+
+  useEffect(() => {
     void bootstrapSession()
   }, [bootstrapSession])
 
