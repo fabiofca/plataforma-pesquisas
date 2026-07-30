@@ -6,6 +6,12 @@ import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
 function getGitCommitSha() {
+  const injectedCommitSha = process.env.APP_GIT_COMMIT_SHA?.trim()
+
+  if (injectedCommitSha) {
+    return injectedCommitSha
+  }
+
   try {
     return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
   } catch {
