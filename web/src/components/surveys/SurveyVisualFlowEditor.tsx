@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, CheckCircle2, GitBranch, Move, Plus, Trash2 } from 'lucide-react'
+import { ArrowRight, CheckCircle2, GitBranch, Link2, Move, Plus, Trash2 } from 'lucide-react'
 
 import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
 import {
@@ -38,8 +38,6 @@ const NODE_WIDTH = 240
 const NODE_HEADER_HEIGHT = 88
 const NODE_FLOW_ROW_HEIGHT = 34
 const NODE_BOTTOM_PADDING = 14
-const START_X = 60
-const START_Y = 90
 
 function updateFlowRuleList(flowRules: SurveyQuestionFlowRule[], value: string, nextQuestionId: string) {
   const normalizedValue = value.trim()
@@ -54,10 +52,24 @@ function updateFlowRuleList(flowRules: SurveyQuestionFlowRule[], value: string, 
 
 type EdgeLine = {
   id: string
+  sourceId: string
+  ruleValue: string
+  targetId: string
+  editable: boolean
   from: { x: number; y: number }
   to: { x: number; y: number }
+  mid: { x: number; y: number }
   label: string
   tone: 'primary' | 'branch' | 'muted'
+}
+
+type DragConnection = {
+  sourceId: string
+  ruleValue: string
+  label: string
+  tone: EdgeLine['tone']
+  from: { x: number; y: number }
+  to: { x: number; y: number }
 }
 
 function getNodeFlowValues(question: Pick<VisualQuestion, 'type' | 'options'>) {
@@ -94,6 +106,13 @@ function buildPath(from: { x: number; y: number }, to: { x: number; y: number })
   return `M ${from.x} ${from.y} C ${from.x + deltaX} ${from.y}, ${to.x - deltaX} ${to.y}, ${to.x} ${to.y}`
 }
 
+function getEdgeMidpoint(from: { x: number; y: number }, to: { x: number; y: number }) {
+  return {
+    x: (from.x + to.x) / 2,
+    y: (from.y + to.y) / 2,
+  }
+}
+
 export function SurveyVisualFlowEditor({
   primaryColor,
   questions,
@@ -121,6 +140,9 @@ export function SurveyVisualFlowEditor({
     offsetX: number
     offsetY: number
   } | null>(null)
+  const [dragConnection, setDragConnection] = useState<DragConnection | null>(null)
+  const [hoveredTargetId, setHoveredTargetId] = useState<string | null>(null)
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedQuestionId && questions[0]?.id) {
@@ -148,9 +170,36 @@ export function SurveyVisualFlowEditor({
     [flowLayout, questions],
   )
 
+  function getCanvasPoint(clientX: number, clientY: number) {
+    const canvas = canvasRef.current
+
+    if (!canvas) {
+      return null
+    }
+
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: clientX - rect.left + canvas.scrollLeft,
+      y: clientY - rect.top + canvas.scrollTop,
+    }
+  }
+
+  function getTargetNodeIdAtPoint(point: { x: number; y: number }, sourceId: string) {
+    const targetNode = nodes.find(
+      (node) =>
+        node.id !== sourceId &&
+        point.x >= node.position.x &&
+        point.x <= node.position.x + NODE_WIDTH &&
+        point.y >= node.position.y &&
+        point.y <= node.position.y + node.height,
+    )
+
+    return targetNode?.id ?? null
+  }
+
   const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) ?? questions[0] ?? null
-  const maxX = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH), START_X + NODE_WIDTH + 80)
-  const maxY = Math.max(...nodes.map((node) => node.position.y + node.height), START_Y + 420)
+  const maxX = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH), NODE_WIDTH + 160)
+  const maxY = Math.max(...nodes.map((node) => node.position.y + node.height), 420)
 
   const edges = useMemo(() => {
     const nodeMap = new Map(nodes.map((node) => [node.id, node]))
@@ -164,17 +213,24 @@ export function SurveyVisualFlowEditor({
 
       if (genericTargetId && genericTargetId !== FLOW_END) {
         const targetNode = nodeMap.get(genericTargetId)
+        const from = {
+          x: node.position.x + NODE_WIDTH,
+          y: getNodeAnchorY(node, node.position.y, 0),
+        }
+        const to = {
+          x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
+          y: targetNode ? targetNode.position.y + targetNode.height / 2 : getNodeAnchorY(node, node.position.y, 0),
+        }
 
         edgeLines.push({
           id: `${node.id}-generic-${genericTargetId}`,
-          from: {
-            x: node.position.x + NODE_WIDTH,
-            y: getNodeAnchorY(node, node.position.y, 0),
-          },
-          to: {
-            x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
-            y: targetNode ? targetNode.position.y + targetNode.height / 2 : getNodeAnchorY(node, node.position.y, 0),
-          },
+          sourceId: node.id,
+          ruleValue: FLOW_ON_ANSWER,
+          targetId: genericTargetId,
+          editable: Boolean(genericRule),
+          from,
+          to,
+          mid: getEdgeMidpoint(from, to),
           label: genericRule ? 'Após responder' : 'Sequência',
           tone: genericRule ? 'primary' : 'muted',
         })
@@ -193,19 +249,26 @@ export function SurveyVisualFlowEditor({
           }
 
           const targetNode = nodeMap.get(specificRule.nextQuestionId)
+          const from = {
+            x: node.position.x + NODE_WIDTH,
+            y: getNodeAnchorY(node, node.position.y, flowIndex + 1),
+          }
+          const to = {
+            x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
+            y: targetNode
+              ? targetNode.position.y + targetNode.height / 2
+              : getNodeAnchorY(node, node.position.y, flowIndex + 1),
+          }
 
           edgeLines.push({
             id: `${node.id}-${flowValue}-${specificRule.nextQuestionId}`,
-            from: {
-              x: node.position.x + NODE_WIDTH,
-              y: getNodeAnchorY(node, node.position.y, flowIndex + 1),
-            },
-            to: {
-              x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
-              y: targetNode
-                ? targetNode.position.y + targetNode.height / 2
-                : getNodeAnchorY(node, node.position.y, flowIndex + 1),
-            },
+            sourceId: node.id,
+            ruleValue: flowValue,
+            targetId: specificRule.nextQuestionId,
+            editable: true,
+            from,
+            to,
+            mid: getEdgeMidpoint(from, to),
             label: flowValue,
             tone: 'branch',
           })
@@ -259,6 +322,54 @@ export function SurveyVisualFlowEditor({
     }
   }, [draggingNode, flowLayout, onUpdateFlowLayout])
 
+  useEffect(() => {
+    if (!dragConnection) {
+      setHoveredTargetId(null)
+      return
+    }
+
+    function handleMouseMove(event: MouseEvent) {
+      const point = getCanvasPoint(event.clientX, event.clientY)
+
+      if (!point) {
+        return
+      }
+
+      setDragConnection((current) => (current ? { ...current, to: point } : current))
+      setHoveredTargetId(getTargetNodeIdAtPoint(point, dragConnection.sourceId))
+    }
+
+    function handleMouseUp(event: MouseEvent) {
+      const point = getCanvasPoint(event.clientX, event.clientY)
+      const targetId = point ? getTargetNodeIdAtPoint(point, dragConnection.sourceId) : null
+
+      if (targetId) {
+        onUpdateQuestion(dragConnection.sourceId, (current) => ({
+          ...current,
+          flowRules: updateFlowRuleList(current.flowRules, dragConnection.ruleValue, targetId),
+        }))
+        onSelectQuestion(targetId)
+      }
+
+      setDragConnection(null)
+      setHoveredTargetId(null)
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [dragConnection, onSelectQuestion, onUpdateQuestion])
+
+  useEffect(() => {
+    if (selectedEdgeId && !edges.some((edge) => edge.id === selectedEdgeId)) {
+      setSelectedEdgeId(null)
+    }
+  }, [edges, selectedEdgeId])
+
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className="admin-panel overflow-hidden p-0">
@@ -293,7 +404,7 @@ export function SurveyVisualFlowEditor({
           className="relative h-[calc(100vh-200px)] min-h-[640px] overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] md:min-h-[720px]"
         >
           <div className="relative" style={{ width: Math.max(1180, maxX + 180), height: Math.max(760, maxY + 200) }}>
-            <svg className="pointer-events-none absolute inset-0 h-full w-full">
+            <svg className="absolute inset-0 h-full w-full">
               <defs>
                 <marker id="flow-arrow-primary" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill={primaryColor || '#0b5cff'} />
@@ -311,28 +422,39 @@ export function SurveyVisualFlowEditor({
                   edge.tone === 'primary' ? primaryColor || '#0b5cff' : edge.tone === 'branch' ? '#7c3aed' : '#94a3b8'
 
                 return (
-                  <g key={edge.id}>
+                  <g
+                    key={edge.id}
+                    className={edge.editable ? 'pointer-events-auto cursor-pointer' : 'pointer-events-none'}
+                    onClick={
+                      edge.editable
+                        ? (event) => {
+                            event.stopPropagation()
+                            setSelectedEdgeId((current) => (current === edge.id ? null : edge.id))
+                          }
+                        : undefined
+                    }
+                  >
                     <path
                       d={buildPath(edge.from, edge.to)}
                       fill="none"
                       stroke={stroke}
-                      strokeWidth={edge.tone === 'muted' ? 2 : 2.5}
+                      strokeWidth={selectedEdgeId === edge.id ? 3.5 : edge.tone === 'muted' ? 2 : 2.5}
                       strokeDasharray={edge.tone === 'muted' ? '6 6' : undefined}
                       markerEnd={`url(#flow-arrow-${edge.tone})`}
                     />
                     <rect
-                      x={(edge.from.x + edge.to.x) / 2 - 42}
-                      y={(edge.from.y + edge.to.y) / 2 - 12}
+                      x={edge.mid.x - 42}
+                      y={edge.mid.y - 12}
                       width="84"
                       height="24"
                       rx="12"
                       fill="white"
                       stroke={stroke}
-                      strokeOpacity="0.18"
+                      strokeOpacity={selectedEdgeId === edge.id ? '0.45' : '0.18'}
                     />
                     <text
-                      x={(edge.from.x + edge.to.x) / 2}
-                      y={(edge.from.y + edge.to.y) / 2 + 4}
+                      x={edge.mid.x}
+                      y={edge.mid.y + 4}
                       fontSize="11"
                       fontWeight="600"
                       fill={stroke}
@@ -343,18 +465,51 @@ export function SurveyVisualFlowEditor({
                   </g>
                 )
               })}
+
+              {dragConnection ? (
+                <g className="pointer-events-none">
+                  <path
+                    d={buildPath(dragConnection.from, dragConnection.to)}
+                    fill="none"
+                    stroke={dragConnection.tone === 'branch' ? '#7c3aed' : primaryColor || '#0b5cff'}
+                    strokeWidth="2.5"
+                    strokeDasharray="6 6"
+                    markerEnd={`url(#flow-arrow-${dragConnection.tone === 'branch' ? 'branch' : 'primary'})`}
+                  />
+                </g>
+              ) : null}
             </svg>
 
-            <div
-              className="absolute flex h-[136px] w-[240px] flex-col justify-between rounded-[20px] border border-emerald-200 bg-emerald-50 p-4 shadow-sm"
-              style={{ left: START_X, top: START_Y }}
-            >
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Início</p>
-                <p className="mt-2 text-sm font-semibold text-slate-950">Entrada</p>
+            {selectedEdgeId ? (
+              <div
+                className="absolute z-20"
+                style={{
+                  left: (edges.find((edge) => edge.id === selectedEdgeId)?.mid.x ?? 0) + 50,
+                  top: (edges.find((edge) => edge.id === selectedEdgeId)?.mid.y ?? 0) - 16,
+                }}
+              >
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-rose-600 shadow-sm"
+                  onClick={() => {
+                    const edge = edges.find((entry) => entry.id === selectedEdgeId)
+
+                    if (!edge) {
+                      return
+                    }
+
+                    onUpdateQuestion(edge.sourceId, (current) => ({
+                      ...current,
+                      flowRules: current.flowRules.filter((rule) => rule.value !== edge.ruleValue),
+                    }))
+                    setSelectedEdgeId(null)
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Excluir ligação
+                </button>
               </div>
-              <p className="text-sm text-slate-600">Primeiro passo do fluxo.</p>
-            </div>
+            ) : null}
 
             {nodes.map((node) => {
               const isSelected = selectedQuestion?.id === node.id
@@ -364,7 +519,11 @@ export function SurveyVisualFlowEditor({
                   key={node.id}
                   onClick={() => onSelectQuestion(node.id)}
                   className={`absolute flex min-h-[136px] w-[240px] flex-col justify-between rounded-[20px] border bg-white p-4 text-left shadow-sm transition ${
-                    isSelected ? 'border-sky-400 ring-2 ring-sky-100' : 'border-slate-200 hover:border-sky-200'
+                    hoveredTargetId === node.id
+                      ? 'border-violet-400 ring-2 ring-violet-100'
+                      : isSelected
+                        ? 'border-sky-400 ring-2 ring-sky-100'
+                        : 'border-slate-200 hover:border-sky-200'
                   }`}
                   style={{ left: node.position.x, top: node.position.y, height: node.height }}
                 >
@@ -455,6 +614,34 @@ export function SurveyVisualFlowEditor({
                             )}
                           </span>
                         )}
+                        <button
+                          type="button"
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-sky-300 hover:text-sky-600"
+                          title="Puxar ligação padrão"
+                          onMouseDown={(event) => {
+                            event.stopPropagation()
+                            const point = getCanvasPoint(event.clientX, event.clientY)
+
+                            if (!point) {
+                              return
+                            }
+
+                            setSelectedEdgeId(null)
+                            setDragConnection({
+                              sourceId: node.id,
+                              ruleValue: FLOW_ON_ANSWER,
+                              label: 'Após responder',
+                              tone: 'primary',
+                              from: {
+                                x: node.position.x + NODE_WIDTH,
+                                y: getNodeAnchorY(node, node.position.y, 0),
+                              },
+                              to: point,
+                            })
+                          }}
+                        >
+                          <Link2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -498,6 +685,34 @@ export function SurveyVisualFlowEditor({
                             )}
                           </span>
                         )}
+                        <button
+                          type="button"
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white text-violet-600 transition hover:border-violet-300 hover:bg-violet-50"
+                          title={`Puxar ligação para ${flowValue}`}
+                          onMouseDown={(event) => {
+                            event.stopPropagation()
+                            const point = getCanvasPoint(event.clientX, event.clientY)
+
+                            if (!point) {
+                              return
+                            }
+
+                            setSelectedEdgeId(null)
+                            setDragConnection({
+                              sourceId: node.id,
+                              ruleValue: flowValue,
+                              label: flowValue,
+                              tone: 'branch',
+                              from: {
+                                x: node.position.x + NODE_WIDTH,
+                                y: getNodeAnchorY(node, node.position.y, node.flowValues.indexOf(flowValue) + 1),
+                              },
+                              to: point,
+                            })
+                          }}
+                        >
+                          <Link2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
                     ))}
 
