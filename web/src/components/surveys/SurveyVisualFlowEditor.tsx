@@ -151,29 +151,10 @@ export function SurveyVisualFlowEditor({
   const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) ?? questions[0] ?? null
   const maxX = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH), START_X + NODE_WIDTH + 80)
   const maxY = Math.max(...nodes.map((node) => node.position.y + node.height), START_Y + 420)
-  const endPosition = {
-    x: Math.max(START_X + 40, maxX - NODE_WIDTH),
-    y: maxY - 24,
-  }
 
   const edges = useMemo(() => {
     const nodeMap = new Map(nodes.map((node) => [node.id, node]))
     const edgeLines: EdgeLine[] = []
-
-    const firstQuestionId = orderedQuestionIds[0]
-    if (firstQuestionId) {
-      const firstNode = nodeMap.get(firstQuestionId)
-
-      if (firstNode) {
-        edgeLines.push({
-          id: 'start-edge',
-          from: { x: START_X + NODE_WIDTH, y: START_Y + 68 },
-          to: { x: firstNode.position.x, y: firstNode.position.y + firstNode.height / 2 },
-          label: 'Início',
-          tone: 'primary',
-        })
-      }
-    }
 
     nodes.forEach((node) => {
       const currentIndex = orderedQuestionIds.indexOf(node.id)
@@ -181,8 +162,8 @@ export function SurveyVisualFlowEditor({
       const fallbackTargetId = orderedQuestionIds[currentIndex + 1] ?? FLOW_END
       const genericTargetId = genericRule?.nextQuestionId ?? fallbackTargetId
 
-      if (genericTargetId) {
-        const targetNode = genericTargetId === FLOW_END ? null : nodeMap.get(genericTargetId)
+      if (genericTargetId && genericTargetId !== FLOW_END) {
+        const targetNode = nodeMap.get(genericTargetId)
 
         edgeLines.push({
           id: `${node.id}-generic-${genericTargetId}`,
@@ -190,16 +171,10 @@ export function SurveyVisualFlowEditor({
             x: node.position.x + NODE_WIDTH,
             y: getNodeAnchorY(node, node.position.y, 0),
           },
-          to:
-            genericTargetId === FLOW_END
-              ? { x: endPosition.x, y: endPosition.y + 68 }
-              : {
-                  x: targetNode?.position.x ?? endPosition.x,
-                  y:
-                    targetNode
-                      ? targetNode.position.y + targetNode.height / 2
-                      : endPosition.y + 68,
-                },
+          to: {
+            x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
+            y: targetNode ? targetNode.position.y + targetNode.height / 2 : getNodeAnchorY(node, node.position.y, 0),
+          },
           label: genericRule ? 'Após responder' : 'Sequência',
           tone: genericRule ? 'primary' : 'muted',
         })
@@ -213,7 +188,11 @@ export function SurveyVisualFlowEditor({
             return
           }
 
-          const targetNode = specificRule.nextQuestionId === FLOW_END ? null : nodeMap.get(specificRule.nextQuestionId)
+          if (specificRule.nextQuestionId === FLOW_END) {
+            return
+          }
+
+          const targetNode = nodeMap.get(specificRule.nextQuestionId)
 
           edgeLines.push({
             id: `${node.id}-${flowValue}-${specificRule.nextQuestionId}`,
@@ -221,16 +200,12 @@ export function SurveyVisualFlowEditor({
               x: node.position.x + NODE_WIDTH,
               y: getNodeAnchorY(node, node.position.y, flowIndex + 1),
             },
-            to:
-              specificRule.nextQuestionId === FLOW_END
-                ? { x: endPosition.x, y: endPosition.y + 68 }
-                : {
-                    x: targetNode?.position.x ?? endPosition.x,
-                    y:
-                      targetNode
-                        ? targetNode.position.y + targetNode.height / 2
-                        : endPosition.y + 68,
-                  },
+            to: {
+              x: targetNode?.position.x ?? node.position.x + NODE_WIDTH + 120,
+              y: targetNode
+                ? targetNode.position.y + targetNode.height / 2
+                : getNodeAnchorY(node, node.position.y, flowIndex + 1),
+            },
             label: flowValue,
             tone: 'branch',
           })
@@ -239,7 +214,7 @@ export function SurveyVisualFlowEditor({
     })
 
     return edgeLines
-  }, [endPosition.x, endPosition.y, nodes, orderedQuestionIds])
+  }, [nodes, orderedQuestionIds])
 
   useEffect(() => {
     if (!draggingNode) {
@@ -412,9 +387,16 @@ export function SurveyVisualFlowEditor({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                          Pergunta
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                            Pergunta
+                          </p>
+                          {orderedQuestionIds[0] === node.id ? (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700">
+                              Início
+                            </span>
+                          ) : null}
+                        </div>
                         <p className="mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
                           {node.title || 'Sem título ainda'}
                         </p>
@@ -523,21 +505,16 @@ export function SurveyVisualFlowEditor({
                       <GitBranch className="h-3.5 w-3.5" />
                       {node.flowRules.length ? `${node.flowRules.length} regra(s) ativas` : 'Sem desvio extra'}
                     </div>
+
+                    {node.flowRules.some((rule) => rule.nextQuestionId === FLOW_END) ? (
+                      <div className="rounded-[10px] border border-slate-200 bg-slate-50 px-2.5 py-2 text-[11px] font-medium text-slate-500">
+                        Este bloco pode encerrar a pesquisa.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )
             })}
-
-            <div
-              className="absolute flex h-[136px] w-[240px] flex-col justify-between rounded-[20px] border border-slate-300 bg-slate-50 p-4 shadow-sm"
-              style={{ left: endPosition.x, top: endPosition.y }}
-            >
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Fim</p>
-                <p className="mt-2 text-sm font-semibold text-slate-950">Encerramento</p>
-              </div>
-              <p className="text-sm text-slate-600">Final do caminho.</p>
-            </div>
           </div>
         </div>
       </div>
