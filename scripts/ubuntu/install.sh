@@ -1206,6 +1206,32 @@ server {
     root ${APP_ROOT}/web/dist;
     index index.html;
 
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files \$uri =404;
+    }
+
+    location = /favicon.svg {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        expires -1;
+        try_files \$uri =404;
+    }
+
+    location = /favicon.ico {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        expires -1;
+        try_files \$uri =404;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files \$uri =404;
+    }
+
     location /api/ {
         proxy_pass http://127.0.0.1:${APP_PORT}/api/;
         proxy_http_version 1.1;

@@ -22,9 +22,11 @@ export function BrandingEffects() {
     }
 
     const faviconLink = currentFaviconLink ?? document.createElement('link')
+    const separator = branding.faviconUrl.includes('?') ? '&' : '?'
+    const faviconUrl = `${branding.faviconUrl}${separator}v=${__APP_COMMIT_SHA__}`
     faviconLink.rel = 'icon'
     faviconLink.type = branding.faviconUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/png'
-    faviconLink.href = branding.faviconUrl
+    faviconLink.href = faviconUrl
 
     if (!currentFaviconLink) {
       document.head.appendChild(faviconLink)
