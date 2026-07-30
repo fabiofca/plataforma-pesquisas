@@ -24,6 +24,7 @@ const DESKTOP_SIDEBAR_OPEN_WIDTH = 248
 const DESKTOP_SIDEBAR_CLOSED_WIDTH = 76
 const MOBILE_SIDEBAR_WIDTH = 280
 const HEADER_HEIGHT = 56
+const APP_COMMIT_SHA = __APP_COMMIT_SHA__
 
 function normalizeHexColor(value: string, fallback: string) {
   return /^#([0-9a-f]{6})$/i.test(value) ? value : fallback
@@ -179,6 +180,25 @@ function SidebarBody({
           <LogOut className="h-4 w-4" />
           {!compact ? 'Sair' : null}
         </button>
+
+        <div
+          className={`mt-2 border px-3 py-2 text-[11px] ${compact ? 'text-center' : ''}`}
+          style={{
+            borderColor: withAlpha('#ffffff', 0.08),
+            backgroundColor: withAlpha('#ffffff', 0.04),
+            borderRadius: 6,
+          }}
+          title={`Commit ${APP_COMMIT_SHA}`}
+        >
+          {compact ? (
+            <span className="font-semibold uppercase tracking-[0.12em] text-slate-300">#{APP_COMMIT_SHA}</span>
+          ) : (
+            <>
+              <p className="uppercase tracking-[0.16em] text-slate-400">Versão atual</p>
+              <p className="mt-1 font-semibold text-white">Commit {APP_COMMIT_SHA}</p>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
