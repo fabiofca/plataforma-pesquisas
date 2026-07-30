@@ -55,7 +55,7 @@ const neutralLabels = [
 function createDefaultRewardItem(): RewardFormItem {
   return {
     title: 'Vale-compras de R$ 50',
-    wheelLabel: 'Vale-compras',
+    wheelLabel: '',
     description: 'Exemplo de prêmio real para a roleta.',
     imageUrl: '',
     imagePreviewUrl: '',
@@ -110,12 +110,12 @@ function getRewardImagePreview(item: Pick<RewardFormItem, 'imageUrl' | 'imagePre
 function buildDemoWheelSegments(items: RewardFormItem[], wheelMode: RewardWheelMode) {
   if (wheelMode === 'advanced') {
     const segments = items
-      .filter((item) => item.isActive && item.showOnWheel && item.wheelLabel.trim())
+      .filter((item) => item.isActive && item.showOnWheel && item.title.trim())
       .sort((left, right) => left.sortOrder - right.sortOrder)
       .slice(0, maxAdvancedWheelItems)
       .map((item, index) => ({
         id: item.id ?? `reward-${index}`,
-        label: item.wheelLabel.trim(),
+        label: item.wheelLabel.trim() || item.title.trim(),
         kind:
           item.outcomeRole === 'prize'
             ? ('reward' as const)
@@ -318,7 +318,7 @@ export function RewardsPage() {
     const mappedItems = (rewardsQuery.data?.items ?? []).map((item, index) => ({
       id: item.id,
       title: item.title,
-      wheelLabel: item.wheel_label ?? item.title,
+      wheelLabel: item.wheel_label && item.wheel_label !== item.title ? item.wheel_label : '',
       description: item.description ?? '',
       imageUrl: item.image_url ?? '',
       imagePreviewUrl: '',
@@ -379,9 +379,7 @@ export function RewardsPage() {
 
   const saveItemsMutation = useMutation({
     mutationFn: async () => {
-      const filledItems = itemsForm.filter((entry) =>
-        campaignForm.wheelMode === 'advanced' ? entry.wheelLabel.trim() && entry.title.trim() : entry.title.trim(),
-      )
+      const filledItems = itemsForm.filter((entry) => entry.title.trim())
       const prizeItems = filledItems.filter((item) => item.outcomeRole === 'prize')
 
       if (campaignForm.wheelMode === 'standard' && prizeItems.length > maxRealRewards) {
@@ -539,7 +537,7 @@ export function RewardsPage() {
         {
           ...newRewardForm,
           title: newRewardForm.title.trim(),
-          wheelLabel: newRewardForm.wheelLabel.trim() || newRewardForm.title.trim(),
+          wheelLabel: newRewardForm.wheelLabel.trim(),
           description: newRewardForm.description.trim(),
         },
       ]
@@ -694,24 +692,25 @@ export function RewardsPage() {
       >
         <div className="grid gap-4">
           <label className="grid gap-2 text-sm">
-            <span className="text-slate-600">Nome interno do item</span>
+            <span className="text-slate-600">Nome do item</span>
             <input
               className="admin-input"
               value={newRewardForm.title}
               onChange={(event) => setNewRewardForm((current) => ({ ...current, title: event.target.value }))}
+              placeholder="Ex: Coca-Cola 2L"
               required
             />
           </label>
 
           <label className="grid gap-2 text-sm">
-            <span className="text-slate-600">Texto da fatia</span>
+            <span className="text-slate-600">Texto da fatia (opcional)</span>
             <input
               className="admin-input"
               value={newRewardForm.wheelLabel}
               onChange={(event) => setNewRewardForm((current) => ({ ...current, wheelLabel: event.target.value }))}
-              placeholder="Ex: Casquinha, Sem sorte, Carro 0 km"
+              placeholder="Se deixar vazio, a roleta usa o nome do item"
             />
-            <span className="text-xs text-slate-500">Na roleta, nomes longos podem aparecer abreviados para manter a leitura.</span>
+            <span className="text-xs text-slate-500">Use esse campo só se quiser encurtar o texto exibido na fatia.</span>
           </label>
 
           <label className="grid gap-2 text-sm">
@@ -1384,7 +1383,7 @@ export function RewardsPage() {
                     <div className="space-y-3">
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="grid gap-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Nome interno</span>
+                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Nome do item</span>
                           <input
                             className="admin-input"
                             placeholder="Ex: Casquinha"
@@ -1400,10 +1399,10 @@ export function RewardsPage() {
                         </label>
 
                         <label className="grid gap-2">
-                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Texto da fatia</span>
+                          <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Texto da fatia (opcional)</span>
                           <input
                             className="admin-input"
-                            placeholder="Ex: Sem sorte"
+                            placeholder="Se deixar vazio, a roleta usa o nome do item"
                             value={item.wheelLabel}
                             onChange={(event) =>
                               setItemsForm((current) =>
