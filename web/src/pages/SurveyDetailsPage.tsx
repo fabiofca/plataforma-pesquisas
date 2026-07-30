@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3,
   ExternalLink,
@@ -70,6 +70,8 @@ function getQuestionTypeLabel(type: string) {
 export function SurveyDetailsPage() {
   const { id } = useParams()
   const [activeTab, setActiveTab] = useState<SurveyTab>('summary')
+  const [feedback, setFeedback] = useState('')
+  const queryClient = useQueryClient()
 
   const surveyQuery = useQuery({
     queryKey: ['survey', id],
@@ -152,6 +154,26 @@ export function SurveyDetailsPage() {
   const publicSurveyPath = survey?.slug ? getPublicSurveyPath(survey.slug) : ''
   const isPublishedSurvey = survey?.status === 'Publicada'
   const isDraftSurvey = survey?.status === 'Rascunho'
+  const unpublishMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest<{ ok: boolean }>(`/surveys/${id}/unpublish`, {
+        method: 'POST',
+      })
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['survey', id] }),
+        queryClient.invalidateQueries({ queryKey: ['survey-summary-preview', id] }),
+      ])
+
+      setFeedback('Pesquisa movida de volta para rascunho com sucesso.')
+    },
+    onError: (error) => {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível voltar a pesquisa para rascunho.')
+    },
+  })
   const tabs = [
     { id: 'summary' as const, label: 'Resumo', icon: PieChart },
     { id: 'questions' as const, label: 'Perguntas', icon: ListChecks },
@@ -185,6 +207,16 @@ export function SurveyDetailsPage() {
       {surveyQuery.isError ? (
         <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
           Não foi possível carregar esta pesquisa agora. Verifique a API e tente novamente.
+        </div>
+      ) : null}
+
+      {feedback ? (
+        <div
+          className={`admin-alert mb-6 ${
+            unpublishMutation.isError ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+          }`}
+        >
+          {feedback}
         </div>
       ) : null}
 
@@ -301,6 +333,31 @@ export function SurveyDetailsPage() {
                       <p className="text-sm font-semibold text-slate-950">Abrir pesquisa pública</p>
                       <p className="mt-1 text-sm text-slate-600">Veja exatamente como o participante enxerga a página.</p>
                     </a>
+                  ) : null}
+
+                  {isPublishedSurvey ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            'Deseja tirar esta pesquisa do ar e voltar para rascunho? O link público deixará de funcionar, mas as respostas já recebidas continuarão salvas.',
+                          )
+                        ) {
+                          void unpublishMutation.mutateAsync()
+                        }
+                      }}
+                      disabled={unpublishMutation.isPending}
+                      className="admin-action-card text-left disabled:opacity-60"
+                    >
+                      <div className="admin-icon-chip mb-3 border-rose-100 bg-rose-50 text-rose-700">
+                        <Share2 className="h-4 w-4" />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-950">
+                        {unpublishMutation.isPending ? 'Voltando para rascunho...' : 'Voltar para rascunho'}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">Tira a pesquisa do ar sem apagar respostas já recebidas.</p>
+                    </button>
                   ) : null}
                 </div>
               </SectionCard>
@@ -572,6 +629,25 @@ export function SurveyDetailsPage() {
                 <ExternalLink className="h-4 w-4" />
                 Abrir página pública
               </a>
+            ) : null}
+            {isPublishedSurvey ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Deseja tirar esta pesquisa do ar e voltar para rascunho? O link público deixará de funcionar, mas as respostas já recebidas continuarão salvas.',
+                    )
+                  ) {
+                    void unpublishMutation.mutateAsync()
+                  }
+                }}
+                disabled={unpublishMutation.isPending}
+                className="admin-button disabled:opacity-60"
+              >
+                <Share2 className="h-4 w-4" />
+                {unpublishMutation.isPending ? 'Voltando...' : 'Voltar para rascunho'}
+              </button>
             ) : null}
             <Link to={survey.kind === 'nps' ? '/app/pesquisas/nps' : '/app/pesquisas'} className="admin-button">
               <Share2 className="h-4 w-4" />

@@ -928,7 +928,7 @@ export function ReportsPage() {
         <SectionCard
           eyebrow="Ganhadores"
           title="Quem ganhou e o que ganhou"
-          description="Registro operacional da campanha com nome, WhatsApp, email, prêmio e cupom entregue."
+          description="Registro operacional da campanha com nome, WhatsApp, email, prêmio e protocolo entregue."
         >
           {rewardsQuery.isPending ? (
             <div className="admin-empty-state py-16">Carregando ganhadores...</div>
@@ -966,11 +966,11 @@ export function ReportsPage() {
                 </label>
 
                 <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Cupom</span>
+                  <span className="text-slate-600">Protocolo</span>
                   <input
                     value={winnerCouponFilter}
                     onChange={(event) => setWinnerCouponFilter(event.target.value)}
-                    placeholder="Ex: ABC123"
+                    placeholder="Ex: 202607281234567"
                     className="admin-input"
                   />
                 </label>
@@ -1048,7 +1048,7 @@ export function ReportsPage() {
                     <div>WhatsApp</div>
                     <div>E-mail</div>
                     <div>Prêmio</div>
-                    <div>Cupom</div>
+                    <div>Protocolo</div>
                     <div>Status</div>
                     <div>Retirado em</div>
                     <div>Ações</div>
@@ -1140,7 +1140,7 @@ export function ReportsPage() {
                                 <p className="truncate text-sm text-slate-700">{winner.itemTitle}</p>
                               </div>
                               <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Cupom</p>
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p>
                                 <p className="text-sm font-medium text-slate-900">{winner.couponCode}</p>
                               </div>
                               <div>

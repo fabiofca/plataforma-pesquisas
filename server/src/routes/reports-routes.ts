@@ -1317,7 +1317,7 @@ function buildCsvReportContent(input: {
   if (input.rewards.winners.length) {
     lines.push([])
     lines.push(['Ganhadores'])
-    lines.push(['Data', 'Nome', 'WhatsApp', 'E-mail', 'Prêmio', 'Cupom', 'Status', 'Retirado em', 'Observações'])
+    lines.push(['Data', 'Nome', 'WhatsApp', 'E-mail', 'Prêmio', 'Protocolo', 'Status', 'Retirado em', 'Observações'])
 
     for (const winner of input.rewards.winners) {
       lines.push([
@@ -1537,7 +1537,7 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
       .text(`WhatsApp: ${winner.phone ?? '-'}`)
       .text(`E-mail: ${winner.email ?? '-'}`)
       .text(`Prêmio: ${winner.itemTitle}`)
-      .text(`Cupom: ${winner.couponCode}`)
+      .text(`Protocolo: ${winner.couponCode}`)
       .text(`Status: ${winner.redemptionStatus}`)
       .text(`Retirado em: ${winner.deliveredAt ?? '-'}`)
       .text(`Observações: ${winner.redemptionNotes ?? '-'}`)

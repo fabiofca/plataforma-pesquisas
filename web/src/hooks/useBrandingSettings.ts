@@ -12,7 +12,7 @@ export interface BrandingSettings {
 }
 
 export const defaultBrandingSettings: BrandingSettings = {
-  platformName: 'Plataforma Pesquisas',
+  platformName: 'Plataforma de Pesquisas',
   primaryColor: '#0f172a',
   sidebarColor: '#11284a',
   supportEmail: '',
@@ -22,6 +22,22 @@ export const defaultBrandingSettings: BrandingSettings = {
 
 function asString(value: unknown) {
   return typeof value === 'string' ? value : ''
+}
+
+function normalizePlatformName(value: string) {
+  const normalized = value.trim()
+  const legacyNames = new Set(['Rádio Inteligente', 'Radio Inteligente', 'Plataforma Pesquisas Radar'])
+
+  if (!normalized || legacyNames.has(normalized)) {
+    return defaultBrandingSettings.platformName
+  }
+
+  return normalized
+}
+
+function normalizeFaviconUrl(value: string) {
+  const normalized = value.trim()
+  return normalized || defaultBrandingSettings.faviconUrl
 }
 
 export function useBrandingSettings() {
@@ -39,13 +55,17 @@ export function useBrandingSettings() {
         const map = new Map(response.settings.map((item) => [item.setting_key, asString(item.setting_value)]))
 
         return {
-          platformName: map.has('platform_name') ? (map.get('platform_name') ?? '') : defaultBrandingSettings.platformName,
+          platformName: normalizePlatformName(
+            map.has('platform_name') ? (map.get('platform_name') ?? '') : defaultBrandingSettings.platformName,
+          ),
           primaryColor: map.has('default_primary_color')
             ? (map.get('default_primary_color') ?? '')
             : defaultBrandingSettings.primaryColor,
           sidebarColor: map.has('sidebar_color') ? (map.get('sidebar_color') ?? '') : defaultBrandingSettings.sidebarColor,
           supportEmail: map.has('support_email') ? (map.get('support_email') ?? '') : defaultBrandingSettings.supportEmail,
-          faviconUrl: map.has('favicon_url') ? (map.get('favicon_url') ?? '') : defaultBrandingSettings.faviconUrl,
+          faviconUrl: normalizeFaviconUrl(
+            map.has('favicon_url') ? (map.get('favicon_url') ?? '') : defaultBrandingSettings.faviconUrl,
+          ),
           brandLogoUrl: map.has('brand_logo_url') ? (map.get('brand_logo_url') ?? '') : defaultBrandingSettings.brandLogoUrl,
         }
       } catch {

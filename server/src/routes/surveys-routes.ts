@@ -16,6 +16,7 @@ import { makeId, signSurveyPreviewToken } from '../utils/security.js'
 
 export const surveysRouter = Router()
 const SURVEY_PREVIEW_REWARD_LIMIT = 3
+const FLOW_ON_ANSWER = '__answer__'
 
 const surveyUploadKeys = new Set(['logo', 'banner'])
 const surveyUploadDir = path.resolve(process.cwd(), 'uploads', 'surveys')
@@ -154,6 +155,7 @@ async function loadSurveyPreview(surveyId: string) {
     closing_message: string | null
     reward_enabled: boolean
     reward_campaign_id: string | null
+    reward_contact_whatsapp: string | null
     reward_retry_unlock_enabled: boolean | null
     reward_retry_unlock_tasks_json:
       | Array<{
@@ -177,6 +179,7 @@ async function loadSurveyPreview(surveyId: string) {
         surveys.closing_message,
         surveys.reward_enabled,
         reward_campaigns.id as reward_campaign_id,
+        reward_campaigns.contact_whatsapp as reward_contact_whatsapp,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
         reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
      from surveys
@@ -234,11 +237,6 @@ function validateSurveyQuestionFlows(questions: SurveyQuestionPayload[]) {
       continue
     }
 
-    const supportsFlow = question.type === 'yes_no' || question.type === 'single_choice'
-    if (!supportsFlow) {
-      return 'Fluxos condicionais só podem ser usados em perguntas de Sim/Não ou Escolha única.'
-    }
-
     const allowedValues =
       question.type === 'yes_no'
         ? ['Sim', 'Não']
@@ -246,12 +244,20 @@ function validateSurveyQuestionFlows(questions: SurveyQuestionPayload[]) {
     const seenValues = new Set<string>()
 
     for (const rule of flowRules) {
-      if (!allowedValues.includes(rule.value)) {
+      const isGenericRule = rule.value === FLOW_ON_ANSWER
+
+      if (!isGenericRule && !['yes_no', 'single_choice'].includes(question.type)) {
+        return `A pergunta "${question.title}" só aceita o fluxo geral após responder.`
+      }
+
+      if (!isGenericRule && !allowedValues.includes(rule.value)) {
         return `A opção "${rule.value}" não é válida para a pergunta "${question.title}".`
       }
 
       if (seenValues.has(rule.value)) {
-        return `A pergunta "${question.title}" possui fluxo duplicado para a opção "${rule.value}".`
+        return isGenericRule
+          ? `A pergunta "${question.title}" possui fluxo geral duplicado após resposta.`
+          : `A pergunta "${question.title}" possui fluxo duplicado para a opção "${rule.value}".`
       }
 
       seenValues.add(rule.value)
@@ -664,6 +670,20 @@ surveysRouter.post('/:id/publish', async (request: AuthenticatedRequest, respons
   }
 
   await query(`update surveys set status = 'published', published_at = now(), updated_at = now() where id = $1`, [surveyId])
+
+  response.json({ ok: true })
+})
+
+surveysRouter.post('/:id/unpublish', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  await query(`update surveys set status = 'draft', published_at = null, updated_at = now() where id = $1`, [surveyId])
 
   response.json({ ok: true })
 })

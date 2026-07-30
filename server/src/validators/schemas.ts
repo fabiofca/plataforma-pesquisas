@@ -179,6 +179,7 @@ export const rewardCampaignSchema = z.object({
   status: z.enum(['active', 'paused', 'ended']).default('active'),
   expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
   pickupAddress: z.string().max(500).optional().or(z.literal('')),
+  contactWhatsApp: z.string().max(30).optional().or(z.literal('')),
   retryUnlockEnabled: z.boolean().default(false),
   retryUnlockTasks: z.array(rewardRetryTaskSchema).max(2, 'Cadastre no máximo 2 tarefas para liberar mais uma chance.').default([]),
 }).superRefine((value, context) => {

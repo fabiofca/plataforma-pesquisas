@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 type PrizeWheelSegment = {
   id: string
   label: string
@@ -17,6 +19,42 @@ type PrizeWheelProps = {
   spinLabel?: string
   onSpin: () => void
 }
+
+const rewardSegmentPalette = [
+  { start: '#4c1d95', end: '#6d28d9', text: '#ffffff' },
+  { start: '#7f1d1d', end: '#be123c', text: '#ffffff' },
+  { start: '#1e3a8a', end: '#2563eb', text: '#ffffff' },
+  { start: '#92400e', end: '#b45309', text: '#fff7ed' },
+  { start: '#115e59', end: '#0f766e', text: '#ffffff' },
+  { start: '#581c87', end: '#9333ea', text: '#ffffff' },
+  { start: '#3f6212', end: '#4d7c0f', text: '#ffffff' },
+  { start: '#9a3412', end: '#ea580c', text: '#ffffff' },
+  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+]
+
+const retrySegmentPalette = [
+  { start: '#9f1239', end: '#e11d48', text: '#ffffff' },
+  { start: '#7c2d12', end: '#f97316', text: '#ffffff' },
+  { start: '#6d28d9', end: '#a855f7', text: '#ffffff' },
+  { start: '#155e75', end: '#0891b2', text: '#ffffff' },
+  { start: '#166534', end: '#16a34a', text: '#ffffff' },
+  { start: '#1d4ed8', end: '#38bdf8', text: '#ffffff' },
+  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
+  { start: '#92400e', end: '#f59e0b', text: '#fff7ed' },
+  { start: '#831843', end: '#db2777', text: '#ffffff' },
+]
+
+const neutralSegmentPalette = [
+  { start: '#8b5cf6', end: '#6366f1', text: '#ffffff' },
+  { start: '#f43f5e', end: '#ec4899', text: '#ffffff' },
+  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+  { start: '#2563eb', end: '#60a5fa', text: '#ffffff' },
+  { start: '#f59e0b', end: '#facc15', text: '#1f2937' },
+  { start: '#14b8a6', end: '#22c55e', text: '#ffffff' },
+  { start: '#d946ef', end: '#a855f7', text: '#ffffff' },
+  { start: '#fb7185', end: '#f97316', text: '#ffffff' },
+  { start: '#0ea5e9', end: '#06b6d4', text: '#ffffff' },
+]
 
 const confettiPalette = ['#facc15', '#ff006e', '#4338ca', '#22c55e', '#38bdf8', '#ffffff']
 const confettiPieces = Array.from({ length: 18 }, (_, index) => {
@@ -45,7 +83,7 @@ function splitSegmentLabel(label: string) {
   for (const word of words) {
     const nextLine = currentLine ? `${currentLine} ${word}` : word
 
-    if (nextLine.length <= 14) {
+    if (nextLine.length <= 11) {
       currentLine = nextLine
       continue
     }
@@ -60,13 +98,13 @@ function splitSegmentLabel(label: string) {
     lines.push(currentLine)
   }
 
-  return lines.slice(0, 3)
+  return lines.slice(0, 2)
 }
 
 function getWheelDisplayLabel(label: string) {
   const normalized = label.trim().replace(/\s+/g, ' ')
 
-  if (normalized.length <= 34) {
+  if (normalized.length <= 22) {
     return normalized
   }
 
@@ -76,7 +114,7 @@ function getWheelDisplayLabel(label: string) {
   for (const word of words) {
     const nextValue = shortened ? `${shortened} ${word}` : word
 
-    if (nextValue.length > 30) {
+    if (nextValue.length > 18) {
       break
     }
 
@@ -84,49 +122,23 @@ function getWheelDisplayLabel(label: string) {
   }
 
   if (!shortened) {
-    return `${normalized.slice(0, 27).trimEnd()}...`
+    return `${normalized.slice(0, 16).trimEnd()}...`
   }
 
   return `${shortened}...`
 }
 
 function getSegmentColors(segment: PrizeWheelSegment, index: number, primaryColor: string) {
-  const rewardSequence = [0, 2, 1, 3]
-  const retrySequence = [0, 2, 3, 1]
-  const neutralSequence = [0, 2, 1, 3, 4, 5]
-
   if (segment.kind === 'reward') {
-    const rewardPalette = [
-      { fill: primaryColor, text: '#ffffff' },
-      { fill: '#4338ca', text: '#ffffff' },
-      { fill: '#facc15', text: '#1f2937' },
-      { fill: '#ff006e', text: '#ffffff' },
-    ]
-
-    return rewardPalette[rewardSequence[index % rewardSequence.length]]
+    const selected = rewardSegmentPalette[index % rewardSegmentPalette.length]
+    return index === 0 ? { ...selected, end: primaryColor, text: '#ffffff' } : selected
   }
 
   if (segment.kind === 'retry') {
-    const retryPalette = [
-      { fill: '#ffffff', text: '#e11d48' },
-      { fill: '#facc15', text: '#1f2937' },
-      { fill: '#4338ca', text: '#ffffff' },
-      { fill: '#ff006e', text: '#ffffff' },
-    ]
-
-    return retryPalette[retrySequence[index % retrySequence.length]]
+    return retrySegmentPalette[index % retrySegmentPalette.length]
   }
 
-  const neutralPalette = [
-    { fill: '#ffffff', text: '#1f2937' },
-    { fill: '#4338ca', text: '#ffffff' },
-    { fill: '#facc15', text: '#1f2937' },
-    { fill: '#ff006e', text: '#ffffff' },
-    { fill: '#111827', text: '#ffffff' },
-    { fill: '#2563eb', text: '#ffffff' },
-  ]
-
-  return neutralPalette[neutralSequence[index % neutralSequence.length]]
+  return neutralSegmentPalette[index % neutralSegmentPalette.length]
 }
 
 function buildWheelGradient(segments: PrizeWheelSegment[], primaryColor: string) {
@@ -135,9 +147,10 @@ function buildWheelGradient(segments: PrizeWheelSegment[], primaryColor: string)
   return segments
     .map((segment, index) => {
       const start = index * angle
+      const mid = start + angle * 0.48
       const end = start + angle
-      const { fill } = getSegmentColors(segment, index, primaryColor)
-      return `${fill} ${start}deg ${end}deg`
+      const colors = getSegmentColors(segment, index, primaryColor)
+      return `${colors.start} ${start}deg, ${colors.end} ${mid}deg, ${colors.start} ${end}deg`
     })
     .join(', ')
 }
@@ -179,24 +192,146 @@ export function PrizeWheel({
   spinLabel,
   onSpin,
 }: PrizeWheelProps) {
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const spinSoundTimeoutRef = useRef<number | null>(null)
+  const spinSoundStartedAtRef = useRef<number | null>(null)
+  const audioUnlockedRef = useRef(false)
   const isFullscreen = variant === 'fullscreen'
   const angle = 360 / segments.length
   const gradient = buildWheelGradient(segments, primaryColor)
   const dividerOverlay = buildWheelOverlay(segments)
-  const labelDistance = isFullscreen ? 'clamp(110px, 25vw, 168px)' : '94px'
-  const labelWidth = isFullscreen ? 'clamp(150px, 34vw, 224px)' : '124px'
+  const compactWheel = segments.length >= 6
+  const rewardLikeSegments = segments.filter((segment) => segment.kind !== 'neutral').length
+  const labelWidth = isFullscreen
+    ? compactWheel
+      ? 'clamp(86px, 13vw, 120px)'
+      : 'clamp(96px, 15vw, 132px)'
+    : '124px'
   const pointerBaseClass = isFullscreen
     ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
     : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)]'
   const pointerTipClass = isFullscreen
     ? 'absolute left-1/2 top-[18px] z-40 h-0 w-0 -translate-x-1/2 border-l-[18px] border-r-[18px] border-t-[32px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)] sm:top-[20px] sm:border-l-[20px] sm:border-r-[20px] sm:border-t-[36px]'
     : 'absolute left-1/2 top-[16px] z-40 h-0 w-0 -translate-x-1/2 border-l-[16px] border-r-[16px] border-t-[30px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)]'
-  const wheelWrapperClass = isFullscreen ? 'mx-auto w-full max-w-[520px] sm:max-w-[620px]' : 'mx-auto w-full max-w-[430px]'
+  const wheelWrapperStyle = {
+    maxWidth: isFullscreen ? 'min(calc(100vw - 0.75rem), calc(100dvh - 11.5rem))' : '430px',
+  }
+
+  function getAudioContext() {
+    if (typeof window === 'undefined') {
+      return null
+    }
+
+    const BrowserAudioContext = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+
+    if (!BrowserAudioContext) {
+      return null
+    }
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new BrowserAudioContext()
+    }
+
+    return audioContextRef.current
+  }
+
+  async function unlockWheelSound() {
+    const audioContext = getAudioContext()
+
+    if (!audioContext) {
+      return
+    }
+
+    try {
+      if (audioContext.state !== 'running') {
+        await audioContext.resume()
+      }
+
+      audioUnlockedRef.current = true
+    } catch {
+      audioUnlockedRef.current = false
+    }
+  }
+
+  function clearSpinSoundLoop() {
+    if (spinSoundTimeoutRef.current) {
+      window.clearTimeout(spinSoundTimeoutRef.current)
+      spinSoundTimeoutRef.current = null
+    }
+
+    spinSoundStartedAtRef.current = null
+  }
+
+  function playWheelTick(audioContext: AudioContext, progress: number) {
+    const now = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    const filter = audioContext.createBiquadFilter()
+
+    oscillator.type = 'square'
+    oscillator.frequency.setValueAtTime(1400 - progress * 620, now)
+    filter.type = 'bandpass'
+    filter.frequency.setValueAtTime(1800 - progress * 800, now)
+    filter.Q.setValueAtTime(2.8, now)
+
+    gainNode.gain.setValueAtTime(0.0001, now)
+    gainNode.gain.exponentialRampToValueAtTime(0.018, now + 0.006)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.055)
+
+    oscillator.connect(filter)
+    filter.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    oscillator.start(now)
+    oscillator.stop(now + 0.06)
+  }
+
+  useEffect(() => {
+    if (!isSpinning || !audioUnlockedRef.current) {
+      clearSpinSoundLoop()
+      return
+    }
+
+    const audioContext = getAudioContext()
+
+    if (!audioContext || audioContext.state !== 'running') {
+      return
+    }
+
+    spinSoundStartedAtRef.current = Date.now()
+
+    const runTickLoop = () => {
+      if (!audioContextRef.current || audioContext.state !== 'running') {
+        clearSpinSoundLoop()
+        return
+      }
+
+      const startedAt = spinSoundStartedAtRef.current ?? Date.now()
+      const elapsed = Date.now() - startedAt
+      const progress = Math.min(elapsed / 5200, 1)
+      playWheelTick(audioContext, progress)
+
+      const nextDelay = Math.round(62 + progress * 88)
+      spinSoundTimeoutRef.current = window.setTimeout(runTickLoop, nextDelay)
+    }
+
+    runTickLoop()
+
+    return () => {
+      clearSpinSoundLoop()
+    }
+  }, [isSpinning])
+
+  useEffect(() => {
+    return () => {
+      clearSpinSoundLoop()
+    }
+  }, [])
 
   return (
-    <div className={wheelWrapperClass}>
+    <div className="mx-auto w-full" style={wheelWrapperStyle}>
       <div className="relative aspect-square">
-        <div className="absolute inset-[-7%] rounded-full bg-[radial-gradient(circle,_rgba(251,191,36,0.24)_0%,_rgba(255,0,110,0.12)_28%,_rgba(67,56,202,0.16)_48%,_transparent_72%)] blur-2xl" />
+        <div className="absolute inset-[-7%] rounded-full bg-[radial-gradient(circle,_rgba(251,191,36,0.28)_0%,_rgba(236,72,153,0.18)_24%,_rgba(56,189,248,0.16)_46%,_rgba(124,58,237,0.14)_60%,_transparent_76%)] blur-2xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
             {confettiPieces.map((piece, index) => (
@@ -222,8 +357,8 @@ export function PrizeWheel({
         <div className={pointerBaseClass} />
         <div className={pointerTipClass} />
 
-        <div className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#fff4c3_0%,#f59e0b_18%,#a16207_48%,#fbbf24_70%,#fff4c3_100%)] shadow-[0_26px_60px_rgba(146,64,14,0.24)]" />
-        <div className="absolute inset-[1.4%] rounded-full border border-white/35 bg-[linear-gradient(135deg,#fdf2bf_0%,#d97706_40%,#92400e_52%,#fbbf24_76%,#fde68a_100%)]" />
+        <div className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#fff4c3_0%,#f59e0b_16%,#fb7185_38%,#7c3aed_58%,#38bdf8_78%,#fff4c3_100%)] shadow-[0_26px_60px_rgba(79,70,229,0.24)]" />
+        <div className="absolute inset-[1.4%] rounded-full border border-white/35 bg-[linear-gradient(135deg,#fef3c7_0%,#f59e0b_24%,#c2410c_40%,#7c3aed_66%,#38bdf8_84%,#fde68a_100%)]" />
         <div className="absolute inset-[3.7%] rounded-full bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.3),_transparent_42%),linear-gradient(180deg,#5b4a17_0%,#2b1f08_100%)] shadow-[inset_0_0_18px_rgba(0,0,0,0.24)]" />
 
         <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[5px] border-white/85 shadow-[0_22px_40px_rgba(15,23,42,0.22)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
@@ -240,11 +375,26 @@ export function PrizeWheel({
           <div className="absolute inset-[2.2%] rounded-full border border-white/18 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.05),_transparent_72%)]">
             {segments.map((segment, index) => {
               const centerAngle = index * angle + angle / 2
+              const centerRadians = (centerAngle * Math.PI) / 180
               const isActive = activeSegmentId === segment.id
               const isRewardSegment = segment.kind === 'reward'
               const isRetrySegment = segment.kind === 'retry'
               const labelLines = splitSegmentLabel(getWheelDisplayLabel(segment.label))
               const { text } = getSegmentColors(segment, index, primaryColor)
+              const radiusPercent = isFullscreen
+                ? segment.kind === 'neutral'
+                  ? compactWheel
+                    ? 33
+                    : 31
+                  : compactWheel
+                    ? 27
+                    : 25
+                : segment.kind === 'neutral'
+                  ? 31
+                  : 26
+              const segmentLeft = `${50 + Math.sin(centerRadians) * radiusPercent}%`
+              const segmentTop = `${50 - Math.cos(centerRadians) * radiusPercent}%`
+              const segmentRotation = centerAngle > 180 ? centerAngle + 180 : centerAngle
               const textShadow =
                 isRewardSegment || isRetrySegment
                   ? text === '#1f2937' || text === '#e11d48'
@@ -259,7 +409,9 @@ export function PrizeWheel({
                   key={segment.id}
                   className="absolute left-1/2 top-1/2 origin-center"
                   style={{
-                    transform: `translate(-50%, -50%) rotate(${centerAngle}deg) translateY(-${labelDistance})`,
+                    left: segmentLeft,
+                    top: segmentTop,
+                    transform: `translate(-50%, -50%) rotate(${segmentRotation}deg)`,
                   }}
                 >
                   <div
@@ -267,21 +419,34 @@ export function PrizeWheel({
                       isActive ? 'scale-[1.06]' : ''
                     }`}
                     style={{
-                      width: isFullscreen ? labelWidth : undefined,
+                      width:
+                        isFullscreen && rewardLikeSegments <= 3
+                          ? segment.kind === 'neutral'
+                            ? 'clamp(72px, 11vw, 96px)'
+                            : 'clamp(90px, 14vw, 118px)'
+                          : isFullscreen
+                            ? segment.kind === 'neutral'
+                              ? 'clamp(68px, 10vw, 92px)'
+                              : labelWidth
+                            : undefined,
                       color: text,
                       textShadow,
                       fontSize:
                         isRewardSegment || isRetrySegment
                           ? isFullscreen
-                            ? 'clamp(14px, 1.9vw, 24px)'
+                            ? compactWheel
+                              ? 'clamp(11px, 1.55vmin, 17px)'
+                              : 'clamp(12px, 1.8vmin, 20px)'
                             : 'clamp(12px, 1.28vw, 18px)'
                           : isFullscreen
-                            ? 'clamp(12px, 1.55vw, 19px)'
-                            : 'clamp(10px, 1.05vw, 15px)',
-                      fontWeight: isRewardSegment || isRetrySegment ? '900' : '800',
-                      lineHeight: isRewardSegment || isRetrySegment ? '1.03' : '1.06',
-                      letterSpacing: isRewardSegment || isRetrySegment ? '0.015em' : '0.03em',
-                      opacity: isRewardSegment || isRetrySegment ? '1' : '0.96',
+                            ? compactWheel
+                              ? 'clamp(10px, 1.25vmin, 14px)'
+                              : 'clamp(10px, 1.35vmin, 15px)'
+                            : 'clamp(9px, 0.95vw, 14px)',
+                      fontWeight: isRewardSegment || isRetrySegment ? '900' : '700',
+                      lineHeight: isRewardSegment || isRetrySegment ? '1.02' : '1',
+                      letterSpacing: isRewardSegment || isRetrySegment ? '0.01em' : '0.01em',
+                      opacity: isRewardSegment || isRetrySegment ? '1' : '0.88',
                     }}
                   >
                     {labelLines.map((line) => (
@@ -305,10 +470,13 @@ export function PrizeWheel({
       <div className="mt-4 flex justify-center">
         <button
           type="button"
-          onClick={onSpin}
+          onClick={() => {
+            void unlockWheelSound()
+            onSpin()
+          }}
           disabled={disabled || isSpinning}
           className={`rounded-full bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#e2e8f0_100%)] font-bold uppercase text-slate-950 shadow-[0_10px_18px_rgba(255,255,255,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 ${
-            isFullscreen ? 'px-8 py-3 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
+            isFullscreen ? 'px-8 py-3.5 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
           }`}
         >
           {isSpinning ? 'Girando' : spinLabel || 'Girar'}

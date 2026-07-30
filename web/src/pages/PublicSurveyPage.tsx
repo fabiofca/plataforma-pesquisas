@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Download, Gift, Meh, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
+import { Download, Gift, Meh, MessageCircle, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
-import { apiRequest } from '@/lib/api-client'
+import { ApiError, apiRequest } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import type { SurveyShareSource } from '@/lib/public-survey'
 import { FLOW_END, getVisibleSurveyQuestions, isQuestionAnswered } from '@/lib/survey-flow'
@@ -34,22 +34,12 @@ const birthdayMonths = [
 ]
 
 const neutralWheelLabels = [
-  'Não foi dessa vez',
+  'Valeu!',
   'Quase!',
-  'Obrigado por participar.',
-  'Boa sorte na próxima',
+  'Não foi dessa vez',
   'Você não teve sorte',
-  'Continue participando',
-]
-
-const previewWinMessages = [
-  'Resultado de teste: este prêmio foi liberado apenas para você validar o visual.',
-  'Simulação concluída. Use este cenário para revisar cupom, texto e resgate.',
-]
-
-const previewNoPrizeMessages = [
-  'Resultado de teste: cenário sem prêmio para revisar a mensagem final.',
-  'Simulação concluída sem prêmio. Assim você valida o fluxo de derrota antes de publicar.',
+  'Que Pena!',
+  'Obrigado',
 ]
 
 type RewardRetryTask = {
@@ -60,68 +50,118 @@ type RewardRetryTask = {
 }
 
 type SurveyAnswerMap = Record<string, string | string[] | number>
+type RewardResultState = {
+  won: boolean
+  item?: string
+  landedLabel?: string
+  couponCode?: string
+  pickupAddress?: string
+  contactWhatsApp?: string
+  retryAvailable?: boolean
+  retryUnlocked?: boolean
+  retryTasks?: RewardRetryTask[]
+  completedTaskIds?: string[]
+  spinAttempt?: number
+  maxAttempts?: number
+  finalAttempt?: boolean
+  message?: string
+}
+
+type RetryTaskProgressMap = Record<
+  string,
+  {
+    startedAt: number
+    returnedAt: number | null
+  }
+>
+
+type PersistedPublicSurveySession = {
+  participantName: string
+  participantPhone: string
+  submitted: boolean
+  submitMessage: string
+  responseId: string
+  canSpinReward: boolean
+  rewardResult: RewardResultState | null
+  wheelRotation: number
+  activeWheelSegmentId: string
+  completedRetryTaskIds: string[]
+  wheelModalOpen: boolean
+  retryTaskProgressMap: RetryTaskProgressMap
+  activeRetryTaskId: string | null
+}
+
+const RETRY_TASK_MIN_WAIT_MS = 12000
+const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
+
+function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
+  return `${PUBLIC_SURVEY_SESSION_KEY_PREFIX}:${previewVariant}:${surveyStorageId}`
+}
+
+function readPersistedSurveySessionSnapshot(storageKey: string) {
+  try {
+    const localSnapshot = window.localStorage.getItem(storageKey)
+
+    if (localSnapshot) {
+      return localSnapshot
+    }
+  } catch {
+    // Ignore localStorage access issues and fall back to sessionStorage.
+  }
+
+  try {
+    return window.sessionStorage.getItem(storageKey)
+  } catch {
+    return null
+  }
+}
+
+function writePersistedSurveySessionSnapshot(storageKey: string, value: string) {
+  try {
+    window.localStorage.setItem(storageKey, value)
+  } catch {
+    // Ignore localStorage access issues and keep the shorter-lived fallback below.
+  }
+
+  try {
+    window.sessionStorage.setItem(storageKey, value)
+  } catch {
+    // Ignore sessionStorage access issues.
+  }
+}
+
+function removePersistedSurveySessionSnapshot(storageKey: string) {
+  try {
+    window.localStorage.removeItem(storageKey)
+  } catch {
+    // Ignore localStorage access issues.
+  }
+
+  try {
+    window.sessionStorage.removeItem(storageKey)
+  } catch {
+    // Ignore sessionStorage access issues.
+  }
+}
 
 function buildVisibleQuestionSet(questions: SurveyQuestion[], answers: SurveyAnswerMap) {
   return new Set(getVisibleSurveyQuestions(questions, answers).map((question) => question.id))
+}
+
+function pruneAnswerMapToVisibleQuestions(questions: SurveyQuestion[], nextAnswers: SurveyAnswerMap) {
+  const nextVisibleIds = buildVisibleQuestionSet(questions, nextAnswers)
+
+  return Object.fromEntries(Object.entries(nextAnswers).filter(([questionId]) => nextVisibleIds.has(questionId)))
 }
 
 function pruneAnswersForCurrentFlow(
   questions: SurveyQuestion[],
   currentAnswers: SurveyAnswerMap,
   sourceQuestionId: string,
-  nextValue: string | number,
+  nextValue: string | string[] | number,
 ) {
   const nextAnswers = { ...currentAnswers, [sourceQuestionId]: nextValue }
-  const questionsById = new Map(questions.map((question) => [question.id, question]))
-  const orderedQuestions = [...questions]
-  const sourceIndex = orderedQuestions.findIndex((question) => question.id === sourceQuestionId)
-  const sourceQuestion = questionsById.get(sourceQuestionId)
-  const previousVisibleIds = buildVisibleQuestionSet(questions, currentAnswers)
-  const nextVisibleIds = buildVisibleQuestionSet(questions, nextAnswers)
-
-  if (sourceIndex < 0 || !sourceQuestion) {
-    return nextAnswers
-  }
-
-  const normalizedValue = typeof nextValue === 'string' ? nextValue.trim() : ''
-  const nextTarget =
-    typeof nextValue === 'string' && normalizedValue
-      ? sourceQuestion.flowRules?.find((rule) => rule.value === normalizedValue)?.nextQuestionId ?? null
-      : null
-
-  const branchStartQuestionId =
-    nextTarget && nextTarget !== FLOW_END
-      ? nextTarget
-      : orderedQuestions[sourceIndex + 1]?.id
-
-  const blockedQuestionIds = new Set<string>()
-  let shouldCollect = false
-
-  for (const question of orderedQuestions) {
-    if (question.id === branchStartQuestionId) {
-      shouldCollect = true
-    }
-
-    if (!shouldCollect) {
-      continue
-    }
-
-    if (!nextVisibleIds.has(question.id) && previousVisibleIds.has(question.id)) {
-      blockedQuestionIds.add(question.id)
-    }
-  }
-
-  if (!blockedQuestionIds.size) {
-    return nextAnswers
-  }
-
-  const cleanedAnswers = { ...nextAnswers }
-
-  for (const questionId of blockedQuestionIds) {
-    delete cleanedAnswers[questionId]
-  }
-
-  return cleanedAnswers
+  return pruneAnswerMapToVisibleQuestions(questions, nextAnswers)
 }
 
 function formatRewardProofFileName(title: string) {
@@ -135,34 +175,136 @@ function formatRewardProofFileName(title: string) {
   return `comprovante-premio-${normalized || 'roleta'}.png`
 }
 
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word
+
+    if (context.measureText(nextLine).width <= maxWidth || !currentLine) {
+      currentLine = nextLine
+      continue
+    }
+
+    lines.push(currentLine)
+    currentLine = word
+  }
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines
+}
+
+function fillRoundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.lineTo(x + width - radius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + radius)
+  context.lineTo(x + width, y + height - radius)
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+  context.lineTo(x + radius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - radius)
+  context.lineTo(x, y + radius)
+  context.quadraticCurveTo(x, y, x + radius, y)
+  context.closePath()
+  context.fill()
+}
+
 function pickRandomItem<T>(items: T[]) {
   return items[Math.floor(Math.random() * items.length)]
 }
 
-function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
-  const rewardItems = items.slice(0, 3)
-  const neutralSlots = Math.max(0, 6 - rewardItems.length)
-  const segments: PrizeWheelSegment[] = rewardItems.map((item) => ({
-    id: item.id,
-    label: item.title,
-    kind: 'reward',
-  }))
+function makePreviewCouponCode() {
+  return `${Date.now()}${Math.floor(100 + Math.random() * 900)}`
+}
 
-  for (let index = 0; index < neutralSlots; index += 1) {
-    segments.push({
-      id: `neutral-${index}`,
-      label: neutralWheelLabels[index % neutralWheelLabels.length],
-      kind: 'neutral',
-    })
+function buildRewardWhatsAppUrl(input: {
+  contactPhone?: string
+  participantName?: string
+  participantPhone?: string
+  item?: string
+  protocol?: string
+  brandName?: string
+  surveyTitle?: string
+}) {
+  const contactPhone = sanitizePhone(input.contactPhone ?? '')
+
+  if (!contactPhone) {
+    return null
   }
 
-  return segments.length
-    ? segments
-    : neutralWheelLabels.map((label, index) => ({
+  const lines = [
+    `Olá! Ganhei um prêmio${input.brandName ? ` na campanha ${input.brandName}` : input.surveyTitle ? ` na pesquisa ${input.surveyTitle}` : ''}.`,
+    input.participantName ? `Nome: ${input.participantName}` : null,
+    input.participantPhone ? `WhatsApp: ${input.participantPhone}` : null,
+    input.item ? `Prêmio: ${input.item}` : null,
+    input.protocol ? `Protocolo: ${input.protocol}` : null,
+  ].filter(Boolean)
+
+  return `https://wa.me/${contactPhone}?text=${encodeURIComponent(lines.join('\n'))}`
+}
+
+function getRetryTaskTypeLabel(type: RewardRetryTask['type']) {
+  if (type === 'google_review') {
+    return 'Google'
+  }
+
+  if (type === 'instagram_follow') {
+    return 'Instagram'
+  }
+
+  return 'Link personalizado'
+}
+
+function buildPrizeWheelSegments(items: Array<{ id: string; title: string }>) {
+  const rewardItems = items.slice(0, 3)
+  if (!rewardItems.length) {
+    return neutralWheelLabels.map((label, index) => ({
         id: `neutral-${index}`,
         label,
         kind: 'neutral' as const,
-      }))
+    }))
+  }
+
+  const totalSegments = rewardItems.length === 1 ? 6 : rewardItems.length === 2 ? 8 : 9
+  const rewardPositions = new Set(
+    rewardItems.map((_, index) => Math.floor((index * totalSegments) / rewardItems.length)),
+  )
+  const segments: PrizeWheelSegment[] = []
+  let rewardIndex = 0
+  let neutralIndex = 0
+
+  for (let index = 0; index < totalSegments; index += 1) {
+    if (rewardPositions.has(index) && rewardItems[rewardIndex]) {
+      segments.push({
+        id: rewardItems[rewardIndex].id,
+        label: rewardItems[rewardIndex].title,
+        kind: 'reward',
+      })
+      rewardIndex += 1
+      continue
+    }
+
+    segments.push({
+      id: `neutral-${neutralIndex}`,
+      label: neutralWheelLabels[neutralIndex % neutralWheelLabels.length],
+      kind: 'neutral',
+    })
+    neutralIndex += 1
+  }
+
+  return segments
 }
 
 export function PublicSurveyPage() {
@@ -170,7 +312,10 @@ export function PublicSurveyPage() {
   const previewVariant = id ? 'internal' : token ? 'shared' : 'public'
   const previewMode = previewVariant !== 'public'
   const sharedPreviewMode = previewVariant === 'shared'
+  const surveyStorageId = id ?? token ?? slug ?? 'unknown'
+  const surveySessionStorageKey = getPublicSurveySessionStorageKey(previewVariant, surveyStorageId)
   const [searchParams] = useSearchParams()
+  const [sessionStateReady, setSessionStateReady] = useState(false)
   const [participantName, setParticipantName] = useState('')
   const [participantPhone, setParticipantPhone] = useState('')
   const [participantEmail, setParticipantEmail] = useState('')
@@ -181,18 +326,7 @@ export function PublicSurveyPage() {
   const [submitMessage, setSubmitMessage] = useState('')
   const [responseId, setResponseId] = useState('')
   const [canSpinReward, setCanSpinReward] = useState(false)
-  const [rewardResult, setRewardResult] = useState<{
-    won: boolean
-    item?: string
-    landedLabel?: string
-    couponCode?: string
-    pickupAddress?: string
-    retryAvailable?: boolean
-    retryUnlocked?: boolean
-    retryTasks?: RewardRetryTask[]
-    completedTaskIds?: string[]
-    message?: string
-  } | null>(null)
+  const [rewardResult, setRewardResult] = useState<RewardResultState | null>(null)
   const [eligibilityMessage, setEligibilityMessage] = useState('')
   const [wheelRotation, setWheelRotation] = useState(0)
   const [wheelSpinning, setWheelSpinning] = useState(false)
@@ -201,7 +335,12 @@ export function PublicSurveyPage() {
   const [celebrationKey, setCelebrationKey] = useState(0)
   const [wheelModalOpen, setWheelModalOpen] = useState(false)
   const [savingRewardProof, setSavingRewardProof] = useState(false)
+  const [retryTaskProgressMap, setRetryTaskProgressMap] = useState<RetryTaskProgressMap>({})
+  const [activeRetryTaskId, setActiveRetryTaskId] = useState<string | null>(null)
+  const [retryTaskNow, setRetryTaskNow] = useState(() => Date.now())
   const trackedVisitKeyRef = useRef('')
+  const sessionHydratedRef = useRef(false)
+  const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
   const source = searchParams.get('src')
@@ -224,6 +363,8 @@ export function PublicSurveyPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          reward_pickup_address?: string | null
+          reward_contact_whatsapp?: string | null
           reward_retry_unlock_enabled?: boolean
           reward_retry_tasks?: RewardRetryTask[]
           reward_items?: Array<{
@@ -271,7 +412,241 @@ export function PublicSurveyPage() {
   const wheelSegments = useMemo(() => buildPrizeWheelSegments(survey?.rewardPreviewItems ?? []), [survey?.rewardPreviewItems])
   const showWheelArea = canSpinReward || wheelSpinning || Boolean(rewardResult)
   const retryTasks = rewardResult?.retryTasks ?? survey?.rewardRetryTasks ?? []
-  const canCloseWheelModal = !wheelSpinning && Boolean(rewardResult)
+  const canCloseWheelModal =
+    !wheelSpinning &&
+    Boolean(
+      rewardResult &&
+        (rewardResult.won || (rewardResult.finalAttempt && !rewardResult.retryAvailable && !canSpinReward)),
+    )
+  const rewardPickupAddress = rewardResult?.pickupAddress ?? survey?.rewardPickupAddress
+  const rewardContactWhatsAppUrl =
+    rewardResult?.won && rewardResult.contactWhatsApp
+      ? buildRewardWhatsAppUrl({
+          contactPhone: rewardResult.contactWhatsApp,
+          participantName,
+          participantPhone,
+          item: rewardResult.item,
+          protocol: rewardResult.couponCode,
+          brandName: survey?.brandName,
+          surveyTitle: survey?.title,
+        })
+      : null
+  const currentRetryTask = useMemo(() => {
+    if (!rewardResult?.retryAvailable) {
+      return null
+    }
+
+    const completedIds = rewardResult.completedTaskIds ?? completedRetryTaskIds
+    return retryTasks.find((task) => !completedIds.includes(task.id)) ?? null
+  }, [completedRetryTaskIds, retryTasks, rewardResult?.completedTaskIds, rewardResult?.retryAvailable])
+
+  function clearPersistedSurveySession() {
+    removePersistedSurveySessionSnapshot(surveySessionStorageKey)
+  }
+
+  function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
+    const snapshot: PersistedPublicSurveySession = {
+      participantName,
+      participantPhone,
+      submitted,
+      submitMessage,
+      responseId,
+      canSpinReward,
+      rewardResult,
+      wheelRotation,
+      activeWheelSegmentId,
+      completedRetryTaskIds,
+      wheelModalOpen,
+      retryTaskProgressMap,
+      activeRetryTaskId,
+      ...overrides,
+    }
+
+    const hasMeaningfulSession =
+      snapshot.submitted ||
+      Boolean(snapshot.responseId) ||
+      Boolean(snapshot.rewardResult) ||
+      Boolean(snapshot.canSpinReward) ||
+      Object.keys(snapshot.retryTaskProgressMap).length > 0
+
+    if (!hasMeaningfulSession) {
+      clearPersistedSurveySession()
+      return
+    }
+
+    writePersistedSurveySessionSnapshot(surveySessionStorageKey, JSON.stringify(snapshot))
+  }
+
+  useEffect(() => {
+    if (sessionHydratedRef.current) {
+      return
+    }
+
+    sessionHydratedRef.current = true
+
+    const rawSession = readPersistedSurveySessionSnapshot(surveySessionStorageKey)
+
+    if (!rawSession) {
+      setSessionStateReady(true)
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(rawSession) as PersistedPublicSurveySession
+      const nextRetryTaskProgressMap = { ...(parsed.retryTaskProgressMap ?? {}) }
+      let nextActiveRetryTaskId = parsed.activeRetryTaskId ?? null
+
+      if (nextActiveRetryTaskId && nextRetryTaskProgressMap[nextActiveRetryTaskId] && !nextRetryTaskProgressMap[nextActiveRetryTaskId].returnedAt) {
+        nextRetryTaskProgressMap[nextActiveRetryTaskId] = {
+          ...nextRetryTaskProgressMap[nextActiveRetryTaskId],
+          returnedAt: Date.now(),
+        }
+        nextActiveRetryTaskId = null
+      }
+
+      setParticipantName(parsed.participantName ?? '')
+      setParticipantPhone(parsed.participantPhone ?? '')
+      setSubmitted(Boolean(parsed.submitted))
+      setSubmitMessage(parsed.submitMessage ?? '')
+      setResponseId(parsed.responseId ?? '')
+      setCanSpinReward(Boolean(parsed.canSpinReward))
+      setRewardResult(parsed.rewardResult ?? null)
+      setWheelRotation(parsed.wheelRotation ?? 0)
+      setWheelSpinning(false)
+      setActiveWheelSegmentId(parsed.activeWheelSegmentId ?? '')
+      setCompletedRetryTaskIds(parsed.completedRetryTaskIds ?? [])
+      setWheelModalOpen(Boolean(parsed.wheelModalOpen))
+      setRetryTaskProgressMap(nextRetryTaskProgressMap)
+      setActiveRetryTaskId(nextActiveRetryTaskId)
+      setRetryTaskNow(Date.now())
+    } catch {
+      clearPersistedSurveySession()
+    } finally {
+      setSessionStateReady(true)
+    }
+  }, [surveySessionStorageKey])
+
+  useEffect(() => {
+    if (!sessionStateReady) {
+      return
+    }
+
+    persistSurveySessionSnapshot()
+  }, [
+    activeRetryTaskId,
+    activeWheelSegmentId,
+    canSpinReward,
+    completedRetryTaskIds,
+    participantName,
+    participantPhone,
+    responseId,
+    retryTaskProgressMap,
+    rewardResult,
+    sessionStateReady,
+    submitted,
+    submitMessage,
+    surveySessionStorageKey,
+    wheelModalOpen,
+    wheelRotation,
+  ])
+
+  useEffect(() => {
+    if (previewMode || !survey || !sessionStateReady || !responseId) {
+      return
+    }
+
+    const restoreKey = `${survey.slug}:${responseId}`
+
+    if (rewardSessionRestoreKeyRef.current === restoreKey) {
+      return
+    }
+
+    rewardSessionRestoreKeyRef.current = restoreKey
+    let cancelled = false
+
+    void apiRequest<{
+      responseId: string
+      participantName: string
+      participantPhone: string
+      submitMessage?: string | null
+      canSpinReward: boolean
+      completedTaskIds: string[]
+      rewardResult: RewardResultState | null
+    }>(`/public/surveys/${survey.slug}/reward-session?responseId=${encodeURIComponent(responseId)}`)
+      .then((session) => {
+        if (cancelled) {
+          return
+        }
+
+        const nextCompletedTaskIds = session.completedTaskIds ?? []
+        const restoredSegment = session.rewardResult?.landedLabel
+          ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
+          : null
+
+        setParticipantName((current) => current || session.participantName || '')
+        setParticipantPhone((current) => current || session.participantPhone || '')
+        setSubmitted(true)
+        setSubmitMessage(
+          session.submitMessage ??
+            (session.canSpinReward
+              ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
+              : 'Sua resposta foi registrada com sucesso.'),
+        )
+        setWheelSpinning(false)
+        setCompletedRetryTaskIds(nextCompletedTaskIds)
+        setCanSpinReward(Boolean(session.canSpinReward))
+        setRewardResult(session.rewardResult ?? null)
+        setWheelModalOpen(Boolean(survey.rewardEnabled && (session.canSpinReward || session.rewardResult)))
+        setRetryTaskProgressMap((current) => {
+          if (!session.rewardResult?.retryAvailable) {
+            return {}
+          }
+
+          return Object.fromEntries(
+            Object.entries(current).filter(([taskId]) => !nextCompletedTaskIds.includes(taskId)),
+          )
+        })
+
+        if (restoredSegment) {
+          setActiveWheelSegmentId(restoredSegment.id)
+        }
+
+        if (!session.rewardResult?.retryAvailable) {
+          setActiveRetryTaskId(null)
+        }
+
+        setRetryTaskNow(Date.now())
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+
+        rewardSessionRestoreKeyRef.current = ''
+
+        if (!(error instanceof ApiError) || error.status !== 404) {
+          return
+        }
+
+        clearPersistedSurveySession()
+        setSubmitted(false)
+        setSubmitMessage('')
+        setResponseId('')
+        setCanSpinReward(false)
+        setRewardResult(null)
+        setWheelRotation(0)
+        setWheelSpinning(false)
+        setActiveWheelSegmentId('')
+        setCompletedRetryTaskIds([])
+        setWheelModalOpen(false)
+        setRetryTaskProgressMap({})
+        setActiveRetryTaskId(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewMode, responseId, sessionStateReady, survey, wheelSegments])
 
   useEffect(() => {
     if (!survey) {
@@ -319,6 +694,64 @@ export function PublicSurveyPage() {
   }, [])
 
   useEffect(() => {
+    if (!rewardResult?.retryAvailable) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setRetryTaskNow(Date.now())
+    }, 1000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [rewardResult?.retryAvailable])
+
+  useEffect(() => {
+    if (!activeRetryTaskId) {
+      return
+    }
+
+    const markTaskAsReturned = () => {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
+      setRetryTaskProgressMap((current) => {
+        const currentTask = current[activeRetryTaskId]
+
+        if (!currentTask || currentTask.returnedAt) {
+          return current
+        }
+
+        return {
+          ...current,
+          [activeRetryTaskId]: {
+            ...currentTask,
+            returnedAt: Date.now(),
+          },
+        }
+      })
+      setRetryTaskNow(Date.now())
+      setActiveRetryTaskId(null)
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        markTaskAsReturned()
+      }
+    }
+
+    window.addEventListener('focus', markTaskAsReturned)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', markTaskAsReturned)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [activeRetryTaskId])
+
+  useEffect(() => {
     if (!wheelModalOpen) {
       return
     }
@@ -352,6 +785,9 @@ export function PublicSurveyPage() {
     setActiveWheelSegmentId('')
     setCompletedRetryTaskIds([])
     setWheelModalOpen(false)
+    setRetryTaskProgressMap({})
+    setActiveRetryTaskId(null)
+    clearPersistedSurveySession()
   }
 
   const submitMutation = useMutation({
@@ -400,8 +836,8 @@ export function PublicSurveyPage() {
           rewardEnabled: survey.rewardEnabled,
           rewardEligible: survey.rewardEnabled,
           rewardMessage: survey.rewardEnabled
-            ? 'Modo teste: sua resposta não foi salva. Agora você pode validar a roleta com um giro simulado.'
-            : 'Modo teste: sua resposta não foi salva nem enviada para relatórios.',
+            ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
+            : 'Sua resposta foi registrada com sucesso.',
         }
       }
 
@@ -437,6 +873,8 @@ export function PublicSurveyPage() {
       setRewardResult(null)
       setActiveWheelSegmentId('')
       setWheelRotation(0)
+      setRetryTaskProgressMap({})
+      setActiveRetryTaskId(null)
       setSubmitMessage(
         result.rewardMessage ||
           (result.rewardEligible
@@ -454,6 +892,8 @@ export function PublicSurveyPage() {
       setCompletedRetryTaskIds([])
       setCanSpinReward(false)
       setSubmitted(false)
+      setRetryTaskProgressMap({})
+      setActiveRetryTaskId(null)
       setEligibilityMessage(message)
     },
   })
@@ -467,7 +907,14 @@ export function PublicSurveyPage() {
       if (previewMode) {
         const rewardSegments = wheelSegments.filter((segment) => segment.kind === 'reward')
         const neutralSegments = wheelSegments.filter((segment) => segment.kind !== 'reward')
-        const shouldWin = rewardSegments.length > 0 && Math.random() < 0.45
+        const previewCompletedTaskIds = Array.from(new Set(completedRetryTaskIds))
+        const previewRemainingRetryTasks = (survey.rewardRetryTasks ?? []).filter(
+          (task) => !previewCompletedTaskIds.includes(task.id),
+        )
+        const previewMaxAttempts = 1 + (survey.rewardRetryTasks?.length ?? 0)
+        const previewSpinAttempt = previewCompletedTaskIds.length + 1
+        const previewIsFinalAttempt = previewSpinAttempt >= previewMaxAttempts
+        const shouldWin = previewIsFinalAttempt && rewardSegments.length > 0 && Math.random() < 0.45
         const selectedSegment = shouldWin
           ? pickRandomItem(rewardSegments)
           : pickRandomItem(neutralSegments.length ? neutralSegments : wheelSegments)
@@ -476,12 +923,23 @@ export function PublicSurveyPage() {
           won: shouldWin,
           item: shouldWin ? selectedSegment.label : undefined,
           landedLabel: selectedSegment.label,
-          couponCode: shouldWin ? `TESTE-${Math.random().toString(36).slice(2, 8).toUpperCase()}` : undefined,
-          retryAvailable: !shouldWin && Boolean(survey.rewardRetryUnlockEnabled && (survey.rewardRetryTasks?.length ?? 0) > 0),
+          couponCode: shouldWin ? makePreviewCouponCode() : undefined,
+          contactWhatsApp: shouldWin ? survey.rewardContactWhatsApp : undefined,
+          retryAvailable: !shouldWin && !previewIsFinalAttempt && previewRemainingRetryTasks.length > 0,
           retryUnlocked: false,
           retryTasks: survey.rewardRetryTasks ?? [],
-          completedTaskIds: [],
-          message: shouldWin ? pickRandomItem(previewWinMessages) : pickRandomItem(previewNoPrizeMessages),
+          completedTaskIds: previewCompletedTaskIds,
+          spinAttempt: previewSpinAttempt,
+          maxAttempts: previewMaxAttempts,
+          finalAttempt: previewIsFinalAttempt,
+          pickupAddress: shouldWin ? 'Retire no balcão informado pela campanha.' : undefined,
+          message: shouldWin
+            ? 'Parabéns! O resultado foi definido com segurança e o local de retirada já está indicado abaixo.'
+            : previewIsFinalAttempt
+              ? 'Você não teve sorte desta vez. As tentativas desta experiência já foram usadas.'
+              : previewRemainingRetryTasks.length > 0
+                ? 'Conclua a próxima tarefa para liberar sua próxima chance.'
+                : 'Continue participando para liberar sua próxima chance.',
         }
       }
 
@@ -491,10 +949,14 @@ export function PublicSurveyPage() {
         landedLabel?: string
         couponCode?: string
         pickupAddress?: string
+        contactWhatsApp?: string
         retryAvailable?: boolean
         retryUnlocked?: boolean
         retryTasks?: RewardRetryTask[]
         completedTaskIds?: string[]
+        spinAttempt?: number
+        maxAttempts?: number
+        finalAttempt?: boolean
         message?: string
       }>(`/public/surveys/${survey.slug}/spin`, {
         method: 'POST',
@@ -542,19 +1004,13 @@ export function PublicSurveyPage() {
         throw new Error('A participação ainda não está pronta para liberar a chance extra.')
       }
 
-      const openedWindow = window.open(task.url, '_blank', 'noopener,noreferrer')
-
       if (previewMode) {
-        if (!openedWindow) {
-          window.location.href = task.url
-        }
-
         const currentCompletedTaskIds = rewardResult?.completedTaskIds ?? completedRetryTaskIds
         const nextCompletedTaskIds = Array.from(new Set([...currentCompletedTaskIds, task.id]))
 
         return {
           ok: true,
-          unlocked: nextCompletedTaskIds.length >= (survey.rewardRetryTasks?.length ?? 0),
+          unlocked: true,
           completedTaskIds: nextCompletedTaskIds,
           remainingTasks: Math.max((survey.rewardRetryTasks?.length ?? 0) - nextCompletedTaskIds.length, 0),
         }
@@ -573,15 +1029,16 @@ export function PublicSurveyPage() {
         }),
       })
 
-      if (!openedWindow) {
-        window.location.href = task.url
-      }
-
       return result
     },
-    onSuccess: (result) => {
+    onSuccess: (result, task) => {
       setCompletedRetryTaskIds(result.completedTaskIds)
       setCanSpinReward(result.unlocked)
+      setRetryTaskProgressMap((current) => {
+        const nextState = { ...current }
+        delete nextState[task.id]
+        return nextState
+      })
       setRewardResult((current) =>
         current
           ? {
@@ -589,7 +1046,7 @@ export function PublicSurveyPage() {
               retryUnlocked: result.unlocked,
               completedTaskIds: result.completedTaskIds,
               message: result.unlocked
-                ? 'As tarefas foram registradas. Sua chance extra já está liberada.'
+                ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
                 : current.message,
             }
           : current,
@@ -597,58 +1054,204 @@ export function PublicSurveyPage() {
     },
   })
 
+  const currentRetryTaskProgress = currentRetryTask ? retryTaskProgressMap[currentRetryTask.id] : null
+  const currentRetryTaskReturned = Boolean(currentRetryTaskProgress?.returnedAt)
+  const currentRetryTaskCanConfirm = currentRetryTask ? canConfirmRetryTask(currentRetryTask.id) : false
+  const currentRetryTaskRemainingSeconds = currentRetryTask ? getRetryTaskRemainingSeconds(currentRetryTask.id) : 0
+  const currentRetryTaskIsLoading = currentRetryTask
+    ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
+    : false
+  const currentRetryTaskStatusLabel = !currentRetryTask
+    ? ''
+    : !currentRetryTaskProgress
+      ? 'Pendente'
+      : !currentRetryTaskReturned
+        ? 'Volte para a página'
+        : currentRetryTaskCanConfirm
+          ? 'Pronto para confirmar'
+          : `Aguarde ${currentRetryTaskRemainingSeconds}s`
+  const currentRetryTaskButtonLabel = !currentRetryTask
+    ? ''
+    : !currentRetryTaskProgress
+      ? 'Ir para a tarefa'
+      : !currentRetryTaskReturned
+        ? 'Volte para esta página'
+        : currentRetryTaskCanConfirm
+          ? 'Já concluí'
+          : `Aguarde ${currentRetryTaskRemainingSeconds}s`
+  const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
+
+  function openRetryTaskLink(task: RewardRetryTask) {
+    window.location.assign(task.url)
+  }
+
+  function startRetryTask(task: RewardRetryTask) {
+    const nextRetryTaskProgressMap = {
+      ...retryTaskProgressMap,
+      [task.id]: {
+        startedAt: Date.now(),
+        returnedAt: null,
+      },
+    }
+
+    setRetryTaskProgressMap(nextRetryTaskProgressMap)
+    setRetryTaskNow(Date.now())
+    setActiveRetryTaskId(task.id)
+    persistSurveySessionSnapshot({
+      retryTaskProgressMap: nextRetryTaskProgressMap,
+      activeRetryTaskId: task.id,
+      wheelModalOpen: true,
+    })
+
+    openRetryTaskLink(task)
+  }
+
+  function handleRetryTaskCardClick(input: {
+    task: RewardRetryTask
+    taskProgress?: { startedAt: number; returnedAt: number | null }
+    canConfirm: boolean
+    isLoading: boolean
+  }) {
+    if (input.isLoading || input.canConfirm) {
+      return
+    }
+
+    if (input.taskProgress) {
+      openRetryTaskLink(input.task)
+      return
+    }
+
+    startRetryTask(input.task)
+  }
+
+  function getRetryTaskProgress(taskId: string) {
+    return retryTaskProgressMap[taskId]
+  }
+
+  function getRetryTaskRemainingSeconds(taskId: string) {
+    const progress = getRetryTaskProgress(taskId)
+
+    if (!progress) {
+      return 0
+    }
+
+    return Math.max(0, Math.ceil((progress.startedAt + RETRY_TASK_MIN_WAIT_MS - retryTaskNow) / 1000))
+  }
+
+  function canConfirmRetryTask(taskId: string) {
+    const progress = getRetryTaskProgress(taskId)
+
+    if (!progress?.returnedAt) {
+      return false
+    }
+
+    return retryTaskNow - progress.startedAt >= RETRY_TASK_MIN_WAIT_MS
+  }
+
   async function handleDownloadRewardProof() {
-    if (!rewardResult?.won || !rewardProofRef.current) {
+    if (!rewardResult?.won) {
       return
     }
 
     setSavingRewardProof(true)
 
     try {
-      const proofNode = rewardProofRef.current
-      const clonedNode = proofNode.cloneNode(true) as HTMLElement
-
-      clonedNode.style.position = 'fixed'
-      clonedNode.style.left = '-99999px'
-      clonedNode.style.top = '0'
-      clonedNode.style.width = '1080px'
-      clonedNode.style.maxWidth = '1080px'
-      clonedNode.style.transform = 'none'
-      clonedNode.style.zIndex = '-1'
-      document.body.appendChild(clonedNode)
-
-      const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="${Math.ceil(clonedNode.getBoundingClientRect().height)}">
-          <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="width:1080px;height:100%;">
-              ${new XMLSerializer().serializeToString(clonedNode)}
-            </div>
-          </foreignObject>
-        </svg>
-      `
-
-      const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' })
-      const url = URL.createObjectURL(blob)
-      const image = new Image()
-
-      await new Promise<void>((resolve, reject) => {
-        image.onload = () => resolve()
-        image.onerror = () => reject(new Error('Não foi possível preparar o comprovante do prêmio.'))
-        image.src = url
-      })
-
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = Math.ceil(clonedNode.getBoundingClientRect().height)
+      canvas.height = 1350
       const context = canvas.getContext('2d')
 
       if (!context) {
         throw new Error('Não foi possível gerar a imagem do comprovante.')
       }
 
-      context.drawImage(image, 0, 0)
-      URL.revokeObjectURL(url)
-      document.body.removeChild(clonedNode)
+      const background = context.createLinearGradient(0, 0, 0, canvas.height)
+      background.addColorStop(0, '#1e293b')
+      background.addColorStop(0.45, '#0f172a')
+      background.addColorStop(1, '#020617')
+      context.fillStyle = background
+      context.fillRect(0, 0, canvas.width, canvas.height)
+
+      const glow = context.createRadialGradient(220, 180, 40, 220, 180, 460)
+      glow.addColorStop(0, 'rgba(250,204,21,0.34)')
+      glow.addColorStop(0.4, 'rgba(236,72,153,0.18)')
+      glow.addColorStop(1, 'rgba(15,23,42,0)')
+      context.fillStyle = glow
+      context.fillRect(0, 0, canvas.width, canvas.height)
+
+      context.fillStyle = 'rgba(255,255,255,0.08)'
+      fillRoundedRect(context, 72, 72, 936, 1206, 36)
+
+      context.fillStyle = '#fef3c7'
+      context.font = '700 28px Arial'
+      context.fillText('Comprovante do prêmio', 120, 152)
+
+      const brandName = survey?.brandName || survey?.title || 'Campanha'
+      context.fillStyle = '#e2e8f0'
+      context.font = '500 24px Arial'
+      context.fillText(brandName, 120, 196)
+
+      context.fillStyle = '#86efac'
+      context.font = '700 36px Arial'
+      context.fillText(`Parabéns, ${participantName || 'participante'}!`, 120, 280)
+
+      context.fillStyle = '#ffffff'
+      context.font = '700 66px Arial'
+      const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 840)
+      let currentY = 370
+      for (const line of prizeLines.slice(0, 3)) {
+        context.fillText(line, 120, currentY)
+        currentY += 78
+      }
+
+      context.fillStyle = 'rgba(15,23,42,0.82)'
+      fillRoundedRect(context, 120, 500, 840, 140, 28)
+      context.fillStyle = '#cbd5e1'
+      context.font = '600 24px Arial'
+      context.fillText('Protocolo', 156, 554)
+      context.fillStyle = '#ffffff'
+      context.font = '700 42px Arial'
+      context.fillText(rewardResult.couponCode || 'Sem protocolo', 156, 610)
+
+      context.fillStyle = 'rgba(15,23,42,0.72)'
+      fillRoundedRect(context, 120, 684, 840, 236, 28)
+      context.fillStyle = '#cbd5e1'
+      context.font = '600 24px Arial'
+      context.fillText('Orientação para resgate', 156, 738)
+
+      context.fillStyle = '#ffffff'
+      context.font = '600 32px Arial'
+      const instructionLines = wrapCanvasText(
+        context,
+        'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.',
+        768,
+      )
+      let instructionY = 794
+      for (const line of instructionLines.slice(0, 4)) {
+        context.fillText(line, 156, instructionY)
+        instructionY += 42
+      }
+
+      if (rewardPickupAddress) {
+        context.fillStyle = 'rgba(255,255,255,0.1)'
+        fillRoundedRect(context, 120, 964, 840, 188, 28)
+        context.fillStyle = '#fef3c7'
+        context.font = '600 24px Arial'
+        context.fillText('Endereço de retirada', 156, 1018)
+
+        context.fillStyle = '#ffffff'
+        context.font = '500 30px Arial'
+        const addressLines = wrapCanvasText(context, rewardPickupAddress, 768)
+        let addressY = 1072
+        for (const line of addressLines.slice(0, 4)) {
+          context.fillText(line, 156, addressY)
+          addressY += 38
+        }
+      }
+
+      context.fillStyle = '#cbd5e1'
+      context.font = '500 22px Arial'
+      context.fillText('Guarde esta imagem para apresentar no resgate do prêmio.', 120, 1224)
 
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
@@ -671,18 +1274,16 @@ export function PublicSurveyPage() {
     setAnswers((current) => {
       const existing = current[questionId]
       const list = Array.isArray(existing) ? existing : []
+      const nextList = list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
 
-      return {
-        ...current,
-        [questionId]: list.includes(value) ? list.filter((item) => item !== value) : [...list, value],
-      }
+      return pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, nextList)
     })
   }
 
   if (surveyQuery.isLoading) {
     return (
-      <div className="min-h-screen px-4 py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
-        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-10 text-center shadow-card" style={{ borderRadius: 6 }}>
+      <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
           <p className="text-sm text-slate-500">Carregando pesquisa...</p>
         </div>
       </div>
@@ -696,8 +1297,8 @@ export function PublicSurveyPage() {
         : 'Verifique se o link está correto ou tente novamente mais tarde.'
 
     return (
-      <div className="min-h-screen px-4 py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
-        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-10 text-center shadow-card" style={{ borderRadius: 6 }}>
+      <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa indisponível</p>
           <h1 className="mt-4 font-display text-4xl text-slate-950">Não foi possível abrir esta pesquisa agora</h1>
           <p className="mt-4 text-sm text-slate-600">{errorMessage}</p>
@@ -707,17 +1308,17 @@ export function PublicSurveyPage() {
   }
 
   return (
-    <div className="min-h-screen px-4 py-6" style={{ background: `linear-gradient(180deg, ${survey.primaryColor}12 0%, #f8fafc 24%, #e2e8f0 100%)` }}>
-      <div className="mx-auto max-w-4xl">
-        <div className="border border-slate-200 bg-white p-6 shadow-card lg:p-8" style={{ borderRadius: 6 }}>
+    <div className="min-h-screen px-2 py-3 sm:px-4 sm:py-6 lg:px-6" style={{ background: `linear-gradient(180deg, ${survey.primaryColor}12 0%, #f8fafc 24%, #e2e8f0 100%)` }}>
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="overflow-hidden border border-slate-200 bg-white p-3 shadow-card sm:p-6 lg:p-8" style={{ borderRadius: 6 }}>
           {previewMode ? (
-            <div className="mb-6 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-4 py-4 text-sky-950 sm:flex-row sm:items-center sm:justify-between" style={{ borderRadius: 6 }}>
+            <div className="mb-5 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-3 py-3 text-sky-950 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4" style={{ borderRadius: 6 }}>
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-sky-700">
-                  {sharedPreviewMode ? 'Modo teste compartilhado' : 'Modo teste'}
+                  {sharedPreviewMode ? 'Link de teste' : 'Modo teste'}
                 </p>
                 <p className="mt-1 text-sm">
-                  Este formulário está em teste. Nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
+                  Esta pesquisa está em teste. O comportamento visual é o mesmo da versão pública, mas nada do que acontecer aqui será salvo em respostas, relatórios ou prêmios reais.
                 </p>
               </div>
               {id ? (
@@ -730,14 +1331,14 @@ export function PublicSurveyPage() {
             </div>
           ) : null}
 
-          <header className="border-b border-slate-200 pb-5">
+          <header className="border-b border-slate-200 pb-4 sm:pb-5">
             <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
               <Sparkles className="h-4 w-4" />
-              {previewMode ? 'Prévia de teste' : 'Pesquisa publicada'}
+              Pesquisa
             </p>
-            <h1 className="mt-3 font-display text-4xl text-slate-950 lg:text-5xl">{survey.title}</h1>
-            <p className="mt-3 max-w-2xl text-sm text-slate-600 lg:text-base">
-              {survey.description || (previewMode ? 'Use esta tela para testar a experiência antes de publicar.' : 'Responda os campos abaixo para concluir sua participação.')}
+            <h1 className="mt-3 font-display text-2xl leading-tight text-slate-950 sm:text-4xl lg:text-5xl">{survey.title}</h1>
+            <p className="mt-3 max-w-3xl text-sm text-slate-600 sm:text-[15px] lg:text-base">
+              {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
             </p>
           </header>
 
@@ -747,13 +1348,13 @@ export function PublicSurveyPage() {
 
           {!submitted ? (
             <form
-              className="mt-6 space-y-5"
+              className="mt-5 space-y-4 sm:mt-6 sm:space-y-5"
               onSubmit={(event) => {
                 event.preventDefault()
                 void submitMutation.mutateAsync()
               }}
             >
-              <section className="admin-panel grid gap-4 p-5 md:grid-cols-2">
+              <section className="admin-panel grid gap-4 p-4 sm:p-5 md:grid-cols-2">
                 <label className="grid gap-2 text-sm">
                   <span className="text-slate-600">Nome completo</span>
                   <input
@@ -820,8 +1421,8 @@ export function PublicSurveyPage() {
                 const currentAnswer = answers[question.id]
 
                 return (
-                  <section key={question.id} className="border border-slate-200 bg-white p-5" style={{ borderRadius: 6 }}>
-                    <div className="mb-4 flex items-start justify-between gap-3">
+                  <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 6 }}>
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pergunta {index + 1}</p>
                         <h2 className="mt-2 font-semibold text-slate-950">{question.title}</h2>
@@ -838,7 +1439,7 @@ export function PublicSurveyPage() {
                         onChange={(event) => setSingleAnswer(question.id, event.target.value)}
                       />
                     ) : question.type === 'multiple_choice' || question.type === 'single_choice' ? (
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         {question.options?.map((option) => (
                           <label key={option} className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
                             <input
@@ -860,7 +1461,7 @@ export function PublicSurveyPage() {
                         ))}
                       </div>
                     ) : question.type === 'yes_no' ? (
-                      <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid gap-3 sm:grid-cols-2">
                         {['Sim', 'Não'].map((option) => (
                           <label key={option} className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
                             <input
@@ -893,7 +1494,7 @@ export function PublicSurveyPage() {
                       </div>
                     ) : question.type === 'nps' ? (
                       <div className="space-y-4">
-                        <div className="grid gap-3 md:grid-cols-3">
+                        <div className="grid gap-3 sm:grid-cols-3">
                           <div className="flex items-center gap-2 border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-800" style={{ borderRadius: 6 }}>
                             <ThumbsDown className="h-4 w-4" />
                             <span>0 a 6 😕</span>
@@ -908,7 +1509,7 @@ export function PublicSurveyPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3 md:grid-cols-6 xl:grid-cols-11">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11">
                           {Array.from({ length: 11 }, (_, value) => (
                             <button
                               key={value}
@@ -943,29 +1544,27 @@ export function PublicSurveyPage() {
               <div className="admin-alert border-amber-200 bg-amber-50 text-amber-900">
                 <div className="flex items-center gap-2 font-semibold">
                   <ShieldCheck className="h-4 w-4" />
-                  {previewMode ? 'Teste protegido' : 'Controle da campanha por identificadores'}
+                    Controle da campanha por identificadores
                 </div>
                 <p className="mt-2">
-                  {previewMode
-                    ? 'Este modo ignora regras de duplicidade, não grava participação e serve apenas para validar a experiência da pesquisa.'
-                    : 'A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o mesmo cliente usando o mesmo WhatsApp ou e-mail.'}
+                    A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o mesmo cliente usando o mesmo WhatsApp ou e-mail.
                 </p>
               </div>
 
               <button type="submit" disabled={submitMutation.isPending} className="admin-button-primary w-full justify-center">
-                {submitMutation.isPending ? (previewMode ? 'Preparando teste...' : 'Enviando...') : previewMode ? 'Executar teste' : 'Enviar respostas'}
+                {submitMutation.isPending ? 'Enviando...' : 'Enviar respostas'}
               </button>
             </form>
           ) : (
             <section className="admin-panel mt-6 p-6 text-center">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{previewMode ? 'Teste concluído' : 'Pesquisa finalizada'}</p>
-              <h2 className="mt-3 font-display text-4xl text-slate-950">{previewMode ? 'Prévia validada' : 'Obrigado por participar'}</h2>
+              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa finalizada</p>
+              <h2 className="mt-3 font-display text-4xl text-slate-950">Obrigado por participar</h2>
               <p className="mt-4 text-sm text-slate-600">
-                {submitMessage || (previewMode ? 'Este teste foi executado apenas para validar a experiência da pesquisa.' : 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.')}
+                {submitMessage || 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.'}
               </p>
 
               {survey.rewardEnabled ? (
-                <div className="mt-6 border border-slate-200 bg-slate-950 p-5 text-white" style={{ borderRadius: 6 }}>
+                <div className="mt-6 border border-slate-200 bg-slate-950 p-4 text-white sm:p-5" style={{ borderRadius: 6 }}>
                   <div className="flex items-center justify-center gap-2 font-semibold">
                     <Gift className="h-5 w-5" />
                     Roleta de prêmios
@@ -975,12 +1574,8 @@ export function PublicSurveyPage() {
                     <>
                       <p className="mt-2 text-sm text-slate-300">
                         {canSpinReward
-                          ? previewMode
-                            ? 'No modo teste, o giro é simulado para você revisar visual, cupom e mensagens.'
-                            : 'O resultado já será decidido no servidor assim que você girar. A animação abaixo apenas revela esse resultado.'
-                          : previewMode
-                            ? 'O teste já foi processado. Confira abaixo o resultado simulado deste giro.'
-                            : 'A participação já foi processada. Confira abaixo o resultado registrado para este giro.'}
+                          ? 'Toque em girar para revelar o seu resultado.'
+                          : 'A participação já foi concluída. Confira abaixo o resultado do giro.'}
                       </p>
 
                       <div className="mt-6">
@@ -1016,10 +1611,10 @@ export function PublicSurveyPage() {
                               ) : null}
                             </div>
                             <div className="mx-auto max-w-sm border border-white/10 bg-white/10 px-4 py-3" style={{ borderRadius: 6 }}>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Cupom do prêmio</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo do prêmio</p>
                               <p className="mt-2 text-lg font-semibold text-white">{rewardResult.couponCode}</p>
                             </div>
-                            <div className="flex justify-center">
+                            <div className="flex flex-col justify-center gap-3 sm:flex-row">
                               <button
                                 type="button"
                                 onClick={() => void handleDownloadRewardProof()}
@@ -1029,11 +1624,22 @@ export function PublicSurveyPage() {
                                 <Download className="h-4 w-4" />
                                 {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante do prêmio'}
                               </button>
+                              {rewardContactWhatsAppUrl ? (
+                                <a
+                                  href={rewardContactWhatsAppUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="admin-button w-full justify-center sm:w-auto"
+                                >
+                                  <MessageCircle className="h-4 w-4" />
+                                  Entrar em contato pelo WhatsApp
+                                </a>
+                              ) : null}
                             </div>
-                            {rewardResult.pickupAddress ? (
+                            {rewardPickupAddress ? (
                               <div className="mx-auto max-w-xl border border-white/10 bg-white/10 px-4 py-3 text-left" style={{ borderRadius: 6 }}>
                                 <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada do prêmio</p>
-                                <p className="mt-2 text-sm text-white">{rewardResult.pickupAddress}</p>
+                                <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
                               </div>
                             ) : null}
                             {rewardResult.message ? <p className="text-xs text-slate-400">{rewardResult.message}</p> : null}
@@ -1052,17 +1658,42 @@ export function PublicSurveyPage() {
                             {rewardResult.retryAvailable ? (
                               <div className="mt-5 space-y-4 border border-white/10 bg-white/5 px-4 py-4 text-left" style={{ borderRadius: 6 }}>
                                 <div>
-                                  <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
+                                  <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/35 bg-[linear-gradient(90deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.24)_100%)] px-3 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-amber-50 shadow-[0_0_24px_rgba(250,204,21,0.14)]">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Mais uma chance
+                                  </p>
                                   <p className="mt-2 text-sm text-slate-200">
-                                    Clique em todas as tarefas abaixo para liberar o segundo giro.
+                                    Abra cada tarefa, volte para esta página, aguarde alguns segundos e toque em "Já concluí" para liberar o segundo giro.
                                   </p>
                                 </div>
 
                                 <div className="space-y-3">
                                   {retryTasks.map((task) => {
                                     const completed = completedRetryTaskIds.includes(task.id)
+                                    const taskProgress = getRetryTaskProgress(task.id)
+                                    const hasReturned = Boolean(taskProgress?.returnedAt)
+                                    const canConfirm = canConfirmRetryTask(task.id)
+                                    const remainingSeconds = getRetryTaskRemainingSeconds(task.id)
                                     const isLoading =
                                       retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === task.id
+                                    const statusLabel = completed
+                                      ? 'Registrado'
+                                      : !taskProgress
+                                        ? 'Pendente'
+                                        : !hasReturned
+                                          ? 'Volte para a página'
+                                          : canConfirm
+                                            ? 'Pronto para confirmar'
+                                            : `Aguarde ${remainingSeconds}s`
+                                    const buttonLabel = completed
+                                      ? 'Registrado'
+                                      : !taskProgress
+                                        ? 'Ir para a tarefa'
+                                        : !hasReturned
+                                          ? 'Volte para esta página'
+                                          : canConfirm
+                                            ? 'Já concluí'
+                                            : `Aguarde ${remainingSeconds}s`
 
                                     return (
                                       <div
@@ -1086,18 +1717,24 @@ export function PublicSurveyPage() {
                                             className={`admin-badge ${
                                               completed
                                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                : 'border-white/15 bg-white/10 text-white'
+                                                : canConfirm
+                                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                                  : 'border-white/15 bg-white/10 text-white'
                                             }`}
                                           >
-                                            {completed ? 'Clicado' : 'Pendente'}
+                                            {statusLabel}
                                           </span>
                                           <button
                                             type="button"
-                                            disabled={completed || isLoading}
-                                            onClick={() => void retryTaskClickMutation.mutateAsync(task)}
+                                            disabled={completed || isLoading || (Boolean(taskProgress) && !canConfirm)}
+                                            onClick={() =>
+                                              taskProgress
+                                                ? void retryTaskClickMutation.mutateAsync(task)
+                                                : startRetryTask(task)
+                                            }
                                             className="admin-button-primary disabled:opacity-60"
                                           >
-                                            {completed ? 'Registrado' : isLoading ? 'Abrindo...' : 'Ir para a tarefa'}
+                                            {isLoading ? 'Confirmando...' : buttonLabel}
                                           </button>
                                         </div>
                                       </div>
@@ -1132,7 +1769,7 @@ export function PublicSurveyPage() {
               {previewMode ? (
                 <div className="mt-5 flex justify-center">
                   <button type="button" onClick={resetPreviewSession} className="admin-button">
-                    Testar novamente
+                    Responder novamente
                   </button>
                 </div>
               ) : null}
@@ -1143,41 +1780,37 @@ export function PublicSurveyPage() {
 
       {survey.rewardEnabled && wheelModalOpen ? (
         <div className="fixed inset-0 z-50 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.22)_0%,rgba(15,23,42,0.92)_36%,rgba(2,6,23,0.98)_100%)]">
-          <div className="absolute inset-0 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-            <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col justify-between rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-4 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:p-6 lg:p-8">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="absolute inset-0 overflow-y-auto p-1 sm:p-3 lg:px-6 lg:py-6">
+            <div className="mx-auto flex min-h-[calc(100dvh-0.5rem)] w-full max-w-[1500px] flex-col justify-between rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-3 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:min-h-[calc(100dvh-1.5rem)] sm:rounded-[28px] sm:p-5 lg:p-8">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
-                  <p className="text-xs uppercase tracking-[0.28em] text-amber-200/80">Momento do prêmio</p>
-                  <h2 className="mt-3 font-display text-3xl text-white sm:text-4xl lg:text-5xl">Roleta premium em tela cheia</h2>
-                  <p className="mt-3 text-sm text-slate-300 sm:text-base">
+                  <p className="text-sm text-slate-300 sm:text-base">
                     {canSpinReward
-                      ? previewMode
-                        ? 'Toque em girar para validar a roleta em um cenário de teste, sem afetar nenhuma participação real.'
-                        : 'Toque em girar para revelar o resultado desta campanha com destaque total.'
+                      ? 'Gire a roleta para descobrir seu resultado.'
                       : wheelSpinning
-                        ? 'A roleta está girando e o resultado está sendo revelado agora.'
+                        ? 'A roleta está girando.'
                         : rewardResult?.won
-                          ? 'Seu prêmio já foi confirmado. Você pode salvar o comprovante antes de fechar.'
-                          : 'O resultado deste giro já foi registrado. Confira a mensagem final abaixo.'}
+                          ? 'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.'
+                          : 'Seu resultado já está disponível.'}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-3 self-start">
                   {canCloseWheelModal ? (
-                    <button type="button" onClick={() => setWheelModalOpen(false)} className="admin-button px-4 py-3 text-white">
+                    <button
+                      type="button"
+                      onClick={() => setWheelModalOpen(false)}
+                      className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-white/15 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(2,6,23,0.32)] transition hover:bg-slate-900"
+                    >
                       <X className="h-4 w-4" />
                       Fechar
                     </button>
-                  ) : (
-                    <div className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
-                      Fechamento liberado ao final
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center xl:grid-cols-[minmax(0,1fr)_420px]">
-                <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-3 py-6 sm:px-6 sm:py-8">
+              <div className="mt-3 grid flex-1 gap-3 xl:mt-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,420px)] xl:items-center 2xl:grid-cols-[minmax(0,1.3fr)_440px]">
+                <div className="relative isolate flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
                   <PrizeWheel
                     segments={wheelSegments}
                     rotation={wheelRotation}
@@ -1191,22 +1824,146 @@ export function PublicSurveyPage() {
                     spinLabel="Girar agora"
                     onSpin={() => void spinMutation.mutateAsync()}
                   />
+
+                  {rewardResult?.won ? (
+                    <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
+                      <div className="absolute inset-0 rounded-[inherit] bg-slate-950/55 backdrop-blur-[3px]" />
+                      <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-amber-300/35 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.52)_8%,rgba(250,204,21,0.26)_28%,rgba(236,72,153,0.18)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.45)] backdrop-blur-md sm:px-7 sm:py-8">
+                        <p className="text-xs uppercase tracking-[0.26em] text-amber-100">Prêmio confirmado</p>
+                        <p className="mt-3 text-base font-semibold text-emerald-100 sm:text-lg">Parabéns! Você ganhou:</p>
+                        <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
+                        {rewardResult.couponCode ? (
+                          <div className="mt-5 rounded-[18px] border border-white/15 bg-slate-950/35 px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo</p>
+                            <p className="mt-2 text-lg font-bold text-white sm:text-xl">{rewardResult.couponCode}</p>
+                          </div>
+                        ) : null}
+                        {rewardPickupAddress ? (
+                          <div className="mt-4 rounded-[18px] border border-white/15 bg-white/10 px-4 py-3 text-left">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada na loja</p>
+                            <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
+                          </div>
+                        ) : null}
+                        <div className="mt-5 flex flex-col gap-3">
+                          <p className="text-xs text-slate-100">
+                            Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.
+                          </p>
+                          {rewardContactWhatsAppUrl ? (
+                            <a
+                              href={rewardContactWhatsAppUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="admin-button-primary w-full justify-center"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                              Resgatar pelo WhatsApp
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {showRetryTaskOverlay && currentRetryTask ? (
+                    <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
+                      <div className="absolute inset-0 rounded-[inherit] bg-slate-950/58 backdrop-blur-[3px]" />
+                      <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-sky-300/30 bg-[linear-gradient(180deg,rgba(15,23,42,0.22)_0%,rgba(15,23,42,0.78)_12%,rgba(59,130,246,0.18)_56%,rgba(15,23,42,0.98)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.48)] backdrop-blur-md sm:px-7 sm:py-8">
+                        <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-[linear-gradient(90deg,rgba(250,204,21,0.24)_0%,rgba(236,72,153,0.3)_100%)] px-4 py-2 text-xs font-black uppercase tracking-[0.24em] text-amber-50 shadow-[0_0_28px_rgba(250,204,21,0.18)]">
+                          <Sparkles className="h-4 w-4" />
+                          Mais uma chance
+                        </p>
+                        <p className="mt-3 text-base font-semibold text-white sm:text-lg">
+                          {rewardResult?.landedLabel ? `A roleta parou em ${rewardResult.landedLabel}.` : 'Você não ganhou neste giro.'}
+                        </p>
+                        <p className="mt-3 text-sm text-slate-200 sm:text-base">
+                          Conclua esta tarefa, volte para a página e confirme aqui na frente da roleta para liberar o próximo giro.
+                        </p>
+
+                        <div
+                          className={`mt-5 rounded-[20px] border px-4 py-4 text-left transition ${
+                            currentRetryTaskCanConfirm || currentRetryTaskIsLoading
+                              ? 'border-white/12 bg-slate-950/35'
+                              : 'cursor-pointer border-sky-300/28 bg-[linear-gradient(180deg,rgba(14,165,233,0.18)_0%,rgba(15,23,42,0.46)_100%)] hover:border-sky-200/45 hover:bg-[linear-gradient(180deg,rgba(56,189,248,0.22)_0%,rgba(15,23,42,0.54)_100%)]'
+                          }`}
+                          role="button"
+                          tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
+                          onClick={() =>
+                            handleRetryTaskCardClick({
+                              task: currentRetryTask,
+                              taskProgress: currentRetryTaskProgress ?? undefined,
+                              canConfirm: currentRetryTaskCanConfirm,
+                              isLoading: currentRetryTaskIsLoading,
+                            })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleRetryTaskCardClick({
+                                task: currentRetryTask,
+                                taskProgress: currentRetryTaskProgress ?? undefined,
+                                canConfirm: currentRetryTaskCanConfirm,
+                                isLoading: currentRetryTaskIsLoading,
+                              })
+                            }
+                          }}
+                        >
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Tarefa atual</p>
+                          <p className="mt-2 text-lg font-semibold text-white">{currentRetryTask.title}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">
+                            {getRetryTaskTypeLabel(currentRetryTask.type)}
+                          </p>
+                          {!currentRetryTaskCanConfirm && !currentRetryTaskIsLoading ? (
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
+                              Toque aqui para ir direto para a tarefa
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-center">
+                          <span
+                            className={`admin-badge ${
+                              currentRetryTaskCanConfirm
+                                ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                : 'border-white/15 bg-white/10 text-white'
+                            }`}
+                          >
+                            {currentRetryTaskStatusLabel}
+                          </span>
+                        </div>
+
+                        <div className="mt-5 flex flex-col gap-3">
+                          <button
+                            type="button"
+                            disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              if (currentRetryTaskProgress) {
+                                void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                return
+                              }
+
+                              startRetryTask(currentRetryTask)
+                            }}
+                            className="admin-button-primary w-full justify-center disabled:opacity-60"
+                          >
+                            {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
+                          </button>
+                          <p className="text-xs text-slate-200">
+                            A roleta continua aberta. Assim que confirmar esta etapa, o botão de girar será liberado aqui mesmo.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-4 xl:max-w-[440px]">
                   {!rewardResult ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-center">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Status da roleta</p>
                       <p className="mt-3 text-lg font-semibold text-white">
                         {wheelSpinning ? 'A sorte está girando...' : canSpinReward ? 'Pronta para girar' : 'Aguardando resultado'}
                       </p>
-                      <p className="mt-2 text-sm text-slate-300">
-                        {wheelSpinning
-                          ? 'Segure esse momento. O resultado já está sendo revelado.'
-                          : previewMode
-                            ? 'Quando você tocar em girar, um resultado simulado será mostrado aqui para revisão.'
-                            : 'Quando você tocar em girar, o resultado salvo no servidor será mostrado aqui.'}
-                      </p>
+                      {wheelSpinning ? <p className="mt-2 text-sm text-slate-300">Segure esse momento.</p> : null}
                     </div>
                   ) : rewardResult.won ? (
                     <div ref={rewardProofRef} className="rounded-[24px] border border-amber-300/25 bg-[linear-gradient(180deg,rgba(250,204,21,0.22)_0%,rgba(236,72,153,0.16)_52%,rgba(15,23,42,0.96)_100%)] p-5 shadow-[0_22px_70px_rgba(250,204,21,0.14)]">
@@ -1215,14 +1972,14 @@ export function PublicSurveyPage() {
                       <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
                       {rewardResult.couponCode ? (
                         <div className="mt-5 rounded-[18px] border border-white/15 bg-slate-950/35 px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Cupom</p>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo</p>
                           <p className="mt-2 text-xl font-bold text-white">{rewardResult.couponCode}</p>
                         </div>
                       ) : null}
-                      {rewardResult.pickupAddress ? (
+                      {rewardPickupAddress ? (
                         <div className="mt-4 rounded-[18px] border border-white/10 bg-white/10 px-4 py-4">
                           <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada</p>
-                          <p className="mt-2 text-sm text-white">{rewardResult.pickupAddress}</p>
+                          <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
                         </div>
                       ) : null}
                       <p className="mt-4 text-xs uppercase tracking-[0.18em] text-amber-50/80">{survey.brandName || survey.title}</p>
@@ -1234,10 +1991,21 @@ export function PublicSurveyPage() {
                           className="admin-button-primary w-full justify-center"
                         >
                           <Download className="h-4 w-4" />
-                          {savingRewardProof ? 'Gerando imagem...' : 'Salvar comprovante em imagem'}
+                          {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
                         </button>
+                        {rewardContactWhatsAppUrl ? (
+                          <a
+                            href={rewardContactWhatsAppUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="admin-button w-full justify-center"
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                            Entrar em contato para receber o prêmio
+                          </a>
+                        ) : null}
                         <p className="text-center text-xs text-slate-300">
-                          {previewMode ? 'Use essa imagem para validar o layout do comprovante antes da publicação.' : 'Salve no celular para apresentar no resgate do prêmio.'}
+                            Salve no celular para apresentar no resgate do prêmio.
                         </p>
                       </div>
                     </div>
@@ -1250,56 +2018,96 @@ export function PublicSurveyPage() {
                         </p>
                       ) : null}
                       <p className="mt-3 text-lg font-semibold text-white">{rewardResult.message || 'Desta vez não houve prêmio disponível.'}</p>
-                      {rewardResult.retryAvailable ? (
-                        <p className="mt-3 text-sm text-slate-300">Conclua as tarefas abaixo na página para liberar a chance extra.</p>
+                      {rewardResult.retryAvailable && currentRetryTask ? (
+                        <p className="mt-3 text-sm text-slate-300">
+                          A próxima etapa é <span className="font-semibold text-white">{currentRetryTask.title}</span>. Ela aparece na frente da roleta.
+                        </p>
                       ) : null}
                     </div>
                   )}
 
                   {rewardResult?.retryAvailable ? (
                     <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-left">
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mais uma chance</p>
-                      <div className="mt-4 space-y-3">
-                        {retryTasks.map((task) => {
-                          const completed = completedRetryTaskIds.includes(task.id)
-                          const isLoading = retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === task.id
-
-                          return (
-                            <div
-                              key={task.id}
-                              className="flex flex-col gap-3 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4"
+                      <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/35 bg-[linear-gradient(90deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.24)_100%)] px-3 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-amber-50 shadow-[0_0_24px_rgba(250,204,21,0.14)]">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Mais uma chance
+                      </p>
+                      {canSpinReward ? (
+                        <div className="mt-4 rounded-[18px] border border-emerald-300/25 bg-emerald-500/10 px-4 py-4">
+                          <p className="text-sm font-semibold text-emerald-100">Nova tentativa liberada</p>
+                          <p className="mt-2 text-sm text-slate-200">
+                            A tarefa atual já foi confirmada. Agora você pode girar a roleta novamente.
+                          </p>
+                        </div>
+                      ) : currentRetryTask ? (
+                        <div
+                          className={`mt-4 rounded-[18px] border px-4 py-4 transition ${
+                            currentRetryTaskCanConfirm || currentRetryTaskIsLoading
+                              ? 'border-white/10 bg-slate-950/30'
+                              : 'cursor-pointer border-sky-300/25 bg-[linear-gradient(180deg,rgba(14,165,233,0.15)_0%,rgba(15,23,42,0.42)_100%)] hover:border-sky-200/45 hover:bg-[linear-gradient(180deg,rgba(56,189,248,0.22)_0%,rgba(15,23,42,0.5)_100%)]'
+                          }`}
+                          role="button"
+                          tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
+                          onClick={() =>
+                            handleRetryTaskCardClick({
+                              task: currentRetryTask,
+                              taskProgress: currentRetryTaskProgress ?? undefined,
+                              canConfirm: currentRetryTaskCanConfirm,
+                              isLoading: currentRetryTaskIsLoading,
+                            })
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleRetryTaskCardClick({
+                                task: currentRetryTask,
+                                taskProgress: currentRetryTaskProgress ?? undefined,
+                                canConfirm: currentRetryTaskCanConfirm,
+                                isLoading: currentRetryTaskIsLoading,
+                              })
+                            }
+                          }}
+                        >
+                          <p className="text-sm font-semibold text-white">{currentRetryTask.title}</p>
+                          <p className="mt-1 text-xs text-slate-400">{getRetryTaskTypeLabel(currentRetryTask.type)}</p>
+                          {!currentRetryTaskCanConfirm && !currentRetryTaskIsLoading ? (
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
+                              Toque aqui para abrir a tarefa
+                            </p>
+                          ) : null}
+                          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <span
+                              className={`admin-badge ${
+                                currentRetryTaskCanConfirm
+                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                  : 'border-white/15 bg-white/10 text-white'
+                              }`}
                             >
-                              <div>
-                                <p className="text-sm font-semibold text-white">{task.title}</p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {task.type === 'google_review'
-                                    ? 'Google'
-                                    : task.type === 'instagram_follow'
-                                      ? 'Instagram'
-                                      : 'Link personalizado'}
-                                </p>
-                              </div>
-                              <div className="flex items-center justify-between gap-3">
-                                <span
-                                  className={`admin-badge ${
-                                    completed ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-white/15 bg-white/10 text-white'
-                                  }`}
-                                >
-                                  {completed ? 'Clicado' : 'Pendente'}
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={completed || isLoading}
-                                  onClick={() => void retryTaskClickMutation.mutateAsync(task)}
-                                  className="admin-button-primary disabled:opacity-60"
-                                >
-                                  {completed ? 'Registrado' : isLoading ? 'Abrindo...' : 'Ir para a tarefa'}
-                                </button>
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
+                              {currentRetryTaskStatusLabel}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                if (currentRetryTaskProgress) {
+                                  void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                  return
+                                }
+
+                                startRetryTask(currentRetryTask)
+                              }}
+                              className="admin-button-primary justify-center disabled:opacity-60"
+                            >
+                              {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4">
+                          <p className="text-sm text-slate-200">Todas as tarefas configuradas para esta participação já foram usadas.</p>
+                        </div>
+                      )}
                     </div>
                   ) : null}
                 </div>

@@ -23,7 +23,7 @@ import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
-import { FLOW_END, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
+import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
 import type { QuestionType, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
 type BuilderQuestion = {
@@ -272,9 +272,12 @@ export function SurveyBuilderPage() {
               ? question.options.map((item) => item.trim()).filter(Boolean)
               : [],
           flowRules:
-            question.type === 'yes_no' || question.type === 'single_choice'
-              ? question.flowRules.filter((rule) => rule.value.trim() && rule.nextQuestionId.trim())
-              : [],
+            question.flowRules.filter(
+              (rule) =>
+                rule.value.trim() &&
+                rule.nextQuestionId.trim() &&
+                (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice'),
+            ),
         })),
       }
 
@@ -324,6 +327,34 @@ export function SurveyBuilderPage() {
     },
     onError: (error) => {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível salvar a pesquisa.')
+    },
+  })
+
+  const unpublishMutation = useMutation({
+    mutationFn: async () => {
+      if (!params.id) {
+        throw new Error('A pesquisa ainda precisa ser salva antes de voltar para rascunho.')
+      }
+
+      return apiRequest<{ ok: boolean }>(`/surveys/${params.id}/unpublish`, {
+        method: 'POST',
+      })
+    },
+    onSuccess: async () => {
+      if (!params.id) {
+        return
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['survey', params.id] }),
+      ])
+
+      setFeedback('Pesquisa movida de volta para rascunho com sucesso.')
+    },
+    onError: (error) => {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível voltar a pesquisa para rascunho.')
     },
   })
 
@@ -611,7 +642,7 @@ export function SurveyBuilderPage() {
       <button
         type="button"
         onClick={() => void saveMutation.mutateAsync(false)}
-        disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || unpublishMutation.isPending}
         className="admin-button-primary"
       >
         <Sparkles className="h-4 w-4" />
@@ -620,12 +651,31 @@ export function SurveyBuilderPage() {
       <button
         type="button"
         onClick={() => void saveMutation.mutateAsync(true)}
-        disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || unpublishMutation.isPending}
         className="admin-button"
       >
         <Share2 className="h-4 w-4" />
         Salvar e publicar
       </button>
+        {params.id && isPublishedSurvey ? (
+          <button
+            type="button"
+            disabled={saveMutation.isPending || unpublishMutation.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  'Deseja tirar esta pesquisa do ar e voltar para rascunho? O link público deixará de funcionar, mas as respostas já recebidas continuarão salvas.',
+                )
+              ) {
+                void unpublishMutation.mutateAsync()
+              }
+            }}
+            className="admin-button"
+          >
+            <Share2 className="h-4 w-4" />
+            {unpublishMutation.isPending ? 'Voltando...' : 'Voltar para rascunho'}
+          </button>
+        ) : null}
       {params.id && form.rewardEnabled ? (
         <Link
           to={`/app/pesquisas/${params.id}/premios`}
@@ -662,7 +712,7 @@ export function SurveyBuilderPage() {
       {feedback ? (
         <div
           className={`admin-alert mb-6 ${
-            saveMutation.isError || uploadMutation.isError || removeUploadMutation.isError
+            saveMutation.isError || uploadMutation.isError || removeUploadMutation.isError || unpublishMutation.isError
               ? 'border border-rose-200 bg-rose-50 text-rose-900'
               : 'border border-emerald-200 bg-emerald-50 text-emerald-900'
           }`}
@@ -835,6 +885,12 @@ export function SurveyBuilderPage() {
       {params.id && !isPublishedSurvey ? (
         <div className="admin-alert mb-6 border-sky-200 bg-sky-50 text-sky-900">
           Esta pesquisa ainda não está publicada. Use <strong>Testar pesquisa</strong> para validar a experiência antes de colocar o link no ar.
+        </div>
+      ) : null}
+
+      {params.id && isPublishedSurvey ? (
+        <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
+          Esta pesquisa está publicada. Se você voltar para rascunho, o link público sai do ar, mas as respostas já recebidas continuam salvas.
         </div>
       ) : null}
 
@@ -1249,6 +1305,8 @@ export function SurveyBuilderPage() {
               (() => {
                 const nextQuestions = form.questions.slice(index + 1)
                 const flowValues = getQuestionFlowValues(question)
+                const genericFlowTarget =
+                  question.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''
 
                 return (
                   <article key={question.id} className="builder-question-card">
@@ -1326,7 +1384,10 @@ export function SurveyBuilderPage() {
                                   ...current,
                                   type,
                                   options: needsOptions ? (current.options.length ? current.options : ['']) : [],
-                                  flowRules: [],
+                                  flowRules:
+                                    type === 'yes_no' || type === 'single_choice'
+                                      ? current.flowRules
+                                      : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
                                 }
                               })
                             }
@@ -1405,13 +1466,43 @@ export function SurveyBuilderPage() {
                         </div>
                       ) : null}
 
+                      <div className="builder-soft-panel">
+                        <div className="mb-4">
+                          <p className="text-sm font-semibold text-slate-950">Ação após responder</p>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Defina o que acontece assim que esta pergunta for respondida: seguir normalmente, encerrar a pesquisa ou ir para outro ponto do formulário.
+                          </p>
+                        </div>
+
+                        <label className="grid gap-2 text-sm">
+                          <span className="text-slate-600">Depois que o cliente responder esta pergunta</span>
+                          <select
+                            className="admin-select"
+                            value={genericFlowTarget}
+                            onChange={(event) =>
+                              updateQuestion(index, (current) => ({
+                                ...current,
+                                flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
+                              }))
+                            }
+                          >
+                            <option value="">Seguir para a próxima pergunta normal</option>
+                            <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
+                            {nextQuestions.map((targetQuestion, targetIndex) => (
+                              <option key={`generic-${targetQuestion.id}`} value={targetQuestion.id}>
+                                Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
                       {supportsQuestionFlow(question.type) ? (
                         <div className="builder-soft-panel">
                           <div className="mb-4">
-                            <p className="text-sm font-semibold text-slate-950">Fluxo da pergunta</p>
+                            <p className="text-sm font-semibold text-slate-950">Fluxo por resposta específica</p>
                             <p className="mt-1 text-sm text-slate-600">
-                              Defina para onde o formulário vai quando esta pergunta receber uma resposta específica. Este fluxo vale para
-                              perguntas de Sim/Não e Escolha única.
+                              Para perguntas de Sim/Não e Escolha única, você também pode escolher caminhos diferentes dependendo da resposta.
                             </p>
                           </div>
 

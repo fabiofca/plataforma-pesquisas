@@ -41,6 +41,8 @@ CURRENT_STEP_KEY=""
 CURRENT_STEP_LABEL=""
 INSTALL_FAILED="false"
 FAILURE_MESSAGE=""
+SELECTED_INSTANCE_MARKER=""
+declare -a DISCOVERED_INSTANCE_MARKERS=()
 
 STATUS_DATABASE="PENDENTE"
 STATUS_BACKEND="PENDENTE"
@@ -416,6 +418,89 @@ load_existing_marker_state() {
   APP_PORT="${APP_PORT:-$(extract_env_value "${APP_MARKER_FILE}" "APP_PORT")}"
   SERVER_NAME="${SERVER_NAME:-$(extract_env_value "${APP_MARKER_FILE}" "SERVER_NAME")}"
   FRONTEND_URL="${FRONTEND_URL:-$(extract_env_value "${APP_MARKER_FILE}" "FRONTEND_URL")}"
+}
+
+discover_installed_instances() {
+  DISCOVERED_INSTANCE_MARKERS=()
+
+  if [[ ! -d "/var/www" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r marker_path; do
+    [[ -n "${marker_path}" ]] || continue
+    DISCOVERED_INSTANCE_MARKERS+=("${marker_path}")
+  done < <(find /var/www -maxdepth 3 -type f -name ".deploy-meta" 2>/dev/null | sort)
+}
+
+load_instance_from_marker() {
+  local marker_path="$1"
+  local marker_root=""
+
+  [[ -f "${marker_path}" ]] || fail "Marcador da instancia nao encontrado: ${marker_path}"
+
+  marker_root="$(dirname "${marker_path}")"
+  APP_ROOT="${marker_root}"
+  APP_NAME="$(extract_env_value "${marker_path}" "APP_NAME")"
+  APP_USER="$(extract_env_value "${marker_path}" "APP_USER")"
+  APP_PORT="$(extract_env_value "${marker_path}" "APP_PORT")"
+  SERVER_NAME="$(extract_env_value "${marker_path}" "SERVER_NAME")"
+  FRONTEND_URL="$(extract_env_value "${marker_path}" "FRONTEND_URL")"
+  SELECTED_INSTANCE_MARKER="${marker_path}"
+
+  refresh_runtime_paths
+  load_existing_marker_state
+  load_existing_install_state
+  refresh_runtime_paths
+  detect_existing_installation
+}
+
+prompt_existing_instance_selection() {
+  local instance_count="${#DISCOVERED_INSTANCE_MARKERS[@]}"
+  local answer=""
+  local marker_path=""
+  local marker_app_name=""
+  local marker_root=""
+  local marker_domain=""
+
+  if (( instance_count == 0 )); then
+    return 0
+  fi
+
+  echo "Instancias ja instaladas"
+  echo "------------------------"
+
+  local index=1
+  for marker_path in "${DISCOVERED_INSTANCE_MARKERS[@]}"; do
+    marker_app_name="$(extract_env_value "${marker_path}" "APP_NAME")"
+    marker_root="$(dirname "${marker_path}")"
+    marker_domain="$(extract_env_value "${marker_path}" "SERVER_NAME")"
+    printf '  %s) %s | %s | %s\n' "${index}" "${marker_app_name:-sem-nome}" "${marker_root}" "${marker_domain:-sem-dominio}"
+    index=$((index + 1))
+  done
+  echo
+
+  if (( instance_count == 1 )); then
+    read -r -p "Instancia para ${INSTALL_MODE} [1] (Enter usa a instalada): " answer
+    answer="${answer:-1}"
+  else
+    read -r -p "Escolha a instancia para ${INSTALL_MODE} [1-${instance_count}] ou digite 0 para informar manualmente: " answer
+    answer="${answer:-0}"
+  fi
+
+  if [[ "${answer}" == "0" ]]; then
+    return 0
+  fi
+
+  if [[ "${answer}" =~ ^[0-9]+$ ]] && (( answer >= 1 && answer <= instance_count )); then
+    load_instance_from_marker "${DISCOVERED_INSTANCE_MARKERS[answer-1]}"
+    echo
+    echo "Instancia selecionada: ${APP_NAME} (${APP_ROOT})"
+    echo
+    return 0
+  fi
+
+  fail "Opcao de instancia invalida."
 }
 
 detect_existing_installation() {
@@ -1093,11 +1178,59 @@ configure_nginx() {
     return
   fi
 
-  sed \
-    -e "s|__SERVER_NAME__|${SERVER_NAME}|g" \
-    -e "s|__APP_DIR__|${APP_ROOT}|g" \
-    -e "s|__APP_PORT__|${APP_PORT}|g" \
-    "${NGINX_TEMPLATE}" > "${NGINX_SITE}"
+  if ssl_certificate_exists; then
+    cat > "${NGINX_SITE}" <<EOF
+server {
+    listen 80;
+    server_name ${SERVER_NAME};
+
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name ${SERVER_NAME};
+
+    ssl_certificate /etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${SERVER_NAME}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root ${APP_ROOT}/web/dist;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:${APP_PORT}/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${APP_PORT}/uploads/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+  else
+    sed \
+      -e "s|__SERVER_NAME__|${SERVER_NAME}|g" \
+      -e "s|__APP_DIR__|${APP_ROOT}|g" \
+      -e "s|__APP_PORT__|${APP_PORT}|g" \
+      "${NGINX_TEMPLATE}" > "${NGINX_SITE}"
+  fi
 
   ln -sfn "${NGINX_SITE}" "${NGINX_ENABLED}"
   nginx -t
@@ -1116,6 +1249,21 @@ ensure_certbot() {
   DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
 }
 
+ssl_certificate_exists() {
+  [[ -n "${SERVER_NAME}" ]] || return 1
+  [[ "${SERVER_NAME}" != "_" ]] || return 1
+
+  if [[ -f "/etc/letsencrypt/live/${SERVER_NAME}/fullchain.pem" && -f "/etc/letsencrypt/live/${SERVER_NAME}/privkey.pem" ]]; then
+    return 0
+  fi
+
+  if command -v certbot >/dev/null 2>&1 && certbot certificates 2>/dev/null | grep -q "Certificate Name: ${SERVER_NAME}"; then
+    return 0
+  fi
+
+  return 1
+}
+
 configure_ssl() {
   if [[ "${ENABLE_NGINX}" != "true" ]]; then
     mark_step_skipped "ssl"
@@ -1128,6 +1276,12 @@ configure_ssl() {
   fi
 
   ensure_certbot
+
+  if ssl_certificate_exists; then
+    log "SSL ja configurado para ${SERVER_NAME}. Pulando nova emissao do certificado."
+    systemctl reload nginx
+    return
+  fi
 
   log "Emitindo certificado SSL para ${SERVER_NAME}..."
   certbot --nginx \
@@ -1206,12 +1360,25 @@ run_interactive_setup() {
   load_env_defaults_from_file "${SOURCE_DIR}/server/.env"
   prompt_install_mode
 
-  refresh_runtime_paths
-  APP_NAME="$(prompt_value "Nome da aplicação" "${APP_NAME}")"
-  refresh_runtime_paths
+  if [[ "${INSTALL_MODE}" == "update" || "${INSTALL_MODE}" == "uninstall" ]]; then
+    discover_installed_instances
+    prompt_existing_instance_selection
+  fi
 
-  APP_ROOT="$(prompt_value "Pasta final da aplicação" "${APP_ROOT}")"
-  APP_USER="$(prompt_value "Usuário de sistema da aplicação" "${APP_USER}")"
+  refresh_runtime_paths
+  if [[ -n "${SELECTED_INSTANCE_MARKER}" ]]; then
+    echo "Usando a instancia selecionada:"
+    echo "  Aplicacao: ${APP_NAME}"
+    echo "  Pasta final: ${APP_ROOT}"
+    echo "  Usuario do sistema: ${APP_USER}"
+    echo
+  else
+    APP_NAME="$(prompt_value "Nome da aplicação" "${APP_NAME}")"
+    refresh_runtime_paths
+
+    APP_ROOT="$(prompt_value "Pasta final da aplicação" "${APP_ROOT}")"
+    APP_USER="$(prompt_value "Usuário de sistema da aplicação" "${APP_USER}")"
+  fi
 
   load_existing_marker_state
   load_env_defaults_from_file "${SOURCE_DIR}/server/.env"
