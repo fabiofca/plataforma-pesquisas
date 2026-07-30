@@ -117,6 +117,8 @@ export function SurveyVisualFlowEditor({
   primaryColor,
   questions,
   flowLayout,
+  hasUnsavedChanges,
+  isSaving,
   selectedQuestionId,
   onSelectQuestion,
   onAddQuestion,
@@ -127,6 +129,8 @@ export function SurveyVisualFlowEditor({
   primaryColor: string
   questions: VisualQuestion[]
   flowLayout: SurveyFlowLayout
+  hasUnsavedChanges: boolean
+  isSaving: boolean
   selectedQuestionId?: string
   onSelectQuestion: (questionId: string) => void
   onAddQuestion: () => void
@@ -381,6 +385,17 @@ export function SurveyVisualFlowEditor({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                isSaving
+                  ? 'border border-sky-200 bg-sky-50 text-sky-700'
+                  : hasUnsavedChanges
+                    ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              {isSaving ? 'Salvando...' : hasUnsavedChanges ? 'Fluxo com alterações' : 'Fluxo salvo'}
+            </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
               {questions.length} {questions.length === 1 ? 'pergunta' : 'perguntas'}
             </span>

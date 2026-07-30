@@ -6,7 +6,6 @@ import {
   Share2,
   Sparkles,
   Trash2,
-  Upload,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -47,6 +46,8 @@ type BuilderState = {
   flowLayout: SurveyFlowLayout
   questions: BuilderQuestion[]
 }
+
+type FlowDraftState = Pick<BuilderState, 'questions' | 'flowLayout'>
 
 const surveyColorPresets = ['#0b5cff', '#11284a', '#0f766e', '#7c3aed', '#d97706', '#dc2626']
 
@@ -102,6 +103,50 @@ function makeEmptyBuilderState(): BuilderState {
   }
 }
 
+function extractFlowDraft(state: Pick<BuilderState, 'questions' | 'flowLayout'>): FlowDraftState {
+  return {
+    questions: state.questions.map((question) => ({
+      ...question,
+      options: [...question.options],
+      flowRules: question.flowRules.map((rule) => ({ ...rule })),
+    })),
+    flowLayout: {
+      ...state.flowLayout,
+      nodes: state.flowLayout.nodes.map((node) => ({ ...node })),
+      viewport: state.flowLayout.viewport ? { ...state.flowLayout.viewport } : undefined,
+    },
+  }
+}
+
+function normalizeFlowDraft(state: FlowDraftState): FlowDraftState {
+  const normalizedLayout = mergeFlowLayout(
+    state.questions.map((question) => question.id),
+    state.flowLayout,
+  )
+
+  return {
+    questions: [...state.questions]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((question) => ({
+        ...question,
+        options: [...question.options],
+        flowRules: [...question.flowRules].sort(
+          (left, right) =>
+            left.value.localeCompare(right.value) || left.nextQuestionId.localeCompare(right.nextQuestionId),
+        ),
+      })),
+    flowLayout: {
+      ...normalizedLayout,
+      nodes: [...normalizedLayout.nodes].sort((left, right) => left.id.localeCompare(right.id)),
+      viewport: normalizedLayout.viewport ? { ...normalizedLayout.viewport } : undefined,
+    },
+  }
+}
+
+function getFlowDraftSignature(state: FlowDraftState) {
+  return JSON.stringify(normalizeFlowDraft(state))
+}
+
 function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
   const questions = survey.questions.length
     ? survey.questions.map((question) => ({
@@ -143,6 +188,7 @@ export function SurveyBuilderPage() {
   const queryClient = useQueryClient()
   const isEditing = Boolean(params.id)
   const [form, setForm] = useState<BuilderState>(makeEmptyBuilderState)
+  const [savedFlowSnapshot, setSavedFlowSnapshot] = useState<FlowDraftState | null>(null)
   const [selectedVisualQuestionId, setSelectedVisualQuestionId] = useState('')
   const [feedback, setFeedback] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -207,13 +253,17 @@ export function SurveyBuilderPage() {
 
   useEffect(() => {
     if (survey) {
-      setForm(mapSurveyToBuilderState(survey))
+      const nextForm = mapSurveyToBuilderState(survey)
+      setForm(nextForm)
+      setSavedFlowSnapshot(extractFlowDraft(nextForm))
       setUploadErrors({ logo: '', banner: '' })
       return
     }
 
     if (!isEditing) {
-      setForm(makeEmptyBuilderState())
+      const nextForm = makeEmptyBuilderState()
+      setForm(nextForm)
+      setSavedFlowSnapshot(extractFlowDraft(nextForm))
       setFeedback('')
       setUploadErrors({ logo: '', banner: '' })
     }
@@ -241,8 +291,16 @@ export function SurveyBuilderPage() {
     }
   }, [form.questions, selectedVisualQuestionId])
 
+  const currentFlowSnapshot = useMemo(() => extractFlowDraft(form), [form.flowLayout, form.questions])
+  const currentFlowSignature = useMemo(() => getFlowDraftSignature(currentFlowSnapshot), [currentFlowSnapshot])
+  const savedFlowSignature = useMemo(
+    () => (savedFlowSnapshot ? getFlowDraftSignature(savedFlowSnapshot) : ''),
+    [savedFlowSnapshot],
+  )
+  const hasUnsavedFlowChanges = Boolean(savedFlowSnapshot) && currentFlowSignature !== savedFlowSignature
+
   const saveMutation = useMutation({
-    mutationFn: async (shouldPublish: boolean) => {
+    mutationFn: async ({ shouldPublish, flowSnapshot }: { shouldPublish: boolean; flowSnapshot: FlowDraftState }) => {
       const normalizedFlowLayout = mergeFlowLayout(
         form.questions.map((question) => question.id),
         form.flowLayout,
@@ -312,14 +370,16 @@ export function SurveyBuilderPage() {
         })
       }
 
-      return { surveyId, published: shouldPublish }
+      return { surveyId, published: shouldPublish, flowSnapshot }
     },
-    onSuccess: async ({ surveyId, published }) => {
+    onSuccess: async ({ surveyId, published, flowSnapshot }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['survey', surveyId] }),
       ])
+
+      setSavedFlowSnapshot(flowSnapshot)
 
       const successMessage = published
         ? 'Pesquisa salva e publicada com sucesso.'
@@ -685,16 +745,58 @@ export function SurveyBuilderPage() {
       ) : null}
       <button
         type="button"
-        onClick={() => void saveMutation.mutateAsync(false)}
+        onClick={() =>
+          void saveMutation.mutateAsync({
+            shouldPublish: false,
+            flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+          })
+        }
           disabled={saveMutation.isPending || unpublishMutation.isPending}
         className="admin-button-primary"
       >
         <Sparkles className="h-4 w-4" />
-        {saveMutation.isPending ? 'Salvando...' : 'Salvar rascunho'}
+        {saveMutation.isPending ? 'Salvando...' : 'Salvar fluxo'}
       </button>
       <button
         type="button"
-        onClick={() => void saveMutation.mutateAsync(true)}
+        onClick={() => {
+          if (!savedFlowSnapshot || !hasUnsavedFlowChanges) {
+            return
+          }
+
+          if (window.confirm('Descartar as alterações do fluxo e voltar para a última versão salva?')) {
+            setForm((current) => ({
+              ...current,
+              questions: savedFlowSnapshot.questions.map((question) => ({
+                ...question,
+                options: [...question.options],
+                flowRules: question.flowRules.map((rule) => ({ ...rule })),
+              })),
+              flowLayout: {
+                ...savedFlowSnapshot.flowLayout,
+                nodes: savedFlowSnapshot.flowLayout.nodes.map((node) => ({ ...node })),
+                viewport: savedFlowSnapshot.flowLayout.viewport
+                  ? { ...savedFlowSnapshot.flowLayout.viewport }
+                  : undefined,
+              },
+            }))
+            setFeedback('Alterações do fluxo descartadas.')
+          }
+        }}
+        disabled={!hasUnsavedFlowChanges || saveMutation.isPending || unpublishMutation.isPending}
+        className="admin-button"
+      >
+        <Trash2 className="h-4 w-4" />
+        Descartar alterações
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void saveMutation.mutateAsync({
+            shouldPublish: true,
+            flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+          })
+        }
           disabled={saveMutation.isPending || unpublishMutation.isPending}
         className="admin-button"
       >
@@ -773,6 +875,17 @@ export function SurveyBuilderPage() {
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
             {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
           </span>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              saveMutation.isPending
+                ? 'border border-sky-200 bg-sky-50 text-sky-700'
+                : hasUnsavedFlowChanges
+                  ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+            }`}
+          >
+            {saveMutation.isPending ? 'Salvando fluxo...' : hasUnsavedFlowChanges ? 'Fluxo com alterações' : 'Fluxo salvo'}
+          </span>
           {form.slug ? (
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
               /s/{form.slug}
@@ -804,6 +917,8 @@ export function SurveyBuilderPage() {
             primaryColor={form.primaryColor}
             questions={form.questions}
             flowLayout={form.flowLayout}
+            hasUnsavedChanges={hasUnsavedFlowChanges}
+            isSaving={saveMutation.isPending}
             selectedQuestionId={selectedVisualQuestionId}
             onSelectQuestion={setSelectedVisualQuestionId}
             onAddQuestion={addQuestion}
@@ -818,7 +933,7 @@ export function SurveyBuilderPage() {
           title="Dados principais"
           description="Só o essencial para deixar a pesquisa pronta e fácil de publicar."
         >
-          <div className="grid gap-6">
+          <div className="grid gap-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Título da pesquisa</span>
@@ -841,7 +956,7 @@ export function SurveyBuilderPage() {
               </label>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.15fr)_minmax(320px,0.9fr)]">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Nome da marca</span>
                 <input
@@ -871,80 +986,83 @@ export function SurveyBuilderPage() {
               </label>
 
               <div className="grid gap-2 text-sm">
-                <span className="text-slate-600">Cor principal</span>
-                <div className="flex gap-3">
-                  <input
-                    type="color"
-                    className="h-11 w-14 cursor-pointer border border-slate-300 bg-white p-1"
-                    value={form.primaryColor}
-                    onChange={(event) => updateForm('primaryColor', event.target.value)}
-                    style={{ borderRadius: 6 }}
-                  />
-                  <input
-                    className="admin-input"
-                    value={form.primaryColor}
-                    placeholder="#0b5cff"
-                    onChange={(event) => updateForm('primaryColor', event.target.value)}
-                  />
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Palette className="h-4 w-4" />
+                  <span>Cor principal</span>
+                </div>
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      className="h-10 w-12 cursor-pointer border border-slate-300 bg-white p-1"
+                      value={form.primaryColor}
+                      onChange={(event) => updateForm('primaryColor', event.target.value)}
+                      style={{ borderRadius: 6 }}
+                    />
+                    <input
+                      className="admin-input h-10"
+                      value={form.primaryColor}
+                      placeholder="#0b5cff"
+                      onChange={(event) => updateForm('primaryColor', event.target.value)}
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {surveyColorPresets.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`Usar a cor ${color}`}
+                        className={`h-7 w-7 border transition hover:scale-105 ${
+                          form.primaryColor.toLowerCase() === color.toLowerCase()
+                            ? 'border-slate-950 ring-2 ring-slate-200'
+                            : 'border-slate-200'
+                        }`}
+                        style={{ borderRadius: 6, backgroundColor: color }}
+                        onClick={() => updateForm('primaryColor', color)}
+                      />
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Essa cor aparece nos botões, destaques e na identidade da página pública.
+                  </p>
                 </div>
               </div>
             </div>
 
-            <div className="grid gap-3">
-              <div className="flex items-center gap-2 text-sm text-slate-600">
-                <Palette className="h-4 w-4" />
-                Cores rápidas
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {surveyColorPresets.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    aria-label={`Usar a cor ${color}`}
-                    className="h-8 w-8 border border-slate-200 transition hover:scale-105"
-                    style={{ borderRadius: 6, backgroundColor: color }}
-                    onClick={() => updateForm('primaryColor', color)}
-                  />
-                ))}
-              </div>
-            </div>
-
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="grid gap-4 border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Logo da pesquisa</span>
-                  {form.logoUrl ? (
-                    <div className="flex min-h-24 items-center justify-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 6 }}>
-                      <img src={form.logoUrl} alt="Preview da logo da pesquisa" className="h-14 w-auto max-w-full object-contain" />
-                    </div>
-                  ) : (
-                    <div className="flex min-h-24 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
-                      Nenhuma logo enviada.
-                    </div>
-                  )}
-                </label>
+              <div className="grid gap-3 rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-700">Logo da pesquisa</span>
+                  <button
+                    type="button"
+                    className="admin-button px-3 py-2 text-xs"
+                    onClick={() => void handleSurveyImageRemove('logo')}
+                    disabled={!form.logoUrl || (removeUploadMutation.isPending && removingKey === 'logo')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {removeUploadMutation.isPending && removingKey === 'logo' ? 'Removendo...' : 'Remover'}
+                  </button>
+                </div>
+
+                {form.logoUrl ? (
+                  <div className="flex h-20 items-center justify-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 6 }}>
+                    <img src={form.logoUrl} alt="Preview da logo da pesquisa" className="h-12 w-auto max-w-full object-contain" />
+                  </div>
+                ) : (
+                  <div className="flex h-20 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                    Nenhuma logo enviada.
+                  </div>
+                )}
 
                 <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Enviar logo</span>
                   <input
                     key={`survey-logo-${uploadInputVersion.logo}`}
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
-                    className="block w-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                    className="block w-full border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
                     style={{ borderRadius: 6 }}
                     onChange={(event) => void handleSurveyImageUpload('logo', event.target.files?.[0])}
                   />
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="admin-button"
-                      onClick={() => void handleSurveyImageRemove('logo')}
-                      disabled={!form.logoUrl || (removeUploadMutation.isPending && removingKey === 'logo')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {removeUploadMutation.isPending && removingKey === 'logo' ? 'Removendo...' : 'Remover'}
-                    </button>
-                  </div>
                   <p className="text-xs text-slate-500">
                     {uploadingKey === 'logo' && uploadMutation.isPending
                       ? 'Enviando logo...'
@@ -954,43 +1072,39 @@ export function SurveyBuilderPage() {
                 </label>
               </div>
 
-              <div className="grid gap-4 border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Banner da pesquisa</span>
-                  {form.bannerUrl ? (
-                    <div className="flex min-h-28 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 6 }}>
-                      <img src={form.bannerUrl} alt="Preview do banner da pesquisa" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="flex min-h-28 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
-                      Nenhum banner enviado.
-                    </div>
-                  )}
-                </label>
+              <div className="grid gap-3 rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-700">Banner da pesquisa</span>
+                  <button
+                    type="button"
+                    className="admin-button px-3 py-2 text-xs"
+                    onClick={() => void handleSurveyImageRemove('banner')}
+                    disabled={!form.bannerUrl || (removeUploadMutation.isPending && removingKey === 'banner')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {removeUploadMutation.isPending && removingKey === 'banner' ? 'Removendo...' : 'Remover'}
+                  </button>
+                </div>
+
+                {form.bannerUrl ? (
+                  <div className="flex h-24 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 6 }}>
+                    <img src={form.bannerUrl} alt="Preview do banner da pesquisa" className="h-full w-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="flex h-24 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                    Nenhum banner enviado.
+                  </div>
+                )}
 
                 <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Enviar banner</span>
                   <input
                     key={`survey-banner-${uploadInputVersion.banner}`}
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
-                    className="block w-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                    className="block w-full border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
                     style={{ borderRadius: 6 }}
                     onChange={(event) => void handleSurveyImageUpload('banner', event.target.files?.[0])}
                   />
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="admin-button"
-                      onClick={() => void handleSurveyImageRemove('banner')}
-                      disabled={!form.bannerUrl || (removeUploadMutation.isPending && removingKey === 'banner')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {removeUploadMutation.isPending && removingKey === 'banner' ? 'Removendo...' : 'Remover'}
-                    </button>
-                  </div>
-
                   <p className="text-xs text-slate-500">
                     {uploadingKey === 'banner' && uploadMutation.isPending
                       ? 'Enviando banner...'
