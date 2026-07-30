@@ -14,8 +14,6 @@ import { AppShell } from '@/components/layout/AppShell'
 import { SurveyVisualFlowEditor } from '@/components/surveys/SurveyVisualFlowEditor'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { SurveyPreviewLinkCard } from '@/components/ui/SurveyPreviewLinkCard'
-import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
@@ -677,7 +675,7 @@ export function SurveyBuilderPage() {
     <>
       <button type="button" onClick={() => setPreviewOpen(true)} className="admin-button">
         <FileImage className="h-4 w-4" />
-        Ver previa
+        Ver prévia
       </button>
       {params.id ? (
         <Link to={getSurveyTestPath(params.id)} className="admin-button">
@@ -736,7 +734,7 @@ export function SurveyBuilderPage() {
   return (
     <AppShell
       title={params.id ? 'Fluxo da pesquisa' : 'Nova pesquisa'}
-      subtitle="Monte o fluxo visual e salve quando estiver pronto."
+      subtitle="Monte o fluxo e salve quando estiver pronto."
       backHref={params.id ? `/app/pesquisas/${params.id}` : '/app/pesquisas'}
       backLabel={params.id ? 'Voltar para a pesquisa' : 'Voltar para pesquisas'}
       breadcrumbs={
@@ -767,52 +765,22 @@ export function SurveyBuilderPage() {
         </div>
       ) : null}
 
-      {params.id && form.slug && isPublishedSurvey ? (
-        <div className="mb-6">
-          <SurveyShareCard
-            surveyId={params.id}
-            slug={form.slug}
-            linkClicks={survey?.linkClicks ?? 0}
-            qrScans={survey?.qrScans ?? 0}
-          />
-        </div>
-      ) : null}
-
-      {params.id && !isPublishedSurvey ? (
-        <div className="admin-alert mb-6 border-sky-200 bg-sky-50 text-sky-900">
-          Esta pesquisa ainda não está publicada. Use <strong>Testar pesquisa</strong> para validar a experiência antes de colocar o link no ar.
-        </div>
-      ) : null}
-
-      {params.id && isPublishedSurvey ? (
-        <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
-          Esta pesquisa está publicada. Se você voltar para rascunho, o link público sai do ar, mas as respostas já recebidas continuam salvas.
-        </div>
-      ) : null}
-
-      {params.id ? (
-        <div className="mb-6">
-          <SurveyPreviewLinkCard surveyId={params.id} isDraft={!isPublishedSurvey} />
-        </div>
-      ) : null}
-
-      <section className="mb-6 grid gap-3 xl:grid-cols-[1fr_auto] xl:items-center">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Perguntas</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{form.questions.length}</p>
-          </div>
-          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Slug</p>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-950">{form.slug || 'Ainda não definido'}</p>
-          </div>
-          <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Roleta</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{form.rewardEnabled ? 'Ativada' : 'Desligada'}</p>
-          </div>
+      <section className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+            {params.id ? (isPublishedSurvey ? 'Publicada' : 'Rascunho') : 'Nova pesquisa'}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+            {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
+          </span>
+          {form.slug ? (
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+              /s/{form.slug}
+            </span>
+          ) : null}
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           {actionButtons}
         </div>
       </section>
@@ -826,24 +794,32 @@ export function SurveyBuilderPage() {
         {previewContent}
       </AdminModal>
 
-      <div className="flex flex-col-reverse gap-6">
+      <div className="grid gap-6">
+        <SectionCard
+          eyebrow="Fluxo"
+          title="Canvas da pesquisa"
+          description="O fluxo fica no centro. Toque em um bloco para editar a pergunta."
+        >
+          <SurveyVisualFlowEditor
+            primaryColor={form.primaryColor}
+            questions={form.questions}
+            flowLayout={form.flowLayout}
+            selectedQuestionId={selectedVisualQuestionId}
+            onSelectQuestion={setSelectedVisualQuestionId}
+            onAddQuestion={addQuestion}
+            onRemoveQuestion={removeQuestionById}
+            onUpdateQuestion={updateQuestionById}
+            onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
+          />
+        </SectionCard>
+
         <SectionCard
           eyebrow="Configuração"
           title="Dados principais"
-          description="Preencha os dados da pesquisa em uma sequência simples, como um formulário bem guiado."
+          description="Só o essencial para deixar a pesquisa pronta e fácil de publicar."
         >
-          <div className="grid gap-4">
-            <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
-              Preencha primeiro o básico. Depois ajuste o visual e finalize com as regras da pesquisa.
-            </div>
-            <div className="admin-subcard builder-subcard-blue grid gap-4">
-              <div>
-                <p className="text-sm font-semibold text-sky-950">1. Identificação da pesquisa</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Essas informações aparecem no topo da pesquisa e ajudam o cliente a entender do que se trata.
-                </p>
-              </div>
-
+          <div className="grid gap-6">
+            <div className="grid gap-4 lg:grid-cols-2">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Título da pesquisa</span>
                 <input
@@ -863,7 +839,9 @@ export function SurveyBuilderPage() {
                   onChange={(event) => updateForm('description', event.target.value)}
                 />
               </label>
+            </div>
 
+            <div className="grid gap-4 lg:grid-cols-3">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Nome da marca</span>
                 <input
@@ -873,20 +851,6 @@ export function SurveyBuilderPage() {
                   onChange={(event) => updateForm('brandName', event.target.value)}
                 />
               </label>
-            </div>
-
-            <div className="admin-subcard builder-subcard-violet grid gap-4">
-              <div className="flex items-center gap-3">
-                <div className="admin-icon-chip builder-chip-violet">
-                  <Palette className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-violet-950">2. Link e aparência</p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Defina o endereço da pesquisa e deixe a identidade visual alinhada com a marca.
-                  </p>
-                </div>
-              </div>
 
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Slug amigável</span>
@@ -904,78 +868,64 @@ export function SurveyBuilderPage() {
                     )
                   }
                 />
-                <span className="text-xs text-slate-500">
-                  Link final: <strong>/s/{form.slug || 'seu-link-aqui'}</strong>
-                </span>
               </label>
 
-              <div className="grid gap-4 md:grid-cols-[120px_1fr]">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Cor principal</span>
+              <div className="grid gap-2 text-sm">
+                <span className="text-slate-600">Cor principal</span>
+                <div className="flex gap-3">
                   <input
                     type="color"
-                    className="h-11 w-full cursor-pointer border border-slate-300 bg-white p-1"
+                    className="h-11 w-14 cursor-pointer border border-slate-300 bg-white p-1"
                     value={form.primaryColor}
                     onChange={(event) => updateForm('primaryColor', event.target.value)}
                     style={{ borderRadius: 6 }}
                   />
-                </label>
-
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Código da cor principal</span>
-                  <div className="flex gap-3">
-                    <input
-                      className="admin-input"
-                      value={form.primaryColor}
-                      placeholder="#0b5cff"
-                      onChange={(event) => updateForm('primaryColor', event.target.value)}
-                    />
-                    <div
-                      className="h-10 w-12 shrink-0 border border-slate-300 bg-white"
-                      style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {surveyColorPresets.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        aria-label={`Usar a cor ${color}`}
-                        className="h-8 w-8 border border-slate-200 transition hover:scale-105"
-                        style={{ borderRadius: 6, backgroundColor: color }}
-                        onClick={() => updateForm('primaryColor', color)}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs text-slate-500">
-                    Clique na cor para abrir o seletor completo ou escolha uma cor pronta abaixo.
-                  </span>
-                </label>
+                  <input
+                    className="admin-input"
+                    value={form.primaryColor}
+                    placeholder="#0b5cff"
+                    onChange={(event) => updateForm('primaryColor', event.target.value)}
+                  />
+                </div>
               </div>
+            </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 6 }}>
-                  <div className="flex items-start gap-3">
-                    <div className="admin-icon-chip builder-chip-violet">
-                      <FileImage className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-950">Logo da pesquisa</p>
-                      <p className="mt-1 text-sm text-slate-600">Envie a logo da marca para aparecer no topo da página.</p>
-                      <p className="mt-1 text-xs text-slate-500">Medida recomendada: 320 x 120 px.</p>
-                    </div>
-                  </div>
+            <div className="grid gap-3">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <Palette className="h-4 w-4" />
+                Cores rápidas
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {surveyColorPresets.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    aria-label={`Usar a cor ${color}`}
+                    className="h-8 w-8 border border-slate-200 transition hover:scale-105"
+                    style={{ borderRadius: 6, backgroundColor: color }}
+                    onClick={() => updateForm('primaryColor', color)}
+                  />
+                ))}
+              </div>
+            </div>
 
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4 border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Logo da pesquisa</span>
                   {form.logoUrl ? (
-                    <div className="flex min-h-24 items-center justify-center border border-slate-200 bg-slate-50 px-4 py-3" style={{ borderRadius: 6 }}>
+                    <div className="flex min-h-24 items-center justify-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 6 }}>
                       <img src={form.logoUrl} alt="Preview da logo da pesquisa" className="h-14 w-auto max-w-full object-contain" />
                     </div>
                   ) : (
-                    <div className="flex min-h-24 items-center justify-center border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
-                      Nenhuma logo enviada ainda.
+                    <div className="flex min-h-24 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                      Nenhuma logo enviada.
                     </div>
                   )}
+                </label>
 
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Enviar logo</span>
                   <input
                     key={`survey-logo-${uploadInputVersion.logo}`}
                     type="file"
@@ -984,7 +934,6 @@ export function SurveyBuilderPage() {
                     style={{ borderRadius: 6 }}
                     onChange={(event) => void handleSurveyImageUpload('logo', event.target.files?.[0])}
                   />
-
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -993,40 +942,34 @@ export function SurveyBuilderPage() {
                       disabled={!form.logoUrl || (removeUploadMutation.isPending && removingKey === 'logo')}
                     >
                       <Trash2 className="h-4 w-4" />
-                      {removeUploadMutation.isPending && removingKey === 'logo' ? 'Removendo...' : 'Remover logo'}
+                      {removeUploadMutation.isPending && removingKey === 'logo' ? 'Removendo...' : 'Remover'}
                     </button>
                   </div>
-
                   <p className="text-xs text-slate-500">
                     {uploadingKey === 'logo' && uploadMutation.isPending
                       ? 'Enviando logo...'
-                      : form.logoUrl || 'PNG, JPG, SVG ou WEBP. Tamanho máximo de 3 MB.'}
+                      : form.logoUrl || 'PNG, JPG, SVG ou WEBP.'}
                   </p>
                   {uploadErrors.logo ? <p className="text-xs text-rose-600">{uploadErrors.logo}</p> : null}
-                </div>
+                </label>
+              </div>
 
-                <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 6 }}>
-                  <div className="flex items-start gap-3">
-                    <div className="admin-icon-chip builder-chip-violet">
-                      <Upload className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-950">Banner da pesquisa</p>
-                      <p className="mt-1 text-sm text-slate-600">Envie um banner horizontal para destacar a campanha.</p>
-                      <p className="mt-1 text-xs text-slate-500">Medida recomendada: 1600 x 400 px.</p>
-                    </div>
-                  </div>
-
+              <div className="grid gap-4 border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Banner da pesquisa</span>
                   {form.bannerUrl ? (
-                    <div className="flex min-h-28 items-center justify-center overflow-hidden border border-slate-200 bg-slate-50" style={{ borderRadius: 6 }}>
+                    <div className="flex min-h-28 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 6 }}>
                       <img src={form.bannerUrl} alt="Preview do banner da pesquisa" className="h-full w-full object-cover" />
                     </div>
                   ) : (
-                    <div className="flex min-h-28 items-center justify-center border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
-                      Nenhum banner enviado ainda.
+                    <div className="flex min-h-28 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                      Nenhum banner enviado.
                     </div>
                   )}
+                </label>
 
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Enviar banner</span>
                   <input
                     key={`survey-banner-${uploadInputVersion.banner}`}
                     type="file"
@@ -1044,49 +987,21 @@ export function SurveyBuilderPage() {
                       disabled={!form.bannerUrl || (removeUploadMutation.isPending && removingKey === 'banner')}
                     >
                       <Trash2 className="h-4 w-4" />
-                      {removeUploadMutation.isPending && removingKey === 'banner' ? 'Removendo...' : 'Remover banner'}
+                      {removeUploadMutation.isPending && removingKey === 'banner' ? 'Removendo...' : 'Remover'}
                     </button>
                   </div>
 
                   <p className="text-xs text-slate-500">
                     {uploadingKey === 'banner' && uploadMutation.isPending
                       ? 'Enviando banner...'
-                      : form.bannerUrl || 'PNG, JPG, SVG ou WEBP. Tamanho máximo de 3 MB.'}
+                      : form.bannerUrl || 'PNG, JPG, SVG ou WEBP.'}
                   </p>
                   {uploadErrors.banner ? <p className="text-xs text-rose-600">{uploadErrors.banner}</p> : null}
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Caminho interno da logo</span>
-                  <input
-                    className="admin-input"
-                    value={form.logoUrl}
-                    placeholder="A logo enviada aparece aqui automaticamente."
-                    readOnly
-                  />
-                </label>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Caminho interno do banner</span>
-                  <input
-                    className="admin-input"
-                    value={form.bannerUrl}
-                    placeholder="O banner enviado aparece aqui automaticamente."
-                    readOnly
-                  />
                 </label>
               </div>
             </div>
 
-            <div className="admin-subcard builder-subcard-amber grid gap-4">
-              <div>
-                <p className="text-sm font-semibold text-amber-950">3. Regras e finalização</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Aqui você define como a pesquisa funciona e qual mensagem aparece ao final da resposta.
-                </p>
-              </div>
-
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Modo de participação</span>
                 <select
@@ -1096,12 +1011,9 @@ export function SurveyBuilderPage() {
                 >
                   <option value="identified">Identificada com nome e telefone</option>
                 </select>
-                <span className="text-xs text-slate-500">
-                  Esse modelo mantém nome e WhatsApp obrigatórios para facilitar relatórios e controle da roleta.
-                </span>
               </label>
 
-              <label className="admin-checkrow">
+              <label className="admin-checkrow rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3">
                 <input
                   type="checkbox"
                   checked={form.rewardEnabled}
@@ -1116,51 +1028,21 @@ export function SurveyBuilderPage() {
                 />
                 <span>
                   <span className="block font-semibold text-slate-950">Ativar roleta de prêmios</span>
-                  <span className="text-slate-500">
-                    Quando estiver ativa, a mesma pessoa pode responder novamente, mas não gira outra vez com o mesmo WhatsApp ou e-mail.
-                  </span>
+                  <span className="text-slate-500">Liga a campanha de prêmios para esta pesquisa.</span>
                 </span>
               </label>
-
-              <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
-                Toda pesquisa publicada coleta <strong>nome e WhatsApp</strong> obrigatórios, além de <strong>e-mail opcional</strong> e <strong>aniversário</strong>.
-              </div>
-
-              {form.rewardEnabled ? (
-                <div className="admin-alert border-emerald-200 bg-emerald-50 text-emerald-900">
-                  Depois de salvar a pesquisa, use o botão <strong>Configurar prêmios</strong> para cadastrar a campanha e os itens da roleta.
-                </div>
-              ) : null}
-
-              <label className="grid gap-2 text-sm">
-                <span className="text-slate-600">Mensagem final</span>
-                <textarea
-                  className="admin-input min-h-28"
-                  value={form.closingMessage}
-                  placeholder="Ex.: Obrigado por participar. Sua resposta foi registrada com sucesso."
-                  onChange={(event) => updateForm('closingMessage', event.target.value)}
-                />
-              </label>
             </div>
-          </div>
-        </SectionCard>
 
-        <SectionCard
-          eyebrow="Estrutura"
-          title="Perguntas da pesquisa"
-          description="Arraste os blocos, conecte as saídas e edite a pergunta na lateral."
-        >
-          <SurveyVisualFlowEditor
-            primaryColor={form.primaryColor}
-            questions={form.questions}
-            flowLayout={form.flowLayout}
-            selectedQuestionId={selectedVisualQuestionId}
-            onSelectQuestion={setSelectedVisualQuestionId}
-            onAddQuestion={addQuestion}
-            onRemoveQuestion={removeQuestionById}
-            onUpdateQuestion={updateQuestionById}
-            onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
-          />
+            <label className="grid gap-2 text-sm">
+              <span className="text-slate-600">Mensagem final</span>
+              <textarea
+                className="admin-input min-h-28"
+                value={form.closingMessage}
+                placeholder="Ex.: Obrigado por participar. Sua resposta foi registrada com sucesso."
+                onChange={(event) => updateForm('closingMessage', event.target.value)}
+              />
+            </label>
+          </div>
         </SectionCard>
       </div>
 

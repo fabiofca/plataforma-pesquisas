@@ -285,60 +285,39 @@ export function SurveyVisualFlowEditor({
   }, [draggingNode, flowLayout, onUpdateFlowLayout])
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
-      <div className="admin-panel grid gap-4 p-4">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Fluxo</p>
-          <h3 className="mt-1 text-sm font-semibold text-slate-950">Canvas principal</h3>
-        </div>
-
-        <div className="grid gap-3">
-          <button type="button" onClick={onAddQuestion} className="admin-button-primary justify-center">
-            <Plus className="h-4 w-4" />
-            Nova pergunta
-          </button>
-          <button
-            type="button"
-            onClick={() => onUpdateFlowLayout(makeDefaultFlowLayout(orderedQuestionIds))}
-            className="admin-button justify-center"
-          >
-            <Move className="h-4 w-4" />
-            Organizar
-          </button>
-        </div>
-
-        <div className="rounded-[16px] border border-slate-200 bg-slate-50 p-3">
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Perguntas</span>
-              <strong className="text-slate-950">{questions.length}</strong>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Desvios</span>
-              <strong className="text-slate-950">
-                {questions.filter((question) => question.flowRules.length > 0).length}
-              </strong>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className="admin-panel overflow-hidden p-0">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Canvas</p>
-            <p className="mt-1 text-sm text-slate-600">Arraste os blocos e organize a sequência.</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Fluxo visual</p>
+            <p className="mt-1 text-sm text-slate-600">
+              Arraste os blocos e use as saídas para montar a sequência.
+            </p>
           </div>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-            Arraste os blocos
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
+              {questions.length} {questions.length === 1 ? 'pergunta' : 'perguntas'}
+            </span>
+            <button
+              type="button"
+              onClick={() => onUpdateFlowLayout(makeDefaultFlowLayout(orderedQuestionIds))}
+              className="admin-button px-3 py-2 text-xs"
+            >
+              <Move className="h-3.5 w-3.5" />
+              Organizar
+            </button>
+            <button type="button" onClick={onAddQuestion} className="admin-button-primary px-3 py-2 text-xs">
+              <Plus className="h-3.5 w-3.5" />
+              Nova pergunta
+            </button>
+          </div>
         </div>
 
         <div
           ref={canvasRef}
-          className="relative h-[calc(100vh-260px)] min-h-[720px] overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px]"
+          className="relative h-[calc(100vh-200px)] min-h-[640px] overflow-auto bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] md:min-h-[720px]"
         >
-          <div className="relative" style={{ width: Math.max(1100, maxX + 140), height: Math.max(760, maxY + 200) }}>
+          <div className="relative" style={{ width: Math.max(1180, maxX + 180), height: Math.max(760, maxY + 200) }}>
             <svg className="pointer-events-none absolute inset-0 h-full w-full">
               <defs>
                 <marker id="flow-arrow-primary" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -397,9 +376,9 @@ export function SurveyVisualFlowEditor({
             >
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">Início</p>
-                <p className="mt-2 text-sm font-semibold text-slate-950">Entrada da pesquisa</p>
+                <p className="mt-2 text-sm font-semibold text-slate-950">Entrada</p>
               </div>
-              <p className="text-sm text-slate-600">O participante sempre começa por aqui.</p>
+              <p className="text-sm text-slate-600">Primeiro passo do fluxo.</p>
             </div>
 
             {nodes.map((node) => {
@@ -555,20 +534,20 @@ export function SurveyVisualFlowEditor({
             >
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Fim</p>
-                <p className="mt-2 text-sm font-semibold text-slate-950">Encerramento da pesquisa</p>
+                <p className="mt-2 text-sm font-semibold text-slate-950">Encerramento</p>
               </div>
-              <p className="text-sm text-slate-600">Quando um caminho termina, o participante segue para a mensagem final.</p>
+              <p className="text-sm text-slate-600">Final do caminho.</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="admin-panel grid gap-4 p-4">
+      <div className="admin-panel grid gap-4 p-4 xl:sticky xl:top-24 xl:self-start">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Inspector</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Bloco</p>
             <h3 className="mt-1 text-sm font-semibold text-slate-950">
-              {selectedQuestion ? 'Editar bloco selecionado' : 'Selecione um bloco'}
+              {selectedQuestion ? 'Editar pergunta' : 'Selecione uma pergunta'}
             </h3>
           </div>
           {selectedQuestion ? (
