@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Download, Gift, Meh, MessageCircle, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, X } from 'lucide-react'
+import { Download, Gift, MessageCircle, X } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -410,7 +410,6 @@ export function PublicSurveyPage() {
     [answers, survey?.questions],
   )
   const wheelSegments = useMemo(() => buildPrizeWheelSegments(survey?.rewardPreviewItems ?? []), [survey?.rewardPreviewItems])
-  const showWheelArea = canSpinReward || wheelSpinning || Boolean(rewardResult)
   const retryTasks = rewardResult?.retryTasks ?? survey?.rewardRetryTasks ?? []
   const canCloseWheelModal =
     !wheelSpinning &&
@@ -1282,7 +1281,7 @@ export function PublicSurveyPage() {
 
   if (surveyQuery.isLoading) {
     return (
-      <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+      <div className="min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6">
         <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
           <p className="text-sm text-slate-500">Carregando pesquisa...</p>
         </div>
@@ -1297,7 +1296,7 @@ export function PublicSurveyPage() {
         : 'Verifique se o link está correto ou tente novamente mais tarde.'
 
     return (
-      <div className="min-h-screen px-3 py-4 sm:px-4 sm:py-6" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }}>
+      <div className="min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6">
         <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa indisponível</p>
           <h1 className="mt-4 font-display text-4xl text-slate-950">Não foi possível abrir esta pesquisa agora</h1>
@@ -1308,9 +1307,9 @@ export function PublicSurveyPage() {
   }
 
   return (
-    <div className="min-h-screen px-2 py-3 sm:px-4 sm:py-6 lg:px-6" style={{ background: `linear-gradient(180deg, ${survey.primaryColor}12 0%, #f8fafc 24%, #e2e8f0 100%)` }}>
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="overflow-hidden border border-slate-200 bg-white p-3 shadow-card sm:p-6 lg:p-8" style={{ borderRadius: 6 }}>
+    <div className="min-h-screen bg-slate-50 px-2 py-3 sm:px-4 sm:py-6 lg:px-6">
+      <div className="mx-auto w-full max-w-4xl">
+        <div className="overflow-hidden border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:p-8" style={{ borderRadius: 6 }}>
           {previewMode ? (
             <div className="mb-5 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-3 py-3 text-sky-950 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4" style={{ borderRadius: 6 }}>
               <div>
@@ -1331,13 +1330,9 @@ export function PublicSurveyPage() {
             </div>
           ) : null}
 
-          <header className="border-b border-slate-200 pb-4 sm:pb-5">
-            <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-              <Sparkles className="h-4 w-4" />
-              Pesquisa
-            </p>
-            <h1 className="mt-3 font-display text-2xl leading-tight text-slate-950 sm:text-4xl lg:text-5xl">{survey.title}</h1>
-            <p className="mt-3 max-w-3xl text-sm text-slate-600 sm:text-[15px] lg:text-base">
+          <header className="border-b border-slate-100 pb-4 sm:pb-5">
+            <h1 className="font-display text-2xl leading-tight text-slate-950 sm:text-4xl lg:text-5xl">{survey.title}</h1>
+            <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-[15px] lg:text-base">
               {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
             </p>
           </header>
@@ -1354,7 +1349,7 @@ export function PublicSurveyPage() {
                 void submitMutation.mutateAsync()
               }}
             >
-              <section className="admin-panel grid gap-4 p-4 sm:p-5 md:grid-cols-2">
+              <section className="grid gap-4 border border-slate-200 bg-white p-4 sm:p-5 md:grid-cols-2" style={{ borderRadius: 6 }}>
                 <label className="grid gap-2 text-sm">
                   <span className="text-slate-600">Nome completo</span>
                   <input
@@ -1417,31 +1412,28 @@ export function PublicSurveyPage() {
                 </div>
               </section>
 
-              {visibleQuestions.map((question, index) => {
+              {visibleQuestions.map((question) => {
                 const currentAnswer = answers[question.id]
 
                 return (
                   <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 6 }}>
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pergunta {index + 1}</p>
-                        <h2 className="mt-2 font-semibold text-slate-950">{question.title}</h2>
-                      </div>
-                      <span className="admin-badge border-slate-900 bg-slate-950 text-white">
-                        {question.required ? 'Obrigatória' : 'Opcional'}
-                      </span>
+                    <div className="mb-4">
+                      <h2 className="font-semibold text-slate-950">
+                        {question.title}
+                        {question.required ? <span className="ml-1 text-rose-500">*</span> : null}
+                      </h2>
                     </div>
 
                     {question.type === 'long_text' ? (
                       <textarea
-                        className="admin-input min-h-28 w-full bg-slate-50"
+                        className="admin-input min-h-28 w-full bg-white"
                         value={String(currentAnswer ?? '')}
                         onChange={(event) => setSingleAnswer(question.id, event.target.value)}
                       />
                     ) : question.type === 'multiple_choice' || question.type === 'single_choice' ? (
                       <div className="grid gap-3 sm:grid-cols-2">
                         {question.options?.map((option) => (
-                          <label key={option} className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
+                          <label key={option} className="flex items-center gap-3 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
                             <input
                               type={question.type === 'single_choice' ? 'radio' : 'checkbox'}
                               name={question.id}
@@ -1463,7 +1455,7 @@ export function PublicSurveyPage() {
                     ) : question.type === 'yes_no' ? (
                       <div className="grid gap-3 sm:grid-cols-2">
                         {['Sim', 'Não'].map((option) => (
-                          <label key={option} className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
+                          <label key={option} className="flex items-center gap-3 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
                             <input
                               type="radio"
                               name={question.id}
@@ -1494,21 +1486,10 @@ export function PublicSurveyPage() {
                       </div>
                     ) : question.type === 'nps' ? (
                       <div className="space-y-4">
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <div className="flex items-center gap-2 border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-800" style={{ borderRadius: 6 }}>
-                            <ThumbsDown className="h-4 w-4" />
-                            <span>0 a 6 😕</span>
-                          </div>
-                          <div className="flex items-center gap-2 border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800" style={{ borderRadius: 6 }}>
-                            <Meh className="h-4 w-4" />
-                            <span>7 e 8 🙂</span>
-                          </div>
-                          <div className="flex items-center gap-2 border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800" style={{ borderRadius: 6 }}>
-                            <ThumbsUp className="h-4 w-4" />
-                            <span>9 e 10 🤩</span>
-                          </div>
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>Pouco provável</span>
+                          <span>Muito provável</span>
                         </div>
-
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11">
                           {Array.from({ length: 11 }, (_, value) => (
                             <button
@@ -1523,16 +1504,13 @@ export function PublicSurveyPage() {
                               style={{ borderRadius: 6 }}
                             >
                               <span className="block text-base leading-none">{value}</span>
-                              <span className="mt-1 block text-[10px] opacity-80">
-                                {value <= 6 ? '😕' : value <= 8 ? '🙂' : '🤩'}
-                              </span>
                             </button>
                           ))}
                         </div>
                       </div>
                     ) : (
                       <input
-                        className="admin-input w-full bg-slate-50"
+                        className="admin-input w-full bg-white"
                         value={String(currentAnswer ?? '')}
                         onChange={(event) => setSingleAnswer(question.id, event.target.value)}
                       />
@@ -1541,228 +1519,41 @@ export function PublicSurveyPage() {
                 )
               })}
 
-              <div className="admin-alert border-amber-200 bg-amber-50 text-amber-900">
-                <div className="flex items-center gap-2 font-semibold">
-                  <ShieldCheck className="h-4 w-4" />
-                    Controle da campanha por identificadores
-                </div>
-                <p className="mt-2">
-                    A pesquisa pode continuar recebendo respostas, mas a roleta só fica disponível uma vez por campanha para o mesmo cliente usando o mesmo WhatsApp ou e-mail.
-                </p>
-              </div>
-
               <button type="submit" disabled={submitMutation.isPending} className="admin-button-primary w-full justify-center">
-                {submitMutation.isPending ? 'Enviando...' : 'Enviar respostas'}
+                {submitMutation.isPending ? 'Enviando...' : 'Continuar'}
               </button>
             </form>
           ) : (
-            <section className="admin-panel mt-6 p-6 text-center">
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa finalizada</p>
-              <h2 className="mt-3 font-display text-4xl text-slate-950">Obrigado por participar</h2>
-              <p className="mt-4 text-sm text-slate-600">
-                {submitMessage || 'Sua resposta foi registrada com sucesso e já pode alimentar os relatórios do painel.'}
+            <section className="mt-6 border border-slate-200 bg-white p-6 text-center shadow-card" style={{ borderRadius: 6 }}>
+              <h2 className="font-display text-3xl text-slate-950 sm:text-4xl">Obrigado por participar</h2>
+              <p className="mt-3 text-sm text-slate-600">
+                {submitMessage || 'Sua resposta foi registrada com sucesso.'}
               </p>
 
               {survey.rewardEnabled ? (
-                <div className="mt-6 border border-slate-200 bg-slate-950 p-4 text-white sm:p-5" style={{ borderRadius: 6 }}>
-                  <div className="flex items-center justify-center gap-2 font-semibold">
-                    <Gift className="h-5 w-5" />
-                    Roleta de prêmios
+                <div className="mt-6 rounded-[16px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-900">
+                    <Gift className="h-4 w-4" />
+                    Roleta
                   </div>
-
-                  {showWheelArea ? (
-                    <>
-                      <p className="mt-2 text-sm text-slate-300">
-                        {canSpinReward
-                          ? 'Toque em girar para revelar o seu resultado.'
-                          : 'A participação já foi concluída. Confira abaixo o resultado do giro.'}
-                      </p>
-
-                      <div className="mt-6">
-                        <button
-                          type="button"
-                          onClick={() => setWheelModalOpen(true)}
-                          className="admin-button-primary w-full justify-center"
-                        >
-                          Abrir roleta em tela cheia
-                        </button>
-                      </div>
-
-                      {!rewardResult ? (
-                        <p className="mt-5 text-center text-xs uppercase tracking-[0.18em] text-slate-400">
-                          {wheelSpinning ? 'A sorte está girando na tela cheia...' : 'Abra a roleta para revelar o resultado'}
-                        </p>
-                      ) : null}
-
-                      {rewardResult ? (
-                        rewardResult.won ? (
-                          <div className="mt-6 space-y-3 text-center">
-                            <div
-                              className="mx-auto max-w-2xl border border-amber-300/35 bg-[linear-gradient(180deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.16)_100%)] px-4 py-4 shadow-[0_16px_40px_rgba(250,204,21,0.16)]"
-                              style={{ borderRadius: 6 }}
-                            >
-                              <p className="text-xs uppercase tracking-[0.24em] text-amber-100">Prêmio confirmado</p>
-                              <p className="mt-2 text-sm font-semibold text-emerald-100">Parabéns! Você ganhou:</p>
-                              <p className="mt-2 font-display text-3xl text-white sm:text-4xl">{rewardResult.item}</p>
-                              {rewardResult.landedLabel ? (
-                                <p className="mt-3 text-sm text-amber-50/90">
-                                  A roleta parou em <span className="font-bold text-white">{rewardResult.landedLabel}</span>
-                                </p>
-                              ) : null}
-                            </div>
-                            <div className="mx-auto max-w-sm border border-white/10 bg-white/10 px-4 py-3" style={{ borderRadius: 6 }}>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo do prêmio</p>
-                              <p className="mt-2 text-lg font-semibold text-white">{rewardResult.couponCode}</p>
-                            </div>
-                            <div className="flex flex-col justify-center gap-3 sm:flex-row">
-                              <button
-                                type="button"
-                                onClick={() => void handleDownloadRewardProof()}
-                                disabled={savingRewardProof}
-                                className="admin-button-primary"
-                              >
-                                <Download className="h-4 w-4" />
-                                {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante do prêmio'}
-                              </button>
-                              {rewardContactWhatsAppUrl ? (
-                                <a
-                                  href={rewardContactWhatsAppUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="admin-button w-full justify-center sm:w-auto"
-                                >
-                                  <MessageCircle className="h-4 w-4" />
-                                  Entrar em contato pelo WhatsApp
-                                </a>
-                              ) : null}
-                            </div>
-                            {rewardPickupAddress ? (
-                              <div className="mx-auto max-w-xl border border-white/10 bg-white/10 px-4 py-3 text-left" style={{ borderRadius: 6 }}>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada do prêmio</p>
-                                <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
-                              </div>
-                            ) : null}
-                            {rewardResult.message ? <p className="text-xs text-slate-400">{rewardResult.message}</p> : null}
-                          </div>
-                        ) : (
-                          <div className="mt-6 space-y-3 text-center">
-                            {rewardResult.landedLabel ? (
-                              <p className="text-sm text-slate-200">
-                                A roleta parou em: <span className="font-semibold text-white">{rewardResult.landedLabel}</span>
-                              </p>
-                            ) : null}
-                            <div className="mx-auto max-w-xl border border-white/10 bg-white/5 px-4 py-4" style={{ borderRadius: 6 }}>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Mensagem da roleta</p>
-                              <p className="mt-2 text-sm text-slate-200">{rewardResult.message || 'Desta vez não houve prêmio disponível.'}</p>
-                            </div>
-                            {rewardResult.retryAvailable ? (
-                              <div className="mt-5 space-y-4 border border-white/10 bg-white/5 px-4 py-4 text-left" style={{ borderRadius: 6 }}>
-                                <div>
-                                  <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/35 bg-[linear-gradient(90deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.24)_100%)] px-3 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-amber-50 shadow-[0_0_24px_rgba(250,204,21,0.14)]">
-                                    <Sparkles className="h-3.5 w-3.5" />
-                                    Mais uma chance
-                                  </p>
-                                  <p className="mt-2 text-sm text-slate-200">
-                                    Abra cada tarefa, volte para esta página, aguarde alguns segundos e toque em "Já concluí" para liberar o segundo giro.
-                                  </p>
-                                </div>
-
-                                <div className="space-y-3">
-                                  {retryTasks.map((task) => {
-                                    const completed = completedRetryTaskIds.includes(task.id)
-                                    const taskProgress = getRetryTaskProgress(task.id)
-                                    const hasReturned = Boolean(taskProgress?.returnedAt)
-                                    const canConfirm = canConfirmRetryTask(task.id)
-                                    const remainingSeconds = getRetryTaskRemainingSeconds(task.id)
-                                    const isLoading =
-                                      retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === task.id
-                                    const statusLabel = completed
-                                      ? 'Registrado'
-                                      : !taskProgress
-                                        ? 'Pendente'
-                                        : !hasReturned
-                                          ? 'Volte para a página'
-                                          : canConfirm
-                                            ? 'Pronto para confirmar'
-                                            : `Aguarde ${remainingSeconds}s`
-                                    const buttonLabel = completed
-                                      ? 'Registrado'
-                                      : !taskProgress
-                                        ? 'Ir para a tarefa'
-                                        : !hasReturned
-                                          ? 'Volte para esta página'
-                                          : canConfirm
-                                            ? 'Já concluí'
-                                            : `Aguarde ${remainingSeconds}s`
-
-                                    return (
-                                      <div
-                                        key={task.id}
-                                        className="flex flex-col gap-3 border border-white/10 bg-white/5 px-4 py-4 md:flex-row md:items-center md:justify-between"
-                                        style={{ borderRadius: 6 }}
-                                      >
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-semibold text-white">{task.title}</p>
-                                          <p className="mt-1 text-xs text-slate-400">
-                                            {task.type === 'google_review'
-                                              ? 'Google'
-                                              : task.type === 'instagram_follow'
-                                                ? 'Instagram'
-                                                : 'Link personalizado'}
-                                          </p>
-                                        </div>
-
-                                        <div className="flex items-center gap-3">
-                                          <span
-                                            className={`admin-badge ${
-                                              completed
-                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                : canConfirm
-                                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                                  : 'border-white/15 bg-white/10 text-white'
-                                            }`}
-                                          >
-                                            {statusLabel}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            disabled={completed || isLoading || (Boolean(taskProgress) && !canConfirm)}
-                                            onClick={() =>
-                                              taskProgress
-                                                ? void retryTaskClickMutation.mutateAsync(task)
-                                                : startRetryTask(task)
-                                            }
-                                            className="admin-button-primary disabled:opacity-60"
-                                          >
-                                            {isLoading ? 'Confirmando...' : buttonLabel}
-                                          </button>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-
-                                {rewardResult.retryUnlocked || canSpinReward ? (
-                                  <div className="border border-emerald-300/20 bg-emerald-400/10 px-4 py-4 text-center" style={{ borderRadius: 6 }}>
-                                    <p className="text-sm font-semibold text-emerald-100">Chance extra liberada</p>
-                                    <p className="mt-2 text-xs text-emerald-200">
-                                      Agora você já pode girar a roleta mais uma vez.
-                                    </p>
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        )
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="mt-5 border border-white/10 bg-white/5 px-4 py-5 text-center" style={{ borderRadius: 6 }}>
-                      <p className="text-sm text-slate-200">
-                        {submitMessage || 'Sua resposta foi registrada normalmente, mas esta campanha não está disponível para novo giro.'}
-                      </p>
-                    </div>
-                  )}
+                  <p className="mt-3 text-sm text-slate-600">
+                    {canSpinReward
+                      ? 'Toque abaixo para girar.'
+                      : rewardResult?.won
+                        ? 'Seu prêmio já está disponível.'
+                        : rewardResult
+                          ? 'Seu resultado já está disponível.'
+                          : 'Abra a roleta para continuar.'}
+                  </p>
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setWheelModalOpen(true)}
+                      className="admin-button-primary w-full justify-center"
+                    >
+                      {canSpinReward ? 'Abrir roleta' : 'Ver roleta'}
+                    </button>
+                  </div>
                 </div>
               ) : null}
 
@@ -1779,38 +1570,34 @@ export function PublicSurveyPage() {
       </div>
 
       {survey.rewardEnabled && wheelModalOpen ? (
-        <div className="fixed inset-0 z-50 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.22)_0%,rgba(15,23,42,0.92)_36%,rgba(2,6,23,0.98)_100%)]">
-          <div className="absolute inset-0 overflow-y-auto p-1 sm:p-3 lg:px-6 lg:py-6">
-            <div className="mx-auto flex min-h-[calc(100dvh-0.5rem)] w-full max-w-[1500px] flex-col justify-between rounded-[20px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.94)_0%,rgba(3,7,18,0.98)_100%)] p-3 shadow-[0_30px_100px_rgba(2,6,23,0.65)] sm:min-h-[calc(100dvh-1.5rem)] sm:rounded-[28px] sm:p-5 lg:p-8">
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                <div className="max-w-2xl">
-                  <p className="text-sm text-slate-300 sm:text-base">
-                    {canSpinReward
-                      ? 'Gire a roleta para descobrir seu resultado.'
-                      : wheelSpinning
-                        ? 'A roleta está girando.'
-                        : rewardResult?.won
-                          ? 'Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.'
-                          : 'Seu resultado já está disponível.'}
-                  </p>
-                </div>
+        <div className="fixed inset-0 z-50 bg-white/95 backdrop-blur-[2px]">
+          <div className="absolute inset-0 overflow-y-auto p-2 sm:p-4 lg:px-6 lg:py-6">
+            <div className="mx-auto flex min-h-[calc(100dvh-1rem)] w-full max-w-[1400px] flex-col rounded-[24px] border border-slate-200 bg-white p-4 shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:min-h-[calc(100dvh-2rem)] sm:p-5 lg:p-6">
+              <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 xl:flex-row xl:items-center xl:justify-between">
+                <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
+                  {canSpinReward
+                    ? 'Gire a roleta.'
+                    : wheelSpinning
+                      ? 'A roleta está girando.'
+                      : rewardResult?.won
+                        ? 'Salve o comprovante ou resgate pelo WhatsApp.'
+                        : 'Seu resultado já está disponível.'}
+                </p>
 
-                <div className="flex items-center gap-3 self-start">
-                  {canCloseWheelModal ? (
-                    <button
-                      type="button"
-                      onClick={() => setWheelModalOpen(false)}
-                      className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-white/15 bg-slate-950/75 px-4 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(2,6,23,0.32)] transition hover:bg-slate-900"
-                    >
-                      <X className="h-4 w-4" />
-                      Fechar
-                    </button>
-                  ) : null}
-                </div>
+                {canCloseWheelModal ? (
+                  <button
+                    type="button"
+                    onClick={() => setWheelModalOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <X className="h-4 w-4" />
+                    Fechar
+                  </button>
+                ) : null}
               </div>
 
-              <div className="mt-3 grid flex-1 gap-3 xl:mt-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,420px)] xl:items-center 2xl:grid-cols-[minmax(0,1.3fr)_440px]">
-                <div className="relative isolate flex min-h-[44svh] items-center rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.4)_0%,rgba(15,23,42,0.12)_100%)] px-1 py-2 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:rounded-[28px] lg:px-4 lg:py-6">
+              <div className="mt-4 grid flex-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,400px)] xl:items-center">
+                <div className="relative isolate flex min-h-[44svh] items-center rounded-[24px] border border-slate-200 bg-white px-1 py-3 sm:min-h-[52svh] sm:px-3 sm:py-5 xl:min-h-0 lg:px-4 lg:py-6">
                   <PrizeWheel
                     segments={wheelSegments}
                     rotation={wheelRotation}
@@ -1827,33 +1614,39 @@ export function PublicSurveyPage() {
 
                   {rewardResult?.won ? (
                     <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
-                      <div className="absolute inset-0 rounded-[inherit] bg-slate-950/55 backdrop-blur-[3px]" />
-                      <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-amber-300/35 bg-[linear-gradient(180deg,rgba(15,23,42,0.18)_0%,rgba(15,23,42,0.52)_8%,rgba(250,204,21,0.26)_28%,rgba(236,72,153,0.18)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.45)] backdrop-blur-md sm:px-7 sm:py-8">
-                        <p className="text-xs uppercase tracking-[0.26em] text-amber-100">Prêmio confirmado</p>
-                        <p className="mt-3 text-base font-semibold text-emerald-100 sm:text-lg">Parabéns! Você ganhou:</p>
-                        <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
+                      <div className="absolute inset-0 rounded-[inherit] bg-white/78 backdrop-blur-[2px]" />
+                      <div className="relative w-full max-w-[min(92vw,520px)] rounded-[24px] border border-amber-200 bg-white px-5 py-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.14)] sm:px-7 sm:py-8">
+                        <p className="text-xs uppercase tracking-[0.22em] text-amber-700">Prêmio confirmado</p>
+                        <p className="mt-3 text-base font-semibold text-slate-900 sm:text-lg">Você ganhou:</p>
+                        <p className="mt-3 font-display text-3xl leading-tight text-slate-950 sm:text-4xl">{rewardResult.item}</p>
                         {rewardResult.couponCode ? (
-                          <div className="mt-5 rounded-[18px] border border-white/15 bg-slate-950/35 px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo</p>
-                            <p className="mt-2 text-lg font-bold text-white sm:text-xl">{rewardResult.couponCode}</p>
+                          <div className="mt-5 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Protocolo</p>
+                            <p className="mt-2 text-lg font-bold text-slate-950 sm:text-xl">{rewardResult.couponCode}</p>
                           </div>
                         ) : null}
                         {rewardPickupAddress ? (
-                          <div className="mt-4 rounded-[18px] border border-white/15 bg-white/10 px-4 py-3 text-left">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada na loja</p>
-                            <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
+                          <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Retirada</p>
+                            <p className="mt-2 text-sm text-slate-700">{rewardPickupAddress}</p>
                           </div>
                         ) : null}
                         <div className="mt-5 flex flex-col gap-3">
-                          <p className="text-xs text-slate-100">
-                            Salve o comprovante e apresente na loja ou clique em Resgatar pelo WhatsApp.
-                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadRewardProof()}
+                            disabled={savingRewardProof}
+                            className="admin-button-primary w-full justify-center"
+                          >
+                            <Download className="h-4 w-4" />
+                            {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
+                          </button>
                           {rewardContactWhatsAppUrl ? (
                             <a
                               href={rewardContactWhatsAppUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="admin-button-primary w-full justify-center"
+                              className="admin-button w-full justify-center"
                             >
                               <MessageCircle className="h-4 w-4" />
                               Resgatar pelo WhatsApp
@@ -1866,24 +1659,21 @@ export function PublicSurveyPage() {
 
                   {showRetryTaskOverlay && currentRetryTask ? (
                     <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
-                      <div className="absolute inset-0 rounded-[inherit] bg-slate-950/58 backdrop-blur-[3px]" />
-                      <div className="relative w-full max-w-[min(92vw,560px)] rounded-[28px] border border-sky-300/30 bg-[linear-gradient(180deg,rgba(15,23,42,0.22)_0%,rgba(15,23,42,0.78)_12%,rgba(59,130,246,0.18)_56%,rgba(15,23,42,0.98)_100%)] px-5 py-6 text-center shadow-[0_26px_80px_rgba(15,23,42,0.48)] backdrop-blur-md sm:px-7 sm:py-8">
-                        <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-amber-300/40 bg-[linear-gradient(90deg,rgba(250,204,21,0.24)_0%,rgba(236,72,153,0.3)_100%)] px-4 py-2 text-xs font-black uppercase tracking-[0.24em] text-amber-50 shadow-[0_0_28px_rgba(250,204,21,0.18)]">
-                          <Sparkles className="h-4 w-4" />
-                          Mais uma chance
-                        </p>
-                        <p className="mt-3 text-base font-semibold text-white sm:text-lg">
+                      <div className="absolute inset-0 rounded-[inherit] bg-white/82 backdrop-blur-[2px]" />
+                      <div className="relative w-full max-w-[min(92vw,520px)] rounded-[24px] border border-slate-200 bg-white px-5 py-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.14)] sm:px-7 sm:py-8">
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Mais uma chance</p>
+                        <p className="mt-3 text-base font-semibold text-slate-900 sm:text-lg">
                           {rewardResult?.landedLabel ? `A roleta parou em ${rewardResult.landedLabel}.` : 'Você não ganhou neste giro.'}
                         </p>
-                        <p className="mt-3 text-sm text-slate-200 sm:text-base">
-                          Conclua esta tarefa, volte para a página e confirme aqui na frente da roleta para liberar o próximo giro.
+                        <p className="mt-3 text-sm text-slate-600 sm:text-base">
+                          Abra a tarefa, volte para esta página e confirme.
                         </p>
 
                         <div
-                          className={`mt-5 rounded-[20px] border px-4 py-4 text-left transition ${
+                          className={`mt-5 rounded-[18px] border px-4 py-4 text-left transition ${
                             currentRetryTaskCanConfirm || currentRetryTaskIsLoading
-                              ? 'border-white/12 bg-slate-950/35'
-                              : 'cursor-pointer border-sky-300/28 bg-[linear-gradient(180deg,rgba(14,165,233,0.18)_0%,rgba(15,23,42,0.46)_100%)] hover:border-sky-200/45 hover:bg-[linear-gradient(180deg,rgba(56,189,248,0.22)_0%,rgba(15,23,42,0.54)_100%)]'
+                              ? 'border-slate-200 bg-slate-50'
+                              : 'cursor-pointer border-sky-200 bg-sky-50 hover:border-sky-300 hover:bg-sky-100/70'
                           }`}
                           role="button"
                           tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
@@ -1907,14 +1697,14 @@ export function PublicSurveyPage() {
                             }
                           }}
                         >
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Tarefa atual</p>
-                          <p className="mt-2 text-lg font-semibold text-white">{currentRetryTask.title}</p>
-                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
+                          <p className="mt-2 text-lg font-semibold text-slate-950">{currentRetryTask.title}</p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
                             {getRetryTaskTypeLabel(currentRetryTask.type)}
                           </p>
                           {!currentRetryTaskCanConfirm && !currentRetryTaskIsLoading ? (
-                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
-                              Toque aqui para ir direto para a tarefa
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                              Toque para abrir a tarefa
                             </p>
                           ) : null}
                         </div>
@@ -1924,7 +1714,7 @@ export function PublicSurveyPage() {
                             className={`admin-badge ${
                               currentRetryTaskCanConfirm
                                 ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                : 'border-white/15 bg-white/10 text-white'
+                                : 'border-slate-200 bg-slate-50 text-slate-700'
                             }`}
                           >
                             {currentRetryTaskStatusLabel}
@@ -1948,103 +1738,61 @@ export function PublicSurveyPage() {
                           >
                             {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
                           </button>
-                          <p className="text-xs text-slate-200">
-                            A roleta continua aberta. Assim que confirmar esta etapa, o botão de girar será liberado aqui mesmo.
-                          </p>
                         </div>
                       </div>
                     </div>
                   ) : null}
                 </div>
 
-                <div className="space-y-4 xl:max-w-[440px]">
+                <div className="space-y-4 xl:max-w-[400px]">
                   {!rewardResult ? (
-                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-center">
-                      <p className="mt-3 text-lg font-semibold text-white">
-                        {wheelSpinning ? 'A sorte está girando...' : canSpinReward ? 'Pronta para girar' : 'Aguardando resultado'}
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-5 text-center">
+                      <p className="text-lg font-semibold text-slate-900">
+                        {wheelSpinning ? 'Girando...' : canSpinReward ? 'Pronta para girar' : 'Aguardando resultado'}
                       </p>
-                      {wheelSpinning ? <p className="mt-2 text-sm text-slate-300">Segure esse momento.</p> : null}
                     </div>
                   ) : rewardResult.won ? (
-                    <div ref={rewardProofRef} className="rounded-[24px] border border-amber-300/25 bg-[linear-gradient(180deg,rgba(250,204,21,0.22)_0%,rgba(236,72,153,0.16)_52%,rgba(15,23,42,0.96)_100%)] p-5 shadow-[0_22px_70px_rgba(250,204,21,0.14)]">
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-100">Comprovante do prêmio</p>
-                      <p className="mt-3 text-sm font-semibold text-emerald-100">Parabéns, {participantName || 'participante'}!</p>
-                      <p className="mt-3 font-display text-3xl leading-tight text-white sm:text-4xl">{rewardResult.item}</p>
+                    <div ref={rewardProofRef} className="rounded-[20px] border border-amber-200 bg-amber-50/40 p-5">
+                      <p className="text-xs uppercase tracking-[0.2em] text-amber-700">Comprovante</p>
+                      <p className="mt-3 text-sm font-semibold text-slate-700">Prêmio</p>
+                      <p className="mt-2 font-display text-3xl leading-tight text-slate-950">{rewardResult.item}</p>
                       {rewardResult.couponCode ? (
-                        <div className="mt-5 rounded-[18px] border border-white/15 bg-slate-950/35 px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Protocolo</p>
-                          <p className="mt-2 text-xl font-bold text-white">{rewardResult.couponCode}</p>
+                        <div className="mt-4 rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Protocolo</p>
+                          <p className="mt-2 text-xl font-bold text-slate-950">{rewardResult.couponCode}</p>
                         </div>
                       ) : null}
                       {rewardPickupAddress ? (
-                        <div className="mt-4 rounded-[18px] border border-white/10 bg-white/10 px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Retirada</p>
-                          <p className="mt-2 text-sm text-white">{rewardPickupAddress}</p>
+                        <div className="mt-4 rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Retirada</p>
+                          <p className="mt-2 text-sm text-slate-700">{rewardPickupAddress}</p>
                         </div>
                       ) : null}
-                      <p className="mt-4 text-xs uppercase tracking-[0.18em] text-amber-50/80">{survey.brandName || survey.title}</p>
-                      <div className="mt-5 flex flex-col gap-3">
-                        <button
-                          type="button"
-                          onClick={() => void handleDownloadRewardProof()}
-                          disabled={savingRewardProof}
-                          className="admin-button-primary w-full justify-center"
-                        >
-                          <Download className="h-4 w-4" />
-                          {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
-                        </button>
-                        {rewardContactWhatsAppUrl ? (
-                          <a
-                            href={rewardContactWhatsAppUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="admin-button w-full justify-center"
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                            Entrar em contato para receber o prêmio
-                          </a>
-                        ) : null}
-                        <p className="text-center text-xs text-slate-300">
-                            Salve no celular para apresentar no resgate do prêmio.
-                        </p>
-                      </div>
                     </div>
                   ) : (
-                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-5">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Resultado</p>
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-5">
                       {rewardResult.landedLabel ? (
-                        <p className="mt-3 text-sm text-slate-200">
-                          A roleta parou em <span className="font-semibold text-white">{rewardResult.landedLabel}</span>
+                        <p className="text-sm text-slate-600">
+                          A roleta parou em <span className="font-semibold text-slate-950">{rewardResult.landedLabel}</span>
                         </p>
                       ) : null}
-                      <p className="mt-3 text-lg font-semibold text-white">{rewardResult.message || 'Desta vez não houve prêmio disponível.'}</p>
-                      {rewardResult.retryAvailable && currentRetryTask ? (
-                        <p className="mt-3 text-sm text-slate-300">
-                          A próxima etapa é <span className="font-semibold text-white">{currentRetryTask.title}</span>. Ela aparece na frente da roleta.
-                        </p>
-                      ) : null}
+                      <p className="mt-3 text-lg font-semibold text-slate-950">{rewardResult.message || 'Desta vez não houve prêmio disponível.'}</p>
                     </div>
                   )}
 
                   {rewardResult?.retryAvailable ? (
-                    <div className="rounded-[24px] border border-white/10 bg-white/5 p-5 text-left">
-                      <p className="inline-flex items-center gap-2 rounded-full border border-amber-300/35 bg-[linear-gradient(90deg,rgba(250,204,21,0.2)_0%,rgba(236,72,153,0.24)_100%)] px-3 py-1.5 text-xs font-black uppercase tracking-[0.22em] text-amber-50 shadow-[0_0_24px_rgba(250,204,21,0.14)]">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Mais uma chance
-                      </p>
+                    <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-5 text-left">
+                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Mais uma chance</p>
                       {canSpinReward ? (
-                        <div className="mt-4 rounded-[18px] border border-emerald-300/25 bg-emerald-500/10 px-4 py-4">
-                          <p className="text-sm font-semibold text-emerald-100">Nova tentativa liberada</p>
-                          <p className="mt-2 text-sm text-slate-200">
-                            A tarefa atual já foi confirmada. Agora você pode girar a roleta novamente.
-                          </p>
+                        <div className="mt-4 rounded-[16px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                          <p className="text-sm font-semibold text-emerald-700">Nova tentativa liberada</p>
                         </div>
                       ) : currentRetryTask ? (
                         <div
-                          className={`mt-4 rounded-[18px] border px-4 py-4 transition ${
+                          className={`mt-4 rounded-[16px] border px-4 py-4 transition ${
                             currentRetryTaskCanConfirm || currentRetryTaskIsLoading
-                              ? 'border-white/10 bg-slate-950/30'
-                              : 'cursor-pointer border-sky-300/25 bg-[linear-gradient(180deg,rgba(14,165,233,0.15)_0%,rgba(15,23,42,0.42)_100%)] hover:border-sky-200/45 hover:bg-[linear-gradient(180deg,rgba(56,189,248,0.22)_0%,rgba(15,23,42,0.5)_100%)]'
+                              ? 'border-slate-200 bg-white'
+                              : 'cursor-pointer border-sky-200 bg-white hover:border-sky-300 hover:bg-sky-50'
                           }`}
                           role="button"
                           tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
@@ -2068,11 +1816,11 @@ export function PublicSurveyPage() {
                             }
                           }}
                         >
-                          <p className="text-sm font-semibold text-white">{currentRetryTask.title}</p>
-                          <p className="mt-1 text-xs text-slate-400">{getRetryTaskTypeLabel(currentRetryTask.type)}</p>
+                          <p className="text-sm font-semibold text-slate-950">{currentRetryTask.title}</p>
+                          <p className="mt-1 text-xs text-slate-500">{getRetryTaskTypeLabel(currentRetryTask.type)}</p>
                           {!currentRetryTaskCanConfirm && !currentRetryTaskIsLoading ? (
-                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-100">
-                              Toque aqui para abrir a tarefa
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                              Toque para abrir a tarefa
                             </p>
                           ) : null}
                           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2080,7 +1828,7 @@ export function PublicSurveyPage() {
                               className={`admin-badge ${
                                 currentRetryTaskCanConfirm
                                   ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                  : 'border-white/15 bg-white/10 text-white'
+                                  : 'border-slate-200 bg-slate-50 text-slate-700'
                               }`}
                             >
                               {currentRetryTaskStatusLabel}
@@ -2104,8 +1852,8 @@ export function PublicSurveyPage() {
                           </div>
                         </div>
                       ) : (
-                        <div className="mt-4 rounded-[18px] border border-white/10 bg-slate-950/30 px-4 py-4">
-                          <p className="text-sm text-slate-200">Todas as tarefas configuradas para esta participação já foram usadas.</p>
+                        <div className="mt-4 rounded-[16px] border border-slate-200 bg-white px-4 py-4">
+                          <p className="text-sm text-slate-600">Todas as tarefas desta participação já foram usadas.</p>
                         </div>
                       )}
                     </div>

@@ -21,39 +21,28 @@ type PrizeWheelProps = {
 }
 
 const rewardSegmentPalette = [
-  { start: '#4c1d95', end: '#6d28d9', text: '#ffffff' },
-  { start: '#7f1d1d', end: '#be123c', text: '#ffffff' },
-  { start: '#1e3a8a', end: '#2563eb', text: '#ffffff' },
-  { start: '#92400e', end: '#b45309', text: '#fff7ed' },
-  { start: '#115e59', end: '#0f766e', text: '#ffffff' },
-  { start: '#581c87', end: '#9333ea', text: '#ffffff' },
-  { start: '#3f6212', end: '#4d7c0f', text: '#ffffff' },
-  { start: '#9a3412', end: '#ea580c', text: '#ffffff' },
-  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+  { start: '#1f3a5f', end: '#2f527d', text: '#ffffff' },
+  { start: '#4c3b53', end: '#6b516f', text: '#ffffff' },
+  { start: '#24525b', end: '#326b76', text: '#ffffff' },
+  { start: '#6c5234', end: '#8b6a46', text: '#ffffff' },
+  { start: '#334155', end: '#475569', text: '#ffffff' },
+  { start: '#3f3f46', end: '#52525b', text: '#ffffff' },
 ]
 
 const retrySegmentPalette = [
-  { start: '#9f1239', end: '#e11d48', text: '#ffffff' },
-  { start: '#7c2d12', end: '#f97316', text: '#ffffff' },
-  { start: '#6d28d9', end: '#a855f7', text: '#ffffff' },
-  { start: '#155e75', end: '#0891b2', text: '#ffffff' },
-  { start: '#166534', end: '#16a34a', text: '#ffffff' },
-  { start: '#1d4ed8', end: '#38bdf8', text: '#ffffff' },
-  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
-  { start: '#92400e', end: '#f59e0b', text: '#fff7ed' },
-  { start: '#831843', end: '#db2777', text: '#ffffff' },
+  { start: '#0f4c81', end: '#2563eb', text: '#ffffff' },
+  { start: '#155e75', end: '#0f766e', text: '#ffffff' },
+  { start: '#6b7280', end: '#475569', text: '#ffffff' },
+  { start: '#0f766e', end: '#0ea5e9', text: '#ffffff' },
 ]
 
 const neutralSegmentPalette = [
-  { start: '#8b5cf6', end: '#6366f1', text: '#ffffff' },
-  { start: '#f43f5e', end: '#ec4899', text: '#ffffff' },
-  { start: '#0f172a', end: '#334155', text: '#ffffff' },
-  { start: '#2563eb', end: '#60a5fa', text: '#ffffff' },
-  { start: '#f59e0b', end: '#facc15', text: '#1f2937' },
-  { start: '#14b8a6', end: '#22c55e', text: '#ffffff' },
-  { start: '#d946ef', end: '#a855f7', text: '#ffffff' },
-  { start: '#fb7185', end: '#f97316', text: '#ffffff' },
-  { start: '#0ea5e9', end: '#06b6d4', text: '#ffffff' },
+  { start: '#e2e8f0', end: '#cbd5e1', text: '#1f2937' },
+  { start: '#dbeafe', end: '#bfdbfe', text: '#1e3a8a' },
+  { start: '#f1f5f9', end: '#e2e8f0', text: '#334155' },
+  { start: '#ede9fe', end: '#ddd6fe', text: '#4c1d95' },
+  { start: '#fef3c7', end: '#fde68a', text: '#78350f' },
+  { start: '#dcfce7', end: '#bbf7d0', text: '#166534' },
 ]
 
 const confettiPalette = ['#facc15', '#ff006e', '#4338ca', '#22c55e', '#38bdf8', '#ffffff']
@@ -208,11 +197,11 @@ export function PrizeWheel({
       : 'clamp(96px, 15vw, 132px)'
     : '124px'
   const pointerBaseClass = isFullscreen
-    ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
-    : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)]'
+    ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#475569_0%,#0f172a_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.18)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
+    : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#475569_0%,#0f172a_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.18)]'
   const pointerTipClass = isFullscreen
-    ? 'absolute left-1/2 top-[18px] z-40 h-0 w-0 -translate-x-1/2 border-l-[18px] border-r-[18px] border-t-[32px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)] sm:top-[20px] sm:border-l-[20px] sm:border-r-[20px] sm:border-t-[36px]'
-    : 'absolute left-1/2 top-[16px] z-40 h-0 w-0 -translate-x-1/2 border-l-[16px] border-r-[16px] border-t-[30px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)]'
+    ? 'absolute left-1/2 top-[18px] z-40 h-0 w-0 -translate-x-1/2 border-l-[18px] border-r-[18px] border-t-[32px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.18)] sm:top-[20px] sm:border-l-[20px] sm:border-r-[20px] sm:border-t-[36px]'
+    : 'absolute left-1/2 top-[16px] z-40 h-0 w-0 -translate-x-1/2 border-l-[16px] border-r-[16px] border-t-[30px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.18)]'
   const wheelWrapperStyle = {
     maxWidth: isFullscreen ? 'min(calc(100vw - 0.75rem), calc(100dvh - 11.5rem))' : '430px',
   }
@@ -331,7 +320,7 @@ export function PrizeWheel({
   return (
     <div className="mx-auto w-full" style={wheelWrapperStyle}>
       <div className="relative aspect-square">
-        <div className="absolute inset-[-7%] rounded-full bg-[radial-gradient(circle,_rgba(251,191,36,0.28)_0%,_rgba(236,72,153,0.18)_24%,_rgba(56,189,248,0.16)_46%,_rgba(124,58,237,0.14)_60%,_transparent_76%)] blur-2xl" />
+        <div className="absolute inset-[-4%] rounded-full bg-[radial-gradient(circle,_rgba(148,163,184,0.18)_0%,_rgba(255,255,255,0)_72%)] blur-xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
             {confettiPieces.map((piece, index) => (
@@ -357,22 +346,22 @@ export function PrizeWheel({
         <div className={pointerBaseClass} />
         <div className={pointerTipClass} />
 
-        <div className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#fff4c3_0%,#f59e0b_16%,#fb7185_38%,#7c3aed_58%,#38bdf8_78%,#fff4c3_100%)] shadow-[0_26px_60px_rgba(79,70,229,0.24)]" />
-        <div className="absolute inset-[1.4%] rounded-full border border-white/35 bg-[linear-gradient(135deg,#fef3c7_0%,#f59e0b_24%,#c2410c_40%,#7c3aed_66%,#38bdf8_84%,#fde68a_100%)]" />
-        <div className="absolute inset-[3.7%] rounded-full bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.3),_transparent_42%),linear-gradient(180deg,#5b4a17_0%,#2b1f08_100%)] shadow-[inset_0_0_18px_rgba(0,0,0,0.24)]" />
+        <div className="absolute inset-0 rounded-full border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[0_22px_50px_rgba(15,23,42,0.10)]" />
+        <div className="absolute inset-[1.8%] rounded-full border border-slate-200/80 bg-[linear-gradient(180deg,#ffffff_0%,#f1f5f9_100%)]" />
+        <div className="absolute inset-[4.2%] rounded-full bg-white shadow-[inset_0_0_0_1px_rgba(148,163,184,0.16)]" />
 
-        <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[5px] border-white/85 shadow-[0_22px_40px_rgba(15,23,42,0.22)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
+        <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[5px] border-white shadow-[0_18px_36px_rgba(15,23,42,0.14)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
           style={{
             background: `
-              radial-gradient(circle at 50% 18%, rgba(255,255,255,0.22), transparent 26%),
-              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), transparent 70%),
+              radial-gradient(circle at 50% 18%, rgba(255,255,255,0.28), transparent 24%),
+              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.06), transparent 70%),
               conic-gradient(${dividerOverlay}),
               conic-gradient(${gradient})
             `,
             transform: `rotate(${rotation}deg)`,
           }}
         >
-          <div className="absolute inset-[2.2%] rounded-full border border-white/18 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.05),_transparent_72%)]">
+          <div className="absolute inset-[2.2%] rounded-full border border-white/35 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.05),_transparent_72%)]">
             {segments.map((segment, index) => {
               const centerAngle = index * angle + angle / 2
               const centerRadians = (centerAngle * Math.PI) / 180
@@ -459,11 +448,11 @@ export function PrizeWheel({
               )
             })}
           </div>
-          <div className="absolute inset-[2%] rounded-full border border-slate-950/10" />
+          <div className="absolute inset-[2%] rounded-full border border-slate-900/8" />
         </div>
 
-        <div className="absolute left-1/2 top-1/2 z-20 flex h-[56px] w-[56px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-[#f7d794] bg-[radial-gradient(circle_at_30%_30%,#f8d892_0%,#b87333_44%,#8b5a2b_72%,#f6c667_100%)] text-center shadow-[0_12px_24px_rgba(120,53,15,0.26)] sm:h-[60px] sm:w-[60px]">
-          <div className="h-[18px] w-[18px] rounded-full bg-[radial-gradient(circle,#fff2c7_0%,#f59e0b_55%,#92400e_100%)] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45)] sm:h-[20px] sm:w-[20px]" />
+        <div className="absolute left-1/2 top-1/2 z-20 flex h-[56px] w-[56px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#e2e8f0_100%)] text-center shadow-[0_10px_20px_rgba(15,23,42,0.10)] sm:h-[60px] sm:w-[60px]">
+          <div className="h-[18px] w-[18px] rounded-full bg-[linear-gradient(180deg,#cbd5e1_0%,#64748b_100%)] shadow-[inset_0_1px_2px_rgba(255,255,255,0.55)] sm:h-[20px] sm:w-[20px]" />
         </div>
       </div>
 
@@ -475,7 +464,7 @@ export function PrizeWheel({
             onSpin()
           }}
           disabled={disabled || isSpinning}
-          className={`rounded-full bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#e2e8f0_100%)] font-bold uppercase text-slate-950 shadow-[0_10px_18px_rgba(255,255,255,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 ${
+          className={`rounded-full bg-slate-950 font-bold uppercase text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${
             isFullscreen ? 'px-8 py-3.5 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
           }`}
         >
