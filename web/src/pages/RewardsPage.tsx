@@ -32,12 +32,12 @@ type RewardRetryTask = {
 const maxRealRewards = 3
 const maxWheelOptions = 6
 const neutralLabels = [
-  'Não foi dessa vez',
+  'Valeu!',
   'Quase!',
-  'Obrigado por participar.',
-  'Boa sorte na próxima',
+  'Não foi dessa vez',
   'Você não teve sorte',
-  'Continue participando',
+  'Que Pena!',
+  'Obrigado',
 ]
 
 function createDefaultRewardItem(): RewardFormItem {
