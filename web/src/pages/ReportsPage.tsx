@@ -5,6 +5,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiRequest, downloadApiFile } from '@/lib/api-client'
 import { hasFeatureAccess } from '@/lib/features'
@@ -135,6 +136,33 @@ type RewardsResponse = {
 type WinnerSortField = 'awardedAt' | 'name' | 'itemTitle'
 type WinnerSortDirection = 'asc' | 'desc'
 type WinnerStatusFilter = 'all' | 'pending' | 'delivered' | 'cancelled'
+
+type InsightCategory = 'responses' | 'access' | 'contacts' | 'rewards' | 'wheel'
+
+type InsightItem = {
+  category: InsightCategory
+  title: string
+  value: string
+}
+
+const insightCategoryStyles: Record<InsightCategory, { bar: string; label: string }> = {
+  responses: { bar: 'bg-blue-500', label: 'Respostas' },
+  access: { bar: 'bg-teal-500', label: 'Acessos' },
+  contacts: { bar: 'bg-violet-500', label: 'Contatos' },
+  rewards: { bar: 'bg-emerald-500', label: 'Prêmios' },
+  wheel: { bar: 'bg-amber-500', label: 'Roleta' },
+}
+
+function formatPeriodDate(value: string) {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parsed)
+}
+
+function getDistributionBarColor(index: number) {
+  const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500', 'bg-teal-500', 'bg-sky-500', 'bg-orange-500']
+  return colors[index % colors.length]
+}
 
 function formatDateInput(date: Date) {
   const year = date.getFullYear()
@@ -294,10 +322,48 @@ function PaginationControls({
   )
 }
 
+function TextSamplesList({ samples, questionId }: { samples: string[]; questionId: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? samples : samples.slice(0, 3)
+  const canExpand = samples.length > 3
+
+  return (
+    <div className="mt-3 grid gap-2">
+      {visible.map((sample, sampleIndex) => (
+        <div
+          key={`${questionId}-sample-${sampleIndex}`}
+          className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+          style={{ borderRadius: 6 }}
+        >
+          {sample}
+        </div>
+      ))}
+      {canExpand ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+        >
+          {expanded ? 'Ver menos' : `Ver todas (${samples.length})`}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function ReportsPage() {
   const { id } = useParams()
   const user = useAuthStore((state) => state.user)
   const queryClient = useQueryClient()
+
+  const surveyTitleQuery = useQuery({
+    queryKey: ['survey-title', id],
+    queryFn: async () => {
+      const response = await apiRequest<{ survey: { title: string } }>(`/surveys/${id}`)
+      return response.survey.title
+    },
+    enabled: Boolean(id),
+  })
   const defaultEndDate = formatDateInput(getDateDaysAgo(0))
   const defaultStartDate = formatDateInput(getDateDaysAgo(29))
   const [preset, setPreset] = useState<PeriodPreset>('30d')
@@ -462,22 +528,23 @@ export function ReportsPage() {
       visits: Number(item.visits),
     })) ?? []
 
-  const insights =
+  const insights: InsightItem[] =
     summaryQuery.data && rewardsQuery.data
       ? [
-          ['Total de respostas', `${summaryQuery.data.summary.total_responses} respostas válidas registradas`],
-          ['Taxa de conversão', `${summaryQuery.data.summary.conversion_rate}% das visitas viraram respostas`],
-          ['Acessos totais', `${summaryQuery.data.summary.total_visits} visitas rastreadas na pesquisa`],
-          ['Participação identificada', `${summaryQuery.data.summary.identified_responses} respostas com identificação`],
-          ['E-mails coletados', `${summaryQuery.data.summary.emails_collected} participantes informaram e-mail`],
-          ['Aniversários coletados', `${summaryQuery.data.summary.birthdays_collected} aniversários ficaram salvos para campanhas futuras`],
-          ['Cliques no link', `${summaryQuery.data.summary.link_clicks} acessos vieram pelo link divulgado`],
-          ['Leituras do QR code', `${summaryQuery.data.summary.qr_scans} acessos vieram pelo QR code`],
-          ['Prêmios entregues', `${summaryQuery.data.summary.reward_wins} prêmios realmente sorteados`],
-          ['Giros da roleta', `${rewardsQuery.data.summary.total_spins} giros registrados no período`],
-          ['Sem prêmio', `${rewardsQuery.data.summary.total_no_prize} giros terminaram em opção sem prêmio`],
-          ['Resgates pendentes', `${rewardsQuery.data.summary.pending_redemptions} prêmios ainda aguardam retirada`],
-          ['Prêmios entregues ao cliente', `${rewardsQuery.data.summary.delivered_redemptions} resgates já foram concluídos`],
+          { category: 'responses', title: 'Total de respostas', value: `${summaryQuery.data.summary.total_responses} respostas válidas registradas` },
+          { category: 'responses', title: 'Taxa de conversão', value: `${summaryQuery.data.summary.conversion_rate}% das visitas viraram respostas` },
+          { category: 'responses', title: 'Participação identificada', value: `${summaryQuery.data.summary.identified_responses} respostas com identificação` },
+          { category: 'access', title: 'Acessos totais', value: `${summaryQuery.data.summary.total_visits} visitas rastreadas na pesquisa` },
+          { category: 'access', title: 'Cliques no link', value: `${summaryQuery.data.summary.link_clicks} acessos vieram pelo link divulgado` },
+          { category: 'access', title: 'Leituras do QR code', value: `${summaryQuery.data.summary.qr_scans} acessos vieram pelo QR code` },
+          { category: 'contacts', title: 'E-mails coletados', value: `${summaryQuery.data.summary.emails_collected} participantes informaram e-mail` },
+          { category: 'contacts', title: 'Aniversários coletados', value: `${summaryQuery.data.summary.birthdays_collected} aniversários ficaram salvos para campanhas futuras` },
+          { category: 'rewards', title: 'Prêmios sorteados', value: `${summaryQuery.data.summary.reward_wins} prêmios realmente sorteados` },
+          { category: 'rewards', title: 'Resgates pendentes', value: `${rewardsQuery.data.summary.pending_redemptions} prêmios ainda aguardam retirada` },
+          { category: 'rewards', title: 'Entregues ao cliente', value: `${rewardsQuery.data.summary.delivered_redemptions} resgates já foram concluídos` },
+          { category: 'rewards', title: 'Cancelados', value: `${rewardsQuery.data.summary.cancelled_redemptions} resgates foram cancelados` },
+          { category: 'wheel', title: 'Giros da roleta', value: `${rewardsQuery.data.summary.total_spins} giros registrados no período` },
+          { category: 'wheel', title: 'Sem prêmio', value: `${rewardsQuery.data.summary.total_no_prize} giros terminaram em opção sem prêmio` },
         ]
       : []
 
@@ -514,27 +581,18 @@ export function ReportsPage() {
   return (
     <AppShell
       title="Relatórios da pesquisa"
-      subtitle="Painel útil com acessos por dia, respostas, conversão e leitura detalhada por pergunta."
-      backHref={`/app/pesquisas/${id}`}
-      backLabel="Voltar para a pesquisa"
-      breadcrumbs={[
-        { label: 'Pesquisas', href: '/app/pesquisas' },
-        { label: 'Pesquisa', href: `/app/pesquisas/${id}` },
-        { label: 'Relatórios' },
-      ]}
+      subtitle=""
+      hideHeader
     >
-      <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Leitura operacional</p>
-          <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
-            Relatórios mais elegantes para bater o olho e entender rápido.
-          </h2>
-          <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
-            Acompanhe respostas, visitas, conversão, ganhadores, estoque e desempenho das perguntas em um painel mais claro.
-          </p>
-        </div>
+      <SurveyNavBar
+        surveyId={id!}
+        surveyTitle={surveyTitleQuery.data}
+        activeTab="results"
+      />
 
-        <div className="grid gap-2 sm:grid-cols-3">
+      <div className="p-3 sm:p-4 lg:p-5">
+      <section className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="grid flex-1 gap-2 sm:grid-cols-3">
           <div className="admin-inline-stat">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Respostas</p>
             <p className="mt-1 text-sm font-semibold text-slate-950">{summaryQuery.data?.summary.total_responses ?? '-'}</p>
@@ -603,7 +661,7 @@ export function ReportsPage() {
         ) : null}
 
         <div className="admin-alert mt-4 border-slate-200 bg-slate-50 text-slate-600">
-          Exibindo dados de <strong>{activeRange.startDate}</strong> até <strong>{activeRange.endDate}</strong>.
+          Exibindo dados de <strong>{formatPeriodDate(activeRange.startDate)}</strong> até <strong>{formatPeriodDate(activeRange.endDate)}</strong>.
         </div>
 
         <div className="mt-4 flex flex-wrap gap-3">
@@ -700,13 +758,19 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando indicadores...</div>
           ) : insights.length ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {insights.map(([title, value]) => (
-                <div key={title} className="report-insight-card">
-                  <div className="mb-3 h-1.5 w-10 bg-blue-500" style={{ borderRadius: 999 }} />
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{title}</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{value}</p>
-                </div>
-              ))}
+              {insights.map((insight) => {
+                const style = insightCategoryStyles[insight.category]
+                return (
+                  <div key={insight.title} className="report-insight-card">
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className={`h-1.5 w-10 ${style.bar}`} style={{ borderRadius: 999 }} />
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{style.label}</span>
+                    </div>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{insight.title}</p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{insight.value}</p>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="admin-empty-state py-16">Nenhum resumo disponível para exibir neste momento.</div>
@@ -724,14 +788,15 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando dados da roleta...</div>
           ) : rewardsQuery.data ? (
             <div className="admin-table-shell">
-              <div className="report-table-head hidden grid-cols-3 gap-3 md:grid">
+              <div className="report-table-head hidden grid-cols-4 gap-3 md:grid">
                 <div>Giros</div>
                 <div>Prêmios</div>
                 <div>Sem prêmio</div>
+                <div>Cancelados</div>
               </div>
 
               <div className="divide-y divide-slate-200 md:divide-y-0">
-                <div className="grid gap-3 px-4 py-3 md:grid-cols-3">
+                <div className="grid gap-3 px-4 py-3 md:grid-cols-4">
                   <div className="flex items-center gap-3">
                     <div className="admin-icon-chip border-slate-200 bg-slate-50 text-slate-600">
                       <ChartColumnBig className="h-4 w-4" />
@@ -762,6 +827,17 @@ export function ReportsPage() {
                       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 md:hidden">Sem prêmio</p>
                       <p className="text-lg font-semibold text-amber-700">{rewardsQuery.data.summary.total_no_prize}</p>
                       <p className="text-sm text-slate-600">Mensagens neutras.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="admin-icon-chip border-rose-100 bg-rose-50 text-rose-700">
+                      <Download className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 md:hidden">Cancelados</p>
+                      <p className="text-lg font-semibold text-rose-700">{rewardsQuery.data.summary.cancelled_redemptions}</p>
+                      <p className="text-sm text-slate-600">Resgates cancelados.</p>
                     </div>
                   </div>
                 </div>
@@ -1209,11 +1285,6 @@ export function ReportsPage() {
                               </div>
                             </div>
 
-                            <div>
-                              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prazo</p>
-                              <span className={`admin-badge mt-1 ${expirationClass}`}>{expirationLabel}</span>
-                            </div>
-
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
@@ -1335,7 +1406,7 @@ export function ReportsPage() {
 
                   {question.distribution?.length ? (
                     <div className="mt-3 space-y-2">
-                      {question.distribution.slice(0, 5).map((item) => (
+                      {question.distribution.slice(0, 8).map((item, barIndex) => (
                         <div key={`${question.id}-${item.label}`}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
                             <span className="truncate font-medium text-slate-700">{item.label}</span>
@@ -1345,7 +1416,7 @@ export function ReportsPage() {
                           </div>
                           <div className="h-2 overflow-hidden bg-slate-100" style={{ borderRadius: 999 }}>
                             <div
-                              className="h-full bg-slate-900"
+                              className={`h-full ${getDistributionBarColor(barIndex)}`}
                               style={{ width: `${Math.max(item.percentage, item.count > 0 ? 2 : 0)}%`, borderRadius: 999 }}
                             />
                           </div>
@@ -1355,17 +1426,7 @@ export function ReportsPage() {
                   ) : null}
 
                   {question.textSamples?.length ? (
-                    <div className="mt-3 grid gap-2">
-                      {question.textSamples.slice(0, 3).map((sample, sampleIndex) => (
-                        <div
-                          key={`${question.id}-sample-${sampleIndex}`}
-                          className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                          style={{ borderRadius: 6 }}
-                        >
-                          {sample}
-                        </div>
-                      ))}
-                    </div>
+                    <TextSamplesList samples={question.textSamples} questionId={question.id} />
                   ) : null}
                 </article>
               ))}
@@ -1376,6 +1437,7 @@ export function ReportsPage() {
             </div>
           )}
         </SectionCard>
+      </div>
       </div>
     </AppShell>
   )

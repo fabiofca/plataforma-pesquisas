@@ -10,6 +10,7 @@ import {
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
 import { SurveyVisualFlowEditor } from '@/components/surveys/SurveyVisualFlowEditor'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -738,7 +739,7 @@ export function SurveyBuilderPage() {
         Ver prévia
       </button>
       {params.id ? (
-        <Link to={getSurveyTestPath(params.id)} className="admin-button">
+        <Link to={getSurveyTestPath(params.id)} className="admin-button border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100">
           <Sparkles className="h-4 w-4" />
           Testar pesquisa
         </Link>
@@ -747,12 +748,26 @@ export function SurveyBuilderPage() {
         type="button"
         onClick={() =>
           void saveMutation.mutateAsync({
+            shouldPublish: false,
+            flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+          })
+        }
+        disabled={saveMutation.isPending || unpublishMutation.isPending}
+        className="admin-button border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+      >
+        <FileImage className="h-4 w-4" />
+        Salvar rascunho
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void saveMutation.mutateAsync({
             shouldPublish: true,
             flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
           })
         }
-          disabled={saveMutation.isPending || unpublishMutation.isPending}
-        className="admin-button"
+        disabled={saveMutation.isPending || unpublishMutation.isPending}
+        className="admin-button-primary border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
       >
         <Share2 className="h-4 w-4" />
         Salvar e publicar
@@ -770,38 +785,27 @@ export function SurveyBuilderPage() {
                 void unpublishMutation.mutateAsync()
               }
             }}
-            className="admin-button"
+            className="admin-button border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
           >
             <Share2 className="h-4 w-4" />
             {unpublishMutation.isPending ? 'Voltando...' : 'Voltar para rascunho'}
           </button>
         ) : null}
-      {params.id && form.rewardEnabled ? (
-        <Link
-          to={`/app/pesquisas/${params.id}/premios`}
-          className="admin-button"
-        >
-          Configurar prêmios
-        </Link>
-      ) : null}
     </>
   )
 
   return (
     <AppShell
-      title={params.id ? 'Fluxo da pesquisa' : 'Nova pesquisa'}
-      subtitle="Monte o fluxo e salve quando estiver pronto."
-      backHref={params.id ? `/app/pesquisas/${params.id}` : '/app/pesquisas'}
-      backLabel={params.id ? 'Voltar para a pesquisa' : 'Voltar para pesquisas'}
-      breadcrumbs={
-        params.id
-          ? [
-              { label: 'Pesquisas', href: '/app/pesquisas' },
-              { label: survey?.title ?? 'Pesquisa', href: `/app/pesquisas/${params.id}` },
-              { label: 'Editar' },
-            ]
-          : [{ label: 'Pesquisas', href: '/app/pesquisas' }, { label: 'Nova pesquisa' }]
-      }
+      title={params.id ? (survey?.title ?? 'Fluxo da pesquisa') : 'Nova pesquisa'}
+      subtitle=""
+      hideHeader={Boolean(params.id)}
+      {...(params.id
+        ? {}
+        : {
+            backHref: '/app/pesquisas',
+            backLabel: 'Voltar para pesquisas',
+            breadcrumbs: [{ label: 'Pesquisas', href: '/app/pesquisas' }, { label: 'Nova pesquisa' }],
+          })}
     >
       {surveyQuery.isError ? (
         <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
@@ -821,6 +825,15 @@ export function SurveyBuilderPage() {
         </div>
       ) : null}
 
+      {params.id ? (
+        <SurveyNavBar
+          surveyId={params.id}
+          surveyTitle={survey?.title}
+          activeTab="flow"
+        />
+      ) : null}
+
+      <div className={params.id ? 'p-3 sm:p-4 lg:p-5' : ''}>
       <section className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
@@ -1142,6 +1155,7 @@ export function SurveyBuilderPage() {
             </label>
           </div>
         </SectionCard>
+      </div>
       </div>
 
     </AppShell>

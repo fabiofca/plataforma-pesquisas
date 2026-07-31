@@ -211,6 +211,7 @@ export function AppShell({
   backHref,
   backLabel = 'Voltar',
   breadcrumbs,
+  hideHeader,
 }: {
   title: string
   subtitle: string
@@ -221,6 +222,7 @@ export function AppShell({
     label: string
     href?: string
   }>
+  hideHeader?: boolean
 }) {
   const { user, signOut } = useAuthStore()
   const navigate = useNavigate()
@@ -413,50 +415,51 @@ export function AppShell({
         </header>
 
         <main className="px-2 pb-2 pt-[64px] md:px-3">
-          <div className="min-h-[calc(100vh-4.5rem)] w-full border border-slate-200 bg-white p-3 shadow-card md:p-4 xl:p-5">
-            <header className="mb-4 border-b border-slate-200 pb-3">
-              {(backHref || breadcrumbs?.length) ? (
-                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    {backHref ? (
-                      <button
-                        type="button"
-                        onClick={handleBackNavigation}
-                        className="inline-flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                        style={{ borderRadius: 6 }}
+          <div className={`min-h-[calc(100vh-4.5rem)] w-full border border-slate-200 bg-white shadow-card ${hideHeader ? '' : 'p-3 md:p-4 xl:p-5'}`}>
+            {!hideHeader ? (
+              <header className="mb-4 border-b border-slate-200 pb-3">
+                {(backHref || breadcrumbs?.length) ? (
+                  <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      {backHref ? (
+                        <button
+                          type="button"
+                          onClick={handleBackNavigation}
+                          className="inline-flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                          style={{ borderRadius: 6 }}
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          {backLabel}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {breadcrumbs?.length ? (
+                      <nav
+                        className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:justify-end"
+                        aria-label="Caminho da pÃ¡gina"
                       >
-                        <ArrowLeft className="h-4 w-4" />
-                        {backLabel}
-                      </button>
+                        {breadcrumbs.map((item, index) => (
+                          <div key={`${item.label}-${index}`} className="flex items-center gap-2">
+                            {item.href ? (
+                              <Link to={item.href} className="transition hover:text-slate-900">
+                                {item.label}
+                              </Link>
+                            ) : (
+                              <span className="font-medium text-slate-900">{item.label}</span>
+                            )}
+
+                            {index < breadcrumbs.length - 1 ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
+                          </div>
+                        ))}
+                      </nav>
                     ) : null}
                   </div>
-
-                  {breadcrumbs?.length ? (
-                    <nav
-                      className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:justify-end"
-                      aria-label="Caminho da pÃ¡gina"
-                    >
-                      {breadcrumbs.map((item, index) => (
-                        <div key={`${item.label}-${index}`} className="flex items-center gap-2">
-                          {item.href ? (
-                            <Link to={item.href} className="transition hover:text-slate-900">
-                              {item.label}
-                            </Link>
-                          ) : (
-                            <span className="font-medium text-slate-900">{item.label}</span>
-                          )}
-
-                          {index < breadcrumbs.length - 1 ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
-                        </div>
-                      ))}
-                    </nav>
-                  ) : null}
-                </div>
-              ) : null}
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{branding.platformName}</p>
-              <h1 className="mt-1 font-display text-[30px] leading-none text-slate-950 sm:text-[34px] lg:text-[38px]">{title}</h1>
-              <p className="mt-1 text-[13px] text-slate-600">{subtitle}</p>
-            </header>
+                ) : null}
+                <h1 className="font-display text-[26px] leading-none text-slate-950 sm:text-[30px] lg:text-[34px]">{title}</h1>
+                {subtitle ? <p className="mt-1 text-[13px] text-slate-600">{subtitle}</p> : null}
+              </header>
+            ) : null}
 
             {children}
           </div>

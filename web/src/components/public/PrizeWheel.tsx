@@ -473,9 +473,10 @@ export function PrizeWheel({
             onSpin()
           }}
           disabled={disabled || isSpinning}
-          className={`rounded-full bg-slate-950 font-bold uppercase text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 ${
+          className={`rounded-full font-bold uppercase text-white shadow-[0_12px_24px_rgba(15,23,42,0.18)] transition disabled:cursor-not-allowed disabled:opacity-60 ${
             isFullscreen ? 'px-8 py-3.5 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
           }`}
+          style={{ backgroundColor: primaryColor }}
         >
           {isSpinning ? 'Girando' : spinLabel || 'Girar'}
         </button>

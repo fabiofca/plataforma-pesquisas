@@ -1,20 +1,21 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowRight,
   BarChart3,
   ExternalLink,
   Gift,
-  Link2,
   ListChecks,
   PencilLine,
-  PieChart,
   Rocket,
   Share2,
   Sparkles,
+  Workflow,
 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
 import { SurveyPreviewLinkCard } from '@/components/ui/SurveyPreviewLinkCard'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
@@ -22,7 +23,7 @@ import { apiRequest } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import { getPublicSurveyPath, getSurveyTestPath } from '@/lib/public-survey'
 
-type SurveyTab = 'summary' | 'questions' | 'share' | 'results'
+type SurveyTab = 'summary' | 'questions' | 'share' | 'results' | 'flow' | 'prizes'
 
 type SummaryResponse = {
   summary: {
@@ -69,7 +70,29 @@ function getQuestionTypeLabel(type: string) {
 
 export function SurveyDetailsPage() {
   const { id } = useParams()
-  const [activeTab, setActiveTab] = useState<SurveyTab>('summary')
+  const location = useLocation()
+
+  const hashToTab: Record<string, SurveyTab> = {
+    '#perguntas': 'questions',
+    '#compartilhar': 'share',
+  }
+  const initialTab = hashToTab[location.hash] ?? 'summary'
+  const [activeTab, setActiveTab] = useState<SurveyTab>(initialTab)
+
+  const handleTabClick = useCallback((tab: SurveyTab) => {
+    setActiveTab(tab)
+    const tabToHash: Record<string, string> = {
+      questions: '#perguntas',
+      share: '#compartilhar',
+    }
+    const hash = tabToHash[tab]
+    if (hash) {
+      window.history.replaceState(null, '', hash)
+    } else {
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
+
   const [feedback, setFeedback] = useState('')
   const queryClient = useQueryClient()
 
@@ -136,18 +159,6 @@ export function SurveyDetailsPage() {
   })
 
   const survey = surveyQuery.data
-  const quickStats = useMemo(() => {
-    if (!survey) {
-      return []
-    }
-
-    return [
-      { label: 'Respostas', value: String(survey.responses) },
-      { label: 'Perguntas', value: String(survey.questions.length) },
-      { label: 'Participação', value: survey.participationMode },
-      { label: 'Roleta', value: survey.rewardEnabled ? 'Ativada' : 'Desligada' },
-    ]
-  }, [survey])
   const questionsWithFlow = survey?.questions.filter((question) => question.flowRules?.length).length ?? 0
   const requiredQuestions = survey?.questions.filter((question) => question.required).length ?? 0
   const summary = summaryQuery.data?.summary
@@ -174,35 +185,11 @@ export function SurveyDetailsPage() {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível voltar a pesquisa para rascunho.')
     },
   })
-  const tabs = [
-    { id: 'summary' as const, label: 'Resumo', icon: PieChart },
-    { id: 'questions' as const, label: 'Perguntas', icon: ListChecks },
-    { id: 'share' as const, label: 'Compartilhar', icon: Link2 },
-    { id: 'results' as const, label: 'Resultados', icon: BarChart3 },
-  ]
-
   return (
     <AppShell
       title={survey?.title ?? 'Pesquisa'}
-      subtitle={
-        survey?.kind === 'nps'
-          ? 'Página da pesquisa NPS com visão rápida, ações e compartilhamento.'
-          : 'Página da pesquisa com visão rápida, ações e compartilhamento.'
-      }
-      backHref={survey?.kind === 'nps' ? '/app/pesquisas/nps' : '/app/pesquisas'}
-      backLabel={survey?.kind === 'nps' ? 'Voltar para NPS' : 'Voltar para pesquisas'}
-      breadcrumbs={
-        survey?.kind === 'nps'
-          ? [
-              { label: 'Pesquisas', href: '/app/pesquisas' },
-              { label: 'NPS', href: '/app/pesquisas/nps' },
-              { label: survey?.title ?? 'Pesquisa' },
-            ]
-          : [
-              { label: 'Pesquisas', href: '/app/pesquisas' },
-              { label: survey?.title ?? 'Pesquisa' },
-            ]
-      }
+      subtitle=""
+      hideHeader
     >
       {surveyQuery.isError ? (
         <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
@@ -222,59 +209,14 @@ export function SurveyDetailsPage() {
 
       {survey ? (
         <>
-          <section className="admin-page-hero mb-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-            <div>
-              <div className="mb-3 h-2 w-16" style={{ backgroundColor: survey.primaryColor, borderRadius: 2 }} />
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                {survey.kind === 'nps' ? 'Pesquisa NPS' : 'Pesquisa personalizada'}
-              </p>
-              <h2 className="mt-1 font-display text-[24px] leading-tight text-slate-950">{survey.title}</h2>
-              <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
-                {survey.description || 'Abra a pesquisa, acompanhe os dados principais e siga rapidamente para editar, divulgar ou ver os relatórios.'}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="admin-badge border-slate-900 bg-slate-950 text-white">{survey.status}</span>
-                <span className="admin-badge bg-white">/{survey.slug}</span>
-                <span className="admin-badge bg-white">{survey.kind === 'nps' ? 'NPS' : 'Personalizada'}</span>
-              </div>
-            </div>
+          <SurveyNavBar
+            surveyId={survey.id}
+            surveyTitle={survey.title}
+            activeTab={activeTab}
+            onTabClick={handleTabClick}
+          />
 
-            <div className="grid gap-2 sm:grid-cols-2">
-              {quickStats.map((item) => (
-                <div key={item.label} className="admin-inline-stat">
-                  <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-950">{item.value}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <div className="mb-6 overflow-x-auto border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-2 shadow-card" style={{ borderRadius: 6 }}>
-            <div className="flex min-w-max gap-2">
-              {tabs.map((tab) => {
-                const Icon = tab.icon
-                const isActive = activeTab === tab.id
-
-                return (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition ${
-                      isActive
-                        ? 'border border-slate-900 bg-slate-950 text-white'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                    style={{ borderRadius: 6 }}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {tab.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
+          <div className="p-3 sm:p-4 lg:p-5">
           {activeTab === 'summary' ? (
             <>
               <SectionCard
@@ -611,23 +553,143 @@ export function SurveyDetailsPage() {
             </div>
           ) : null}
 
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link to={`/app/pesquisas/${survey.id}/editar`} className="admin-button-primary">
+          {activeTab === 'flow' ? (
+            <div className="mt-0">
+              <SectionCard
+                eyebrow="Fluxo da pesquisa"
+                title="Editor visual de conexões"
+                description="Monte o caminho que o participante segue entre as perguntas arrastando e conectando os blocos."
+              >
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="admin-highlight-card">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total de perguntas</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-950">{survey.questions.length}</p>
+                  </div>
+                  <div className="admin-highlight-card">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Com fluxo condicional</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-950">{questionsWithFlow}</p>
+                  </div>
+                  <div className="admin-highlight-card">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Obrigatórias</p>
+                    <p className="mt-2 text-3xl font-semibold text-slate-950">{requiredQuestions}</p>
+                  </div>
+                </div>
+
+                {questionsWithFlow > 0 ? (
+                  <div className="mt-5 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Perguntas com fluxo configurado</p>
+                    {survey.questions
+                      .filter((question) => question.flowRules?.length)
+                      .map((question, index) => (
+                        <div key={question.id} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                            {index + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-semibold text-slate-900">{question.title}</p>
+                            <p className="text-xs text-slate-500">
+                              {question.flowRules.length} {question.flowRules.length === 1 ? 'regra' : 'regras'} de fluxo
+                            </p>
+                          </div>
+                          <Workflow className="h-4 w-4 shrink-0 text-slate-400" />
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                    <Workflow className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-3 text-sm text-slate-600">Nenhuma pergunta possui fluxo condicional configurado.</p>
+                    <p className="mt-1 text-xs text-slate-500">Abra o editor visual para conectar as perguntas e definir caminhos.</p>
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    to={`/app/pesquisas/${survey.id}/editar`}
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    <Workflow className="h-4 w-4" />
+                    Abrir editor de fluxo
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link to={getSurveyTestPath(survey.id)} className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 transition hover:bg-sky-100">
+                    <Sparkles className="h-4 w-4" />
+                    Testar fluxo
+                  </Link>
+                </div>
+              </SectionCard>
+            </div>
+          ) : null}
+
+          {activeTab === 'prizes' ? (
+            <div className="mt-0">
+              <SectionCard
+                eyebrow="Campanha de prêmios"
+                title="Roleta e configuração de prêmios"
+                description={survey.rewardEnabled
+                  ? 'A roleta está ativada. Configure os prêmios, frequência e regras de distribuição.'
+                  : 'A roleta está desativada. Ative no editor para liberar a campanha de prêmios.'}
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="admin-highlight-card">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Status da roleta</p>
+                    <p className={`mt-2 text-2xl font-semibold ${survey.rewardEnabled ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      {survey.rewardEnabled ? 'Ativada' : 'Desativada'}
+                    </p>
+                  </div>
+                  <div className="admin-highlight-card">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Prêmios</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-700">
+                      {survey.rewardEnabled ? 'Veja a configuração completa na página de prêmios.' : 'Disponível ao ativar a roleta.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    to={`/app/pesquisas/${survey.id}/premios`}
+                    className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700"
+                  >
+                    <Gift className="h-4 w-4" />
+                    {survey.rewardEnabled ? 'Configurar prêmios' : 'Ativar e configurar'}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </SectionCard>
+            </div>
+          ) : null}
+
+          <div className="mt-8 flex flex-wrap gap-3 border-t border-slate-200 pt-5">
+            <Link
+              to={`/app/pesquisas/${survey.id}/editar`}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
               <PencilLine className="h-4 w-4" />
               Editar pesquisa
             </Link>
-            <Link to={getSurveyTestPath(survey.id)} className="admin-button">
+            <Link
+              to={getSurveyTestPath(survey.id)}
+              className="inline-flex items-center gap-2 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 transition hover:bg-sky-100"
+            >
               <Sparkles className="h-4 w-4" />
               Testar pesquisa
             </Link>
-            <Link to={`/app/pesquisas/${survey.id}/relatorios`} className="admin-button">
+            <Link
+              to={`/app/pesquisas/${survey.id}/relatorios`}
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100"
+            >
               <BarChart3 className="h-4 w-4" />
               Abrir relatórios
             </Link>
             {isPublishedSurvey ? (
-              <a href={publicSurveyPath} target="_blank" rel="noreferrer" className="admin-button">
+              <a
+                href={publicSurveyPath}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+              >
                 <ExternalLink className="h-4 w-4" />
-                Abrir página pública
+                Página pública
               </a>
             ) : null}
             {isPublishedSurvey ? (
@@ -643,16 +705,20 @@ export function SurveyDetailsPage() {
                   }
                 }}
                 disabled={unpublishMutation.isPending}
-                className="admin-button disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
               >
                 <Share2 className="h-4 w-4" />
                 {unpublishMutation.isPending ? 'Voltando...' : 'Voltar para rascunho'}
               </button>
             ) : null}
-            <Link to={survey.kind === 'nps' ? '/app/pesquisas/nps' : '/app/pesquisas'} className="admin-button">
-              <Share2 className="h-4 w-4" />
+            <Link
+              to={survey.kind === 'nps' ? '/app/pesquisas/nps' : '/app/pesquisas'}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" />
               Voltar para a lista
             </Link>
+          </div>
           </div>
         </>
       ) : (

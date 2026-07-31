@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, CheckCircle2, GitBranch, GripHorizontal, Move, Plus, Save, Trash2 } from 'lucide-react'
+import { ArrowRight, CheckCircle2, GitBranch, GripHorizontal, Move, Play, Plus, Save, Trash2 } from 'lucide-react'
 
 import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
 import {
   getNodePosition,
-  makeDefaultFlowLayout,
   sortIdsByFlowLayout,
 } from '@/lib/survey-visual-flow'
 import type { QuestionType, SurveyFlowLayout, SurveyQuestionFlowRule } from '@/types/domain'
@@ -207,6 +206,12 @@ export function SurveyVisualFlowEditor({
   }
 
   const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) ?? questions[0] ?? null
+  const firstNode = nodes.find((node) => questions[0]?.id === node.id)
+  const startNodeX = firstNode ? Math.max(16, firstNode.position.x - 100) : 80
+  const startNodeY = firstNode
+    ? Math.max(16, firstNode.position.y + firstNode.height / 2 - 22)
+    : 160
+
   const maxX = Math.max(...nodes.map((node) => node.position.x + NODE_WIDTH), NODE_WIDTH + 160)
   const maxY = Math.max(...nodes.map((node) => node.position.y + node.height), 420)
 
@@ -398,14 +403,6 @@ export function SurveyVisualFlowEditor({
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600">
               {questions.length} {questions.length === 1 ? 'pergunta' : 'perguntas'}
             </span>
-            <button
-              type="button"
-              onClick={() => onUpdateFlowLayout(makeDefaultFlowLayout(orderedQuestionIds))}
-              className="admin-button px-3 py-2 text-xs"
-            >
-              <Move className="h-3.5 w-3.5" />
-              Organizar
-            </button>
             <button type="button" onClick={onAddQuestion} className="admin-button-primary px-3 py-2 text-xs">
               <Plus className="h-3.5 w-3.5" />
               Nova pergunta
@@ -446,6 +443,9 @@ export function SurveyVisualFlowEditor({
                 </marker>
                 <marker id="flow-arrow-muted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8" />
+                </marker>
+                <marker id="flow-arrow-start" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#059669" />
                 </marker>
               </defs>
 
@@ -498,6 +498,21 @@ export function SurveyVisualFlowEditor({
                 )
               })}
 
+              {firstNode ? (
+                <g className="pointer-events-none">
+                  <path
+                    d={buildPath(
+                      { x: startNodeX + 44, y: startNodeY + 22 },
+                      { x: firstNode.position.x, y: firstNode.position.y + firstNode.height / 2 },
+                    )}
+                    fill="none"
+                    stroke="#059669"
+                    strokeWidth="2.5"
+                    markerEnd="url(#flow-arrow-start)"
+                  />
+                </g>
+              ) : null}
+
               {dragConnection ? (
                 <g className="pointer-events-none">
                   <path
@@ -543,6 +558,16 @@ export function SurveyVisualFlowEditor({
               </div>
             ) : null}
 
+            {firstNode ? (
+              <div
+                className="pointer-events-none absolute z-10 flex items-center gap-1.5 rounded-full border-2 border-emerald-300 bg-emerald-600 px-3 py-2 shadow-md"
+                style={{ left: startNodeX, top: startNodeY }}
+              >
+                <Play className="h-3.5 w-3.5 fill-white text-white" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white">Início</span>
+              </div>
+            ) : null}
+
             {nodes.map((node) => {
               const isSelected = selectedQuestion?.id === node.id
 
@@ -580,7 +605,7 @@ export function SurveyVisualFlowEditor({
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">
                         {questionTypeLabels[node.type]}
                       </span>
-                      {orderedQuestionIds[0] === node.id ? (
+                      {questions[0]?.id === node.id ? (
                         <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-emerald-700">
                           Início
                         </span>

@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Gift, ImagePlus, Plus, Target, Trash2 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
@@ -179,10 +180,6 @@ function getFrequencySummary(item: RewardFormItem) {
   return `Entrega aproximada de 1 prêmio a cada ${item.customFrequencyTarget || 100} participações.`
 }
 
-function getRedemptionMethodLabel(method: RewardRedemptionMethod) {
-  return method === 'address_only' ? 'Somente retirada no endereço' : 'Retirada no endereço + WhatsApp'
-}
-
 function getOutcomeRoleLabel(role: RewardOutcomeRole) {
   if (role === 'prize') {
     return 'Prêmio real'
@@ -195,13 +192,29 @@ function getOutcomeRoleLabel(role: RewardOutcomeRole) {
   return 'Sem prêmio'
 }
 
-function getFinalSpinModeLabel(mode: RewardFinalSpinMode) {
-  return mode === 'guaranteed_prize' ? 'Premiar todos no último giro' : 'Último giro pode premiar ou não'
+function formatDatePtBr(value: string) {
+  if (!value) return ''
+  const parsed = new Date(value.includes('T') ? value : `${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
 }
 
 export function RewardsPage() {
   const { id } = useParams()
   const queryClient = useQueryClient()
+
+  const surveyTitleQuery = useQuery({
+    queryKey: ['survey-title', id],
+    queryFn: async () => {
+      const response = await apiRequest<{ survey: { title: string } }>(`/surveys/${id}`)
+      return response.survey.title
+    },
+    enabled: Boolean(id),
+  })
   const demoTimeoutRef = useRef<number | null>(null)
   const itemPreviewUrlsRef = useRef<string[]>([])
   const newItemPreviewUrlRef = useRef('')
@@ -285,6 +298,20 @@ export function RewardsPage() {
     enabled: Boolean(id),
     retry: 0,
   })
+
+  const [winsSearch, setWinsSearch] = useState('')
+
+  const filteredWins = useMemo(() => {
+    const wins = rewardsQuery.data?.wins ?? []
+    const query = winsSearch.trim().toLowerCase()
+    if (!query) return wins
+    return wins.filter((win) =>
+      (win.name || '').toLowerCase().includes(query) ||
+      (win.phone || '').toLowerCase().includes(query) ||
+      win.itemTitle.toLowerCase().includes(query) ||
+      (win.redemptionStatus === 'delivered' ? 'entregue' : win.redemptionStatus === 'cancelled' ? 'cancelado' : 'pendente').includes(query)
+    )
+  }, [rewardsQuery.data?.wins, winsSearch])
 
   useEffect(() => {
     if (rewardsQuery.data?.campaign) {
@@ -626,60 +653,19 @@ export function RewardsPage() {
   )
   const demoSegments = useMemo(() => buildDemoWheelSegments(itemsForm, campaignForm.wheelMode), [itemsForm, campaignForm.wheelMode])
 
-  const configItems = rewardsQuery.data?.campaign
-    ? [
-        ['Status', rewardsQuery.data.campaign.status === 'active' ? 'Ativa' : rewardsQuery.data.campaign.status === 'paused' ? 'Pausada' : 'Encerrada'],
-        ['Modelo', rewardsQuery.data.campaign.wheel_mode === 'advanced' ? 'Roleta avançada' : 'Roleta padrão'],
-        ['Último giro', getFinalSpinModeLabel(rewardsQuery.data.campaign.final_spin_mode ?? 'allow_no_prize')],
-        ['Prêmios ativos', `${activeRewardsCount}/${rewardsQuery.data.campaign.wheel_mode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards}`],
-        ['Opções na roleta', rewardsQuery.data.campaign.wheel_mode === 'advanced' ? `${itemsForm.length} configuradas` : `${maxWheelOptions} no total`],
-        ['Validade', rewardsQuery.data.campaign.expires_at ? rewardsQuery.data.campaign.expires_at : 'Sem validade'],
-        ['Prazo do comprovante', `${rewardsQuery.data.campaign.redemption_expiration_days ?? 15} dia(s)`],
-        ['Retirada', rewardsQuery.data.campaign.pickup_address ? rewardsQuery.data.campaign.pickup_address : 'Não informada'],
-        ['Resgate no comprovante', getRedemptionMethodLabel(rewardsQuery.data.campaign.redemption_method ?? 'address_and_whatsapp')],
-        [
-          'WhatsApp de resgate',
-          rewardsQuery.data.campaign.redemption_method === 'address_only'
-            ? 'Desligado nesta campanha'
-            : rewardsQuery.data.campaign.contact_whatsapp
-              ? rewardsQuery.data.campaign.contact_whatsapp
-              : 'Não informado',
-        ],
-        ['Chance extra', rewardsQuery.data.campaign.retry_unlock_enabled ? `${rewardsQuery.data.campaign.retry_unlock_tasks_json?.length ?? 0} tarefa(s)` : 'Desligada'],
-      ]
-    : [
-        ['Status', campaignForm.status === 'active' ? 'Ativa' : campaignForm.status === 'paused' ? 'Pausada' : 'Encerrada'],
-        ['Modelo', campaignForm.wheelMode === 'advanced' ? 'Roleta avançada' : 'Roleta padrão'],
-        ['Último giro', getFinalSpinModeLabel(campaignForm.finalSpinMode)],
-        ['Prêmios ativos', `${activeRewardsCount}/${campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards}`],
-        ['Opções na roleta', campaignForm.wheelMode === 'advanced' ? `${itemsForm.length} configuradas` : `${maxWheelOptions} no total`],
-        ['Validade', campaignForm.expiresAt ? campaignForm.expiresAt : 'Sem validade'],
-        ['Prazo do comprovante', `${campaignForm.redemptionExpirationDays} dia(s)`],
-        ['Retirada', campaignForm.pickupAddress ? campaignForm.pickupAddress : 'Não informada'],
-        ['Resgate no comprovante', getRedemptionMethodLabel(campaignForm.redemptionMethod)],
-        [
-          'WhatsApp de resgate',
-          campaignForm.redemptionMethod === 'address_only'
-            ? 'Desligado nesta campanha'
-            : campaignForm.contactWhatsApp
-              ? campaignForm.contactWhatsApp
-              : 'Não informado',
-        ],
-        ['Chance extra', campaignForm.retryUnlockEnabled ? `${campaignForm.retryUnlockTasks.length} tarefa(s)` : 'Desligada'],
-      ]
-
   return (
     <AppShell
       title="Roleta de prêmios"
-      subtitle="Configuração simples: até 3 prêmios reais e o restante da roleta preenchido automaticamente com mensagens sem prêmio."
-      backHref={`/app/pesquisas/${id}`}
-      backLabel="Voltar para a pesquisa"
-      breadcrumbs={[
-        { label: 'Pesquisas', href: '/app/pesquisas' },
-        { label: 'Pesquisa', href: `/app/pesquisas/${id}` },
-        { label: 'Prêmios' },
-      ]}
+      subtitle=""
+      hideHeader
     >
+      <SurveyNavBar
+        surveyId={id!}
+        surveyTitle={surveyTitleQuery.data}
+        activeTab="prizes"
+      />
+
+      <div className="p-3 sm:p-4 lg:p-5">
       <AdminModal
         open={isCreateRewardModalOpen}
         title={campaignForm.wheelMode === 'advanced' ? 'Novo item da roleta' : 'Novo prêmio'}
@@ -887,18 +873,8 @@ export function RewardsPage() {
         </div>
       ) : null}
 
-      <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Campanha de prêmio</p>
-          <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
-            Configure a roleta com mais presença visual e sem perder o controle.
-          </h2>
-          <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
-            Cadastre os prêmios reais, ajuste a frequência e acompanhe a demonstração antes de publicar para o público.
-          </p>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-3">
+      <section className="admin-page-hero mb-6">
+        <div className="grid gap-2 sm:grid-cols-4">
           <div className="admin-inline-stat">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmios ativos</p>
             <p className="mt-1 text-sm font-semibold text-slate-950">{activeRewardsCount}</p>
@@ -910,8 +886,12 @@ export function RewardsPage() {
             </p>
           </div>
           <div className="admin-inline-stat">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Giros realizados</p>
+            <p className="mt-1 text-sm font-semibold text-slate-950">{rewardsQuery.data?.campaign?.spin_count ?? 0}</p>
+          </div>
+          <div className="admin-inline-stat">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Formato</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{maxWheelOptions} opções visuais</p>
+            <p className="mt-1 text-sm font-semibold text-slate-950">{campaignForm.wheelMode === 'advanced' ? 'Roleta avançada' : 'Roleta padrão'}</p>
           </div>
         </div>
       </section>
@@ -922,12 +902,6 @@ export function RewardsPage() {
           title="Parâmetros da campanha"
           description="Ative, pause ou encerre a roleta e defina uma validade opcional."
         >
-          <div className="mb-4 flex flex-wrap justify-between gap-3">
-            <Link to={`/app/pesquisas/${id}`} className="admin-button">
-              Voltar para a pesquisa
-            </Link>
-          </div>
-
           <div className="mb-4 flex justify-end">
             <button
               type="button"
@@ -939,16 +913,7 @@ export function RewardsPage() {
             </button>
           </div>
 
-          <div className="space-y-3">
-            {configItems.map(([label, value]) => (
-              <div key={label} className="admin-highlight-card">
-                <p className="text-xs uppercase tracking-[0.24em] text-slate-500">{label}</p>
-                <p className="mt-2 font-semibold text-slate-950">{value}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 grid gap-4">
+          <div className="grid gap-4">
             <label className="admin-subcard grid gap-2 text-sm text-slate-700">
               <span className="text-slate-600">Status da campanha</span>
               <select
@@ -1055,6 +1020,12 @@ export function RewardsPage() {
               </div>
             ) : null}
 
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Datas e prazos</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
             <label className="admin-subcard grid gap-2 text-sm text-slate-700">
               <span className="text-slate-600">Validade da campanha (opcional)</span>
               <input
@@ -1092,6 +1063,12 @@ export function RewardsPage() {
                 Padrão sugerido: 15 dias. Esse prazo será usado para definir a data limite no comprovante.
               </span>
             </label>
+
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Retirada e resgate</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
 
             <label className="admin-subcard grid gap-2 text-sm text-slate-700">
               <span className="text-slate-600">Endereço para retirada do prêmio</span>
@@ -1172,6 +1149,12 @@ export function RewardsPage() {
                 O comprovante vai mostrar apenas o endereço de retirada configurado acima.
               </div>
             )}
+
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Chance extra</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
               <label className="flex items-center gap-3">
@@ -1324,18 +1307,6 @@ export function RewardsPage() {
               : 'Cadastre no máximo 3 prêmios. Cada prêmio pode estar ativo ou inativo e ter sua própria frequência.'
           }
         >
-          <div className="admin-alert mb-4 border-slate-200 bg-slate-50 text-slate-700">
-            {campaignForm.wheelMode === 'advanced' ? (
-              <>
-                Itens configurados: <strong>{itemsForm.filter((item) => item.title.trim()).length}/{maxAdvancedWheelItems}</strong>
-              </>
-            ) : (
-              <>
-                Prêmios reais cadastrados: <strong>{itemsForm.filter((item) => item.title.trim()).length}/{maxRealRewards}</strong>
-              </>
-            )}
-          </div>
-
           <div className="mb-4 flex flex-wrap justify-end gap-3">
             <button
               type="button"
@@ -1367,14 +1338,6 @@ export function RewardsPage() {
               <Target className="h-4 w-4" />
               {saveItemsMutation.isPending ? 'Salvando...' : 'Salvar prêmios'}
             </button>
-          </div>
-
-          <div className="admin-empty-state mb-4 py-4 text-left text-slate-700">
-            {campaignForm.wheelMode === 'advanced' ? (
-              <>Dica: cadastre pelo menos um item <strong>Sem prêmio</strong> para os giros intermediários e um item <strong>Somente vitrine</strong> para os destaques visuais.</>
-            ) : (
-              <>Opções sem prêmio já incluídas automaticamente: <strong>{neutralLabels.join(' • ')}</strong></>
-            )}
           </div>
 
           <div className="space-y-3">
@@ -1518,20 +1481,20 @@ export function RewardsPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 text-sm">
-                      <div className="admin-subcard px-4 py-3">
-                        <p className="text-xs text-slate-500">Situação</p>
-                        <p className="mt-1 font-semibold text-slate-950">{getOutcomeRoleLabel(item.outcomeRole)}</p>
-                      </div>
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="text-xs text-slate-400">Tipo</span>
+                        <span className="font-semibold text-slate-950">{getOutcomeRoleLabel(item.outcomeRole)}</span>
+                      </span>
 
                       {item.outcomeRole === 'prize' ? (
                         <>
-                          <div className="admin-subcard px-4 py-3">
-                            <p className="text-xs text-slate-500">Estoque disponível</p>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-xs text-slate-400">Estoque</span>
                             <input
                               type="number"
                               min={1}
-                              className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
+                              className="w-16 bg-transparent font-semibold text-slate-950 outline-none"
                               value={item.quantityTotal}
                               onChange={(event) =>
                                 setItemsForm((current) =>
@@ -1543,17 +1506,17 @@ export function RewardsPage() {
                                 )
                               }
                             />
-                          </div>
+                          </span>
 
-                          <div className="admin-subcard px-4 py-3">
-                            <p className="text-xs text-slate-500">Entregues</p>
-                            <p className="font-semibold text-slate-950">{item.delivered}</p>
-                          </div>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-xs text-slate-400">Entregues</span>
+                            <span className="font-semibold text-slate-950">{item.delivered}</span>
+                          </span>
 
-                          <div className="admin-subcard px-4 py-3">
-                            <p className="text-xs text-slate-500">Frequência</p>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="text-xs text-slate-400">Frequência</span>
                             <select
-                              className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
+                              className="bg-transparent font-semibold text-slate-950 outline-none"
                               value={item.frequencyMode}
                               onChange={(event) =>
                                 setItemsForm((current) =>
@@ -1565,20 +1528,20 @@ export function RewardsPage() {
                                 )
                               }
                             >
-                              <option value="frequent">Prêmio frequente</option>
-                              <option value="balanced">Distribuição equilibrada</option>
-                              <option value="rare">Prêmio raro</option>
+                              <option value="frequent">Frequente</option>
+                              <option value="balanced">Equilibrada</option>
+                              <option value="rare">Raro</option>
                               <option value="custom">Personalizado</option>
                             </select>
-                          </div>
+                          </span>
 
                           {item.frequencyMode === 'custom' ? (
-                            <div className="admin-subcard px-4 py-3">
-                              <p className="text-xs text-slate-500">Meta personalizada</p>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="text-xs text-slate-400">Meta</span>
                               <input
                                 type="number"
                                 min={2}
-                                className="mt-1 w-full bg-transparent font-semibold text-slate-950 outline-none"
+                                className="w-20 bg-transparent font-semibold text-slate-950 outline-none"
                                 value={item.customFrequencyTarget}
                                 onChange={(event) =>
                                   setItemsForm((current) =>
@@ -1590,13 +1553,11 @@ export function RewardsPage() {
                                   )
                                 }
                               />
-                            </div>
+                            </span>
                           ) : null}
                         </>
                       ) : (
-                        <div className="admin-subcard px-4 py-3 text-slate-600">
-                          Esse item permanece visível na roleta, mas não usa estoque nem frequência.
-                        </div>
+                        <span className="text-xs text-slate-500">Sem estoque nem frequência</span>
                       )}
                     </div>
                   </div>
@@ -1674,24 +1635,35 @@ export function RewardsPage() {
             Local de retirada configurado: <strong>{campaignForm.pickupAddress || 'Não informado'}</strong>
           </div>
 
+          <div className="mb-4 flex justify-between gap-3">
+            <input
+              type="text"
+              className="admin-input max-w-xs"
+              placeholder="Buscar por nome, WhatsApp ou prêmio..."
+              value={winsSearch}
+              onChange={(event) => setWinsSearch(event.target.value)}
+            />
+          </div>
+
           {rewardsQuery.data?.wins.length ? (
             <div className="admin-table-shell">
-              <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_180px_260px] gap-3 xl:grid">
+              <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_150px_150px_260px] gap-3 xl:grid">
                 <div>Ganhador</div>
                 <div>WhatsApp</div>
                 <div>Prêmio</div>
                 <div>Status</div>
+                <div>Premiado em</div>
                 <div>Retirado em</div>
                 <div>Ações</div>
               </div>
 
               <div className="divide-y divide-slate-200">
-                {rewardsQuery.data.wins.map((win) => {
+                {filteredWins.length ? filteredWins.map((win) => {
                   const isUpdating = updateWinStatusMutation.isPending && updateWinStatusMutation.variables?.winId === win.id
 
                   return (
                     <article key={win.id} className="report-table-row">
-                      <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_180px_260px]">
+                      <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_150px_150px_260px]">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-950">{win.name || 'Sem nome informado'}</p>
                           <p className="truncate text-xs text-slate-500">{win.couponCode}</p>
@@ -1715,7 +1687,8 @@ export function RewardsPage() {
                                 : 'Pendente'}
                           </span>
                         </div>
-                        <div className="text-sm text-slate-500">{win.deliveredAt || '-'}</div>
+                        <div className="text-sm text-slate-500">{formatDatePtBr(win.awardedAt) || '-'}</div>
+                        <div className="text-sm text-slate-500">{win.deliveredAt ? formatDatePtBr(win.deliveredAt) : '-'}</div>
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
@@ -1778,8 +1751,12 @@ export function RewardsPage() {
                             <p className="text-sm text-slate-700">{win.itemTitle}</p>
                           </div>
                           <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Data de retirada</p>
-                            <p className="text-sm text-slate-500">{win.deliveredAt || '-'}</p>
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Premiado em</p>
+                            <p className="text-sm text-slate-500">{formatDatePtBr(win.awardedAt) || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
+                            <p className="text-sm text-slate-500">{win.deliveredAt ? formatDatePtBr(win.deliveredAt) : '-'}</p>
                           </div>
                         </div>
 
@@ -1812,8 +1789,12 @@ export function RewardsPage() {
                       </div>
                     </article>
                   )
-                })}
+                }) : null}
               </div>
+            </div>
+          ) : winsSearch.trim() ? (
+            <div className="admin-empty-state py-10">
+              Nenhum ganhador encontrado para a busca "<strong>{winsSearch}</strong>".
             </div>
           ) : (
             <div className="admin-empty-state py-10">
@@ -1982,6 +1963,7 @@ export function RewardsPage() {
           </div>
         </div>
       ) : null}
+      </div>
     </AppShell>
   )
 }

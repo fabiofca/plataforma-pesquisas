@@ -1,17 +1,17 @@
 import type { SurveyFlowLayout, SurveyFlowNodeLayout } from '@/types/domain'
 
-const DEFAULT_X = 140
-const DEFAULT_Y = 120
-const GAP_X = 300
-const GAP_Y = 180
+const DEFAULT_X = 80
+const DEFAULT_Y = 140
+const GAP_X = 360
+const GAP_Y = 300
 
-export function makeDefaultFlowLayout(questionIds: string[]): SurveyFlowLayout {
+export function makeDefaultFlowLayout(questionIds: string[], nodeHeights?: number[]): SurveyFlowLayout {
   return {
     version: 1,
     nodes: questionIds.map((id, index) => ({
       id,
-      x: DEFAULT_X + (index % 2) * GAP_X,
-      y: DEFAULT_Y + Math.floor(index / 2) * GAP_Y,
+      x: DEFAULT_X + index * GAP_X,
+      y: DEFAULT_Y,
     })),
   }
 }
@@ -30,8 +30,8 @@ export function mergeFlowLayout(questionIds: string[], current?: SurveyFlowLayou
 
     mergedNodes.push({
       id,
-      x: DEFAULT_X + (index % 2) * GAP_X,
-      y: DEFAULT_Y + Math.floor(index / 2) * GAP_Y,
+      x: DEFAULT_X + index * GAP_X,
+      y: DEFAULT_Y,
     })
   })
 
@@ -72,8 +72,8 @@ export function getNodePosition(layout: SurveyFlowLayout | undefined, nodeId: st
 
   return {
     id: nodeId,
-    x: DEFAULT_X + (index % 2) * GAP_X,
-    y: DEFAULT_Y + Math.floor(index / 2) * GAP_Y,
+    x: DEFAULT_X + index * GAP_X,
+    y: DEFAULT_Y,
   }
 }
 

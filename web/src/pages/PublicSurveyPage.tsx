@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Download, Gift, MessageCircle, X } from 'lucide-react'
+import { CheckCircle2, Download, Gift, MessageCircle, X } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -239,7 +239,7 @@ function fillRoundedRect(
 }
 
 function formatDatePtBr(value: string) {
-  const parsed = new Date(value)
+  const parsed = new Date(value.includes('T') ? value : `${value}T00:00:00`)
 
   if (Number.isNaN(parsed.getTime())) {
     return ''
@@ -1485,11 +1485,29 @@ export function PublicSurveyPage() {
             </div>
           ) : null}
 
+          {survey.bannerUrl ? (
+            <div className="mb-5 overflow-hidden sm:-mx-6 sm:-mt-8 lg:-mx-8 lg:-mt-8" style={{ borderRadius: '6px 6px 0 0' }}>
+              <img src={survey.bannerUrl} alt="" className="h-40 w-full object-cover sm:h-52" />
+            </div>
+          ) : null}
+
           <header className="border-b border-slate-100 pb-4 sm:pb-5">
-            <h1 className="font-display text-2xl leading-tight text-slate-950 sm:text-4xl lg:text-5xl">{survey.title}</h1>
-            <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-[15px] lg:text-base">
-              {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
-            </p>
+            <div className="flex items-start gap-4">
+              {survey.logoUrl ? (
+                <img src={survey.logoUrl} alt={survey.brandName || survey.title} className="h-12 w-12 shrink-0 rounded-lg object-cover sm:h-14 sm:w-14" />
+              ) : null}
+              <div className="min-w-0 flex-1">
+                {survey.brandName ? (
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{survey.brandName}</p>
+                ) : null}
+                <h1 className="font-display text-2xl leading-tight sm:text-4xl lg:text-5xl" style={{ color: survey.primaryColor || '#0f172a' }}>
+                  {survey.title}
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm text-slate-600 sm:text-[15px] lg:text-base">
+                  {survey.description || 'Responda os campos abaixo para concluir sua participação.'}
+                </p>
+              </div>
+            </div>
           </header>
 
           {eligibilityMessage && !submitted ? (
@@ -1567,16 +1585,31 @@ export function PublicSurveyPage() {
                 </div>
               </section>
 
-              {visibleQuestions.map((question) => {
+              {visibleQuestions.map((question, questionIndex) => {
                 const currentAnswer = answers[question.id]
+                const isOptionSelected = (option: string) =>
+                  question.type === 'single_choice'
+                    ? currentAnswer === option
+                    : Array.isArray(currentAnswer) && currentAnswer.includes(option)
 
                 return (
                   <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 6 }}>
-                    <div className="mb-4">
-                      <h2 className="font-semibold text-slate-950">
-                        {question.title}
-                        {question.required ? <span className="ml-1 text-rose-500">*</span> : null}
-                      </h2>
+                    <div className="mb-4 flex items-start gap-3">
+                      <span
+                        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+                        style={{ backgroundColor: survey.primaryColor || '#334155' }}
+                      >
+                        {questionIndex + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <h2 className="font-semibold text-slate-950">
+                          {question.title}
+                          {question.required ? <span className="ml-1 text-rose-500">*</span> : null}
+                        </h2>
+                        {question.description ? (
+                          <p className="mt-1 text-sm text-slate-500">{question.description}</p>
+                        ) : null}
+                      </div>
                     </div>
 
                     {question.type === 'long_text' ? (
@@ -1587,39 +1620,63 @@ export function PublicSurveyPage() {
                       />
                     ) : question.type === 'multiple_choice' || question.type === 'single_choice' ? (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {question.options?.map((option) => (
-                          <label key={option} className="flex items-center gap-3 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                            <input
-                              type={question.type === 'single_choice' ? 'radio' : 'checkbox'}
-                              name={question.id}
-                              checked={
-                                question.type === 'single_choice'
-                                  ? currentAnswer === option
-                                  : Array.isArray(currentAnswer) && currentAnswer.includes(option)
-                              }
-                              onChange={() =>
-                                question.type === 'single_choice'
-                                  ? setSingleAnswer(question.id, option)
-                                  : toggleOption(question.id, option)
-                              }
-                            />
-                            {option}
-                          </label>
-                        ))}
+                        {question.options?.map((option) => {
+                          const selected = isOptionSelected(option)
+                          return (
+                            <label
+                              key={option}
+                              className={`flex cursor-pointer items-center gap-3 rounded-[6px] border px-4 py-3 text-sm transition ${
+                                selected
+                                  ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              }`}
+                              style={selected && survey.primaryColor ? { borderColor: survey.primaryColor, backgroundColor: survey.primaryColor } : undefined}
+                            >
+                              <input
+                                type={question.type === 'single_choice' ? 'radio' : 'checkbox'}
+                                name={question.id}
+                                checked={
+                                  question.type === 'single_choice'
+                                    ? currentAnswer === option
+                                    : Array.isArray(currentAnswer) && currentAnswer.includes(option)
+                                }
+                                onChange={() =>
+                                  question.type === 'single_choice'
+                                    ? setSingleAnswer(question.id, option)
+                                    : toggleOption(question.id, option)
+                                }
+                                className={selected ? 'accent-white' : undefined}
+                              />
+                              {option}
+                            </label>
+                          )
+                        })}
                       </div>
                     ) : question.type === 'yes_no' ? (
                       <div className="grid gap-3 sm:grid-cols-2">
-                        {['Sim', 'Não'].map((option) => (
-                          <label key={option} className="flex items-center gap-3 rounded-[6px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                            <input
-                              type="radio"
-                              name={question.id}
-                              checked={currentAnswer === option}
-                              onChange={() => setSingleAnswer(question.id, option)}
-                            />
-                            {option}
-                          </label>
-                        ))}
+                        {['Sim', 'Não'].map((option) => {
+                          const selected = currentAnswer === option
+                          return (
+                            <label
+                              key={option}
+                              className={`flex cursor-pointer items-center gap-3 rounded-[6px] border px-4 py-3 text-sm transition ${
+                                selected
+                                  ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              }`}
+                              style={selected && survey.primaryColor ? { borderColor: survey.primaryColor, backgroundColor: survey.primaryColor } : undefined}
+                            >
+                              <input
+                                type="radio"
+                                name={question.id}
+                                checked={currentAnswer === option}
+                                onChange={() => setSingleAnswer(question.id, option)}
+                                className={selected ? 'accent-white' : undefined}
+                              />
+                              {option}
+                            </label>
+                          )
+                        })}
                       </div>
                     ) : question.type === 'rating_1_5' ? (
                       <div className="flex flex-wrap gap-3">
@@ -1628,12 +1685,13 @@ export function PublicSurveyPage() {
                             key={value}
                             type="button"
                             onClick={() => setSingleAnswer(question.id, value)}
-                            className={`h-12 w-12 border text-sm font-semibold ${
+                            className={`h-12 w-12 border text-sm font-semibold transition ${
                               currentAnswer === value
                                 ? 'border-slate-950 bg-slate-950 text-white'
-                                : 'border-slate-200 bg-slate-50 text-slate-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
                             }`}
-                            style={{ borderRadius: 6 }}
+                            style={currentAnswer === value && survey.primaryColor ? { borderColor: survey.primaryColor, backgroundColor: survey.primaryColor } : undefined}
+                            aria-label={`Nota ${value}`}
                           >
                             {value}
                           </button>
@@ -1651,12 +1709,13 @@ export function PublicSurveyPage() {
                               key={value}
                               type="button"
                               onClick={() => setSingleAnswer(question.id, value)}
-                              className={`h-14 border text-sm font-semibold ${
+                              aria-label={`NPS nota ${value}`}
+                              className={`h-14 border text-sm font-semibold transition ${
                                 currentAnswer === value
                                   ? 'border-slate-950 bg-slate-950 text-white'
-                                  : 'border-slate-200 bg-slate-50 text-slate-700'
+                                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
                               }`}
-                              style={{ borderRadius: 6 }}
+                              style={currentAnswer === value && survey.primaryColor ? { borderColor: survey.primaryColor, backgroundColor: survey.primaryColor, borderRadius: 6 } : { borderRadius: 6 }}
                             >
                               <span className="block text-base leading-none">{value}</span>
                             </button>
@@ -1674,13 +1733,26 @@ export function PublicSurveyPage() {
                 )
               })}
 
-              <button type="submit" disabled={submitMutation.isPending} className="admin-button-primary w-full justify-center">
-                {submitMutation.isPending ? 'Enviando...' : 'Continuar'}
+              {visibleQuestions.length > 1 ? (
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>{visibleQuestions.length} {visibleQuestions.length === 1 ? 'pergunta' : 'perguntas'}</span>
+                  <span>{Object.keys(answers).filter((id) => visibleQuestions.some((q) => q.id === id)).length} respondidas</span>
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={submitMutation.isPending}
+                className="w-full justify-center border px-6 py-3 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60"
+                style={{ borderRadius: 6, backgroundColor: survey.primaryColor || '#0f172a' }}
+              >
+                {submitMutation.isPending ? 'Enviando...' : 'Enviar pesquisa'}
               </button>
             </form>
           ) : (
             <section className="mt-6 border border-slate-200 bg-white p-6 text-center shadow-card" style={{ borderRadius: 6 }}>
-              <h2 className="font-display text-3xl text-slate-950 sm:text-4xl">Obrigado por participar</h2>
+              <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" strokeWidth={1.5} />
+              <h2 className="mt-4 font-display text-3xl text-slate-950 sm:text-4xl">Obrigado por participar</h2>
               <p className="mt-3 text-sm text-slate-600">
                 {submitMessage || 'Sua resposta foi registrada com sucesso.'}
               </p>
