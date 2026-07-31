@@ -7,6 +7,7 @@ import {
   getAvailableRewardItems,
   getFrequencyTarget,
   selectDueRewardItem,
+  selectGuaranteedPrizeItem,
   selectNoPrizeLabel,
 } from './reward-draw.js'
 
@@ -92,6 +93,134 @@ describe('reward draw', () => {
     )
 
     expect(result?.id).toBe('2')
+  })
+
+  it('respeita o min_gap_spins apos uma premiacao recente', () => {
+    const result = selectDueRewardItem(
+      [
+        {
+          id: '1',
+          title: 'Vale-compras',
+          quantity_total: 5,
+          quantity_awarded: 1,
+          frequency_mode: 'balanced',
+          frequency_target: 60,
+          next_release_spin: 50,
+          last_awarded_spin: 48,
+          min_gap_spins: 12,
+        },
+      ],
+      55,
+    )
+
+    expect(result).toBeNull()
+  })
+
+  it('libera o prêmio quando o min_gap_spins e cumprido', () => {
+    const result = selectDueRewardItem(
+      [
+        {
+          id: '1',
+          title: 'Vale-compras',
+          quantity_total: 5,
+          quantity_awarded: 1,
+          frequency_mode: 'balanced',
+          frequency_target: 60,
+          next_release_spin: 50,
+          last_awarded_spin: 40,
+          min_gap_spins: 12,
+        },
+      ],
+      55,
+    )
+
+    expect(result?.id).toBe('1')
+  })
+
+  it('selectGuaranteedPrizeItem respeita a frequencia quando um item esta vencido', () => {
+    const result = selectGuaranteedPrizeItem(
+      [
+        {
+          id: '1',
+          title: 'Premio A',
+          quantity_total: 5,
+          quantity_awarded: 0,
+          frequency_mode: 'rare',
+          frequency_target: 120,
+          next_release_spin: 100,
+          last_awarded_spin: 0,
+          min_gap_spins: 20,
+        },
+        {
+          id: '2',
+          title: 'Premio B',
+          quantity_total: 5,
+          quantity_awarded: 0,
+          frequency_mode: 'frequent',
+          frequency_target: 30,
+          next_release_spin: 40,
+          last_awarded_spin: 0,
+          min_gap_spins: 6,
+        },
+      ],
+      50,
+    )
+
+    expect(result?.id).toBe('2')
+  })
+
+  it('selectGuaranteedPrizeItem garante premio mesmo sem item vencido', () => {
+    const result = selectGuaranteedPrizeItem(
+      [
+        {
+          id: '1',
+          title: 'Premio A',
+          quantity_total: 5,
+          quantity_awarded: 0,
+          frequency_mode: 'rare',
+          frequency_target: 120,
+          next_release_spin: 200,
+          last_awarded_spin: 0,
+          min_gap_spins: 24,
+        },
+        {
+          id: '2',
+          title: 'Premio B',
+          quantity_total: 5,
+          quantity_awarded: 0,
+          frequency_mode: 'balanced',
+          frequency_target: 60,
+          next_release_spin: 150,
+          last_awarded_spin: 0,
+          min_gap_spins: 12,
+        },
+      ],
+      50,
+    )
+
+    // Nenhum item vencido, mas guarantee deve pegar o mais proximo (menor next_release_spin)
+    expect(result?.id).toBe('2')
+  })
+
+  it('selectGuaranteedPrizeItem retorna null quando nao ha estoque', () => {
+    const result = selectGuaranteedPrizeItem(
+      [
+        {
+          id: '1',
+          title: 'Premio A',
+          quantity_total: 5,
+          quantity_awarded: 5,
+          frequency_mode: 'balanced',
+          frequency_target: 60,
+          next_release_spin: 40,
+          last_awarded_spin: 0,
+          min_gap_spins: 12,
+        },
+      ],
+      50,
+    )
+
+    expect(result).toBeNull()
   })
 
   it('gera uma nova janela aleatória dentro da faixa esperada', () => {

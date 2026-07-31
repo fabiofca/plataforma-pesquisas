@@ -14,6 +14,7 @@ import {
   isWheelVisibleItem,
   selectAdvancedNoPrizeItem,
   selectDueRewardItem,
+  selectGuaranteedPrizeItem,
   selectNoPrizeLabel,
   type RewardDrawItem,
 } from '../services/reward-draw.js'
@@ -1222,13 +1223,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         : currentSpin - campaign.last_winning_spin >= calculateCampaignMinimumGap(activeTargets)
     const selectedItem =
       campaign.wheel_mode === 'advanced' && campaign.final_spin_mode === 'guaranteed_prize'
-        ? availablePrizeItems.sort((left, right) => {
-            if ((left.sort_order ?? 0) !== (right.sort_order ?? 0)) {
-              return (left.sort_order ?? 0) - (right.sort_order ?? 0)
-            }
-
-            return left.title.localeCompare(right.title)
-          })[0] ?? null
+        ? selectGuaranteedPrizeItem(normalizedItems, currentSpin)
         : canReleasePrize
           ? selectDueRewardItem(normalizedItems, currentSpin)
           : null

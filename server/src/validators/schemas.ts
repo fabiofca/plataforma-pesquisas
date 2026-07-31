@@ -230,6 +230,14 @@ export const rewardCampaignSchema = z.object({
       message: 'Cadastre pelo menos uma tarefa para liberar a chance extra.',
     })
   }
+
+  if (value.wheelMode === 'standard' && value.finalSpinMode === 'guaranteed_prize') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['finalSpinMode'],
+      message: 'O modo "Premiar todos no último giro" só está disponível na roleta avançada.',
+    })
+  }
 })
 
 const rewardItemBaseSchema = z.object({

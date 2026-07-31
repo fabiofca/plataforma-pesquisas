@@ -94,14 +94,8 @@ export function getAvailableRewardItems(items: RewardDrawItem[]) {
   return items.filter((item) => isAdvancedPrizeItem(item) && isRewardAvailable(item))
 }
 
-export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number) {
-  const availableItems = getAvailableRewardItems(items).filter((item) => currentSpin >= item.next_release_spin)
-
-  if (!availableItems.length) {
-    return null
-  }
-
-  return [...availableItems].sort((left, right) => {
+export function sortRewardItemsByDuePriority(items: RewardDrawItem[]) {
+  return [...items].sort((left, right) => {
     if (left.next_release_spin !== right.next_release_spin) {
       return left.next_release_spin - right.next_release_spin
     }
@@ -111,7 +105,36 @@ export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number
     }
 
     return left.title.localeCompare(right.title)
-  })[0]
+  })
+}
+
+export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number) {
+  const availableItems = getAvailableRewardItems(items)
+    .filter((item) => currentSpin >= item.next_release_spin)
+    .filter((item) => item.last_awarded_spin === 0 || currentSpin - item.last_awarded_spin >= item.min_gap_spins)
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return sortRewardItemsByDuePriority(availableItems)[0]
+}
+
+/**
+ * Selects a prize item in guaranteed_prize mode.
+ *
+ * Tries to respect frequency scheduling first (selectDueRewardItem).
+ * If no item is due yet, falls back to the one closest to being due
+ * (smallest next_release_spin) so the guarantee still holds.
+ */
+export function selectGuaranteedPrizeItem(items: RewardDrawItem[], currentSpin: number) {
+  const availableItems = getAvailableRewardItems(items)
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return selectDueRewardItem(items, currentSpin) ?? sortRewardItemsByDuePriority(availableItems)[0]
 }
 
 export function selectAdvancedNoPrizeItem(items: RewardDrawItem[]) {
