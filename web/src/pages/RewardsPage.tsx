@@ -749,7 +749,26 @@ export function RewardsPage() {
                 Nenhuma imagem enviada
               </div>
             )}
-            <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" onChange={(event) => void handleNewItemImageChange(event.target.files?.[0])} />
+            <input
+              type="file"
+              id="new-reward-image"
+              className="sr-only"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              onChange={(event) => void handleNewItemImageChange(event.target.files?.[0])}
+            />
+            <label
+              htmlFor="new-reward-image"
+              className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-[8px] border border-slate-200 px-3 py-2 text-sm font-medium transition hover:opacity-80"
+              style={{ background: 'var(--surface-0)', color: 'var(--text-primary)' }}
+            >
+              <ImagePlus className="h-4 w-4" />
+              Escolher arquivo
+            </label>
+            {newRewardForm.imagePreviewUrl || newRewardForm.imageUrl ? (
+              <span className="text-xs text-slate-500">{newRewardForm.imagePreviewUrl ? 'Nova imagem selecionada' : 'Imagem salva'}</span>
+            ) : (
+              <span className="text-xs text-slate-500">Nenhum arquivo escolhido</span>
+            )}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -1485,9 +1504,24 @@ export function RewardsPage() {
                         )}
                         <input
                           type="file"
+                          id={`reward-image-${item.id ?? index}`}
+                          className="sr-only"
                           accept="image/png,image/jpeg,image/svg+xml,image/webp"
                           onChange={(event) => void handleItemImageChange(index, event.target.files?.[0])}
                         />
+                        <label
+                          htmlFor={`reward-image-${item.id ?? index}`}
+                          className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-[8px] border border-slate-200 px-3 py-2 text-sm font-medium transition hover:opacity-80"
+                          style={{ background: 'var(--surface-0)', color: 'var(--text-primary)' }}
+                        >
+                          <ImagePlus className="h-4 w-4" />
+                          Escolher arquivo
+                        </label>
+                        {item.imagePreviewUrl || item.imageUrl ? (
+                          <span className="text-xs text-slate-500">{item.imagePreviewUrl ? 'Nova imagem selecionada' : 'Imagem salva'}</span>
+                        ) : (
+                          <span className="text-xs text-slate-500">Nenhum arquivo escolhido</span>
+                        )}
                       </div>
                     </div>
 
