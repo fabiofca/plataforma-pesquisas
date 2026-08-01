@@ -669,7 +669,7 @@ export function RewardsPage() {
         activeTab="prizes"
       />
 
-      <div className="p-3 sm:p-4 lg:p-5" data-force-light>
+      <div className="p-3 sm:p-4 lg:p-5">
       <AdminModal
         open={isCreateRewardModalOpen}
         title={campaignForm.wheelMode === 'advanced' ? 'Novo item da roleta' : 'Novo prêmio'}
@@ -736,7 +736,7 @@ export function RewardsPage() {
             <span className="text-slate-600">Imagem do prêmio (opcional)</span>
             <span className="text-xs text-slate-400">PNG, JPG ou WebP · Imagem quadrada recomendada · Mínimo 200×200 px</span>
             {getRewardImagePreview(newRewardForm) ? (
-              <div className="flex h-32 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+              <div className="flex h-32 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 p-3" style={{ background: 'var(--surface-1)' }}>
                 <img
                   src={getRewardImagePreview(newRewardForm)}
                   alt={newRewardForm.title || 'Imagem do item'}
@@ -744,7 +744,7 @@ export function RewardsPage() {
                 />
               </div>
             ) : (
-              <div className="flex h-32 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
+              <div className="flex h-32 items-center justify-center rounded-[16px] border border-dashed border-slate-300 text-slate-500" style={{ background: 'var(--surface-1)' }}>
                 <ImagePlus className="mr-2 h-4 w-4" />
                 Nenhuma imagem enviada
               </div>
@@ -939,7 +939,7 @@ export function RewardsPage() {
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
               <span className="text-slate-600">Modelo da roleta</span>
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-wheel-mode"
@@ -959,7 +959,7 @@ export function RewardsPage() {
                 </span>
               </label>
 
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-wheel-mode"
@@ -983,7 +983,7 @@ export function RewardsPage() {
             {campaignForm.wheelMode === 'advanced' ? (
               <div className="admin-subcard grid gap-3 text-sm text-slate-700">
                 <span className="text-slate-600">Comportamento do último giro</span>
-                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                   <input
                     type="radio"
                     name="reward-final-spin-mode"
@@ -1003,7 +1003,7 @@ export function RewardsPage() {
                   </span>
                 </label>
 
-                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                   <input
                     type="radio"
                     name="reward-final-spin-mode"
@@ -1096,7 +1096,7 @@ export function RewardsPage() {
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
               <span className="text-slate-600">Como o comprovante vai orientar o resgate</span>
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-redemption-method"
@@ -1116,7 +1116,7 @@ export function RewardsPage() {
                 </span>
               </label>
 
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-redemption-method"
@@ -1470,7 +1470,7 @@ export function RewardsPage() {
                         <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem opcional</span>
                         <span className="text-[11px] text-slate-400">PNG, JPG ou WebP · quadrada · mínimo 200×200 px</span>
                         {getRewardImagePreview(item) ? (
-                          <div className="flex h-24 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex h-24 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 p-3" style={{ background: 'var(--surface-1)' }}>
                             <img
                               src={getRewardImagePreview(item)}
                               alt={item.title || 'Imagem do item'}
@@ -1478,7 +1478,7 @@ export function RewardsPage() {
                             />
                           </div>
                         ) : (
-                          <div className="flex h-24 items-center justify-center rounded-[16px] border border-dashed border-slate-300 bg-slate-50 text-slate-500">
+                          <div className="flex h-24 items-center justify-center rounded-[16px] border border-dashed border-slate-300 text-slate-500" style={{ background: 'var(--surface-1)' }}>
                             <ImagePlus className="mr-2 h-4 w-4" />
                             Sem imagem
                           </div>
