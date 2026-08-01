@@ -305,6 +305,9 @@ textarea {
   }
 
   .admin-empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: 1px dashed var(--border-strong);
     background: var(--surface-1);
     color: var(--text-secondary);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Gift, ImagePlus, Plus, Target, Trash2 } from 'lucide-react'
+import { Gift, ImagePlus, Plus, Target, Trash2, X } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
@@ -653,6 +653,10 @@ export function RewardsPage() {
   )
   const demoSegments = useMemo(() => buildDemoWheelSegments(itemsForm, campaignForm.wheelMode), [itemsForm, campaignForm.wheelMode])
 
+  // Usa a cor primária da campanha como base para o preview da demo;
+  // fallback para roxo padrão quando não há configuração de branding.
+  const demoPrimaryColor = '#7c3aed'
+
   return (
     <AppShell
       title="Roleta de prêmios"
@@ -730,6 +734,7 @@ export function RewardsPage() {
 
           <div className="grid gap-2 text-sm">
             <span className="text-slate-600">Imagem do prêmio (opcional)</span>
+            <span className="text-xs text-slate-400">PNG, JPG ou WebP · Imagem quadrada recomendada · Mínimo 200×200 px</span>
             {getRewardImagePreview(newRewardForm) ? (
               <div className="flex h-32 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-3">
                 <img
@@ -1074,6 +1079,7 @@ export function RewardsPage() {
               <span className="text-slate-600">Endereço para retirada do prêmio</span>
               <textarea
                 className="admin-input min-h-24"
+                maxLength={300}
                 placeholder="Ex: Loja Centro, Rua Exemplo, 123, balcão de atendimento, retirar das 9h às 18h."
                 value={campaignForm.pickupAddress}
                 onChange={(event) =>
@@ -1083,6 +1089,9 @@ export function RewardsPage() {
                   }))
                 }
               />
+              <span className="text-right text-[11px] text-slate-400">
+                {campaignForm.pickupAddress.length}/300 caracteres
+              </span>
             </label>
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
@@ -1459,6 +1468,7 @@ export function RewardsPage() {
 
                       <div className="grid gap-2">
                         <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem opcional</span>
+                        <span className="text-[11px] text-slate-400">PNG, JPG ou WebP · quadrada · mínimo 200×200 px</span>
                         {getRewardImagePreview(item) ? (
                           <div className="flex h-24 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 bg-slate-50 p-3">
                             <img
@@ -1602,8 +1612,16 @@ export function RewardsPage() {
                 </article>
               ))
             ) : (
-              <div className="admin-empty-state py-8">
-                Nenhum prêmio cadastrado ainda. Use o botão acima para adicionar o primeiro item da roleta.
+              <div className="admin-empty-state py-10 flex-col gap-4">
+                <p>Nenhum prêmio cadastrado ainda.</p>
+                <button
+                  type="button"
+                  onClick={handleOpenCreateRewardModal}
+                  className="admin-button-primary"
+                >
+                  <Plus className="h-4 w-4" />
+                  {campaignForm.wheelMode === 'advanced' ? 'Adicionar primeiro item' : 'Adicionar primeiro prêmio'}
+                </button>
               </div>
             )}
           </div>
@@ -1819,6 +1837,7 @@ export function RewardsPage() {
 
               <button
                 type="button"
+                aria-label="Fechar demonstração"
                 onClick={() => {
                   setShowDemo(false)
                   setDemoSpinning(false)
@@ -1827,8 +1846,9 @@ export function RewardsPage() {
                     window.clearTimeout(demoTimeoutRef.current)
                   }
                 }}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
               >
+                <X className="h-4 w-4" />
                 Fechar
               </button>
             </div>
@@ -1839,7 +1859,7 @@ export function RewardsPage() {
                   segments={demoSegments}
                   rotation={demoRotation}
                   isSpinning={demoSpinning}
-                  primaryColor="#7c3aed"
+                  primaryColor={demoPrimaryColor}
                   activeSegmentId={demoResult?.id}
                   showCelebration={demoResult?.kind === 'reward'}
                   celebrationKey={demoCelebrationKey}
