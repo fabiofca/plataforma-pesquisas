@@ -934,7 +934,7 @@ export function RewardsPage() {
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
               <span className="text-slate-600">Modelo da roleta</span>
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-wheel-mode"
@@ -954,7 +954,7 @@ export function RewardsPage() {
                 </span>
               </label>
 
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-wheel-mode"
@@ -978,7 +978,7 @@ export function RewardsPage() {
             {campaignForm.wheelMode === 'advanced' ? (
               <div className="admin-subcard grid gap-3 text-sm text-slate-700">
                 <span className="text-slate-600">Comportamento do último giro</span>
-                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                   <input
                     type="radio"
                     name="reward-final-spin-mode"
@@ -998,7 +998,7 @@ export function RewardsPage() {
                   </span>
                 </label>
 
-                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+                <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                   <input
                     type="radio"
                     name="reward-final-spin-mode"
@@ -1087,7 +1087,7 @@ export function RewardsPage() {
 
             <div className="admin-subcard grid gap-3 text-sm text-slate-700">
               <span className="text-slate-600">Como o comprovante vai orientar o resgate</span>
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-redemption-method"
@@ -1107,7 +1107,7 @@ export function RewardsPage() {
                 </span>
               </label>
 
-              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+              <label className="flex items-start gap-3 rounded-[16px] border border-slate-200 px-4 py-3" style={{ background: 'var(--surface-0)' }}>
                 <input
                   type="radio"
                   name="reward-redemption-method"
@@ -1677,7 +1677,7 @@ export function RewardsPage() {
                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                 : win.redemptionStatus === 'cancelled'
                                   ? 'border-rose-200 bg-rose-50 text-rose-700'
-                                  : 'bg-white'
+                                  : 'border-slate-200 bg-slate-100 text-slate-600'
                             }`}
                           >
                             {win.redemptionStatus === 'delivered'
@@ -1730,7 +1730,7 @@ export function RewardsPage() {
                                 ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                 : win.redemptionStatus === 'cancelled'
                                   ? 'border-rose-200 bg-rose-50 text-rose-700'
-                                  : 'bg-white'
+                                  : 'border-slate-200 bg-slate-100 text-slate-600'
                             }`}
                           >
                             {win.redemptionStatus === 'delivered'
