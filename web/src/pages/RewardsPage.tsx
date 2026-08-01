@@ -758,8 +758,7 @@ export function RewardsPage() {
             />
             <label
               htmlFor="new-reward-image"
-              className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-[8px] border border-slate-200 px-3 py-2 text-sm font-medium transition hover:opacity-80"
-              style={{ background: 'var(--surface-0)', color: 'var(--text-primary)' }}
+              className="admin-button inline-flex w-fit cursor-pointer items-center gap-2"
             >
               <ImagePlus className="h-4 w-4" />
               Escolher arquivo
@@ -1511,8 +1510,7 @@ export function RewardsPage() {
                         />
                         <label
                           htmlFor={`reward-image-${item.id ?? index}`}
-                          className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-[8px] border border-slate-200 px-3 py-2 text-sm font-medium transition hover:opacity-80"
-                          style={{ background: 'var(--surface-0)', color: 'var(--text-primary)' }}
+                          className="admin-button inline-flex w-fit cursor-pointer items-center gap-2"
                         >
                           <ImagePlus className="h-4 w-4" />
                           Escolher arquivo
