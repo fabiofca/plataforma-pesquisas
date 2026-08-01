@@ -79,7 +79,8 @@ export function SurveyShareCard({
 
   return (
     <section
-      className={`rounded-[28px] border border-slate-200 bg-white ${compact ? 'p-4' : 'p-5 shadow-card'}`}
+      className={`rounded-[28px] border border-slate-200 ${compact ? 'p-4' : 'p-5 shadow-card'}`}
+      style={{ background: 'var(--surface-0)' }}
     >
       <div className={`gap-5 ${compact ? 'grid lg:grid-cols-[1fr_auto]' : 'grid xl:grid-cols-[1.2fr_0.8fr]'}`}>
         <div>
@@ -94,7 +95,7 @@ export function SurveyShareCard({
             Use este link para divulgar a pesquisa e baixe o QR code para materiais impressos ou telas.
           </p>
 
-          <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-4 rounded-[24px] border border-slate-200 p-4" style={{ background: 'var(--surface-1)' }}>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Link público</p>
             <p className="mt-2 break-all text-sm font-medium text-slate-950">{trackedPublicUrl}</p>
             <p className="mt-2 text-xs text-slate-500">Rota rastreada: {trackedPublicPath}</p>
@@ -102,16 +103,16 @@ export function SurveyShareCard({
 
           {canUseTracking ? (
             <div className={`mt-4 grid gap-3 ${compact ? 'grid-cols-2' : 'sm:grid-cols-3'}`}>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="rounded-[24px] border border-slate-200 p-4" style={{ background: 'var(--surface-1)' }}>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Cliques no link</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-950">{linkClicks}</p>
               </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="rounded-[24px] border border-slate-200 p-4" style={{ background: 'var(--surface-1)' }}>
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Leituras do QR</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-950">{qrScans}</p>
               </div>
               {!compact ? (
-                <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="rounded-[24px] border border-slate-200 p-4" style={{ background: 'var(--surface-1)' }}>
                   <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total de acessos</p>
                   <p className="mt-2 text-2xl font-semibold text-slate-950">{linkClicks + qrScans}</p>
                 </div>
@@ -134,7 +135,8 @@ export function SurveyShareCard({
                 type="button"
                 onClick={() => void handleDownloadQr()}
                 disabled={isDownloadingQr}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ background: 'var(--surface-0)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
                 aria-label="Baixar QR code da pesquisa"
               >
                 <Download className="h-4 w-4" />
@@ -145,7 +147,8 @@ export function SurveyShareCard({
               href={previewPublicPath}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold transition hover:opacity-80"
+              style={{ background: 'var(--surface-0)', color: 'var(--text-primary)', borderColor: 'var(--border)' }}
               aria-label="Abrir pesquisa pública"
             >
               <ExternalLink className="h-4 w-4" />
@@ -161,20 +164,22 @@ export function SurveyShareCard({
         </div>
 
         <div className="flex items-center justify-center">
-          <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+          <div className="rounded-[28px] border border-slate-200 p-4" style={{ background: 'var(--surface-1)' }}>
             {canUseQr && qrPreviewUrl && !qrPreviewFailed ? (
               <img
                 src={qrPreviewUrl}
                 alt={`QR code da pesquisa ${slug}`}
                 crossOrigin="use-credentials"
                 onError={() => setQrPreviewFailed(true)}
-                className={compact ? 'h-28 w-28 rounded-2xl bg-white p-2' : 'h-56 w-56 rounded-[24px] bg-white p-3'}
+                className={compact ? 'h-28 w-28 rounded-2xl p-2' : 'h-56 w-56 rounded-[24px] p-3'}
+                  style={{ background: 'var(--surface-0)' }}
               />
             ) : (
               <div
-                className={`flex items-center justify-center rounded-[24px] bg-white text-slate-400 ${
+                className={`flex items-center justify-center rounded-[24px] text-slate-400 ${
                   compact ? 'h-28 w-28' : 'h-56 w-56'
                 }`}
+              style={{ background: 'var(--surface-0)' }}
               >
                 {canUseQr ? (
                   <div className="px-4 text-center">

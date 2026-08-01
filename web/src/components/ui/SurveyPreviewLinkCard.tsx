@@ -57,7 +57,7 @@ export function SurveyPreviewLinkCard({ surveyId, isDraft }: SurveyPreviewLinkCa
   }
 
   return (
-    <div className="border border-sky-200 bg-[linear-gradient(180deg,#f8fdff_0%,#eef8ff_100%)] p-4 shadow-card" style={{ borderRadius: 8 }}>
+    <div className="border border-sky-200 p-4 shadow-card" style={{ borderRadius: 8, background: 'linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%)' }}>
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sky-700">
@@ -105,7 +105,7 @@ export function SurveyPreviewLinkCard({ surveyId, isDraft }: SurveyPreviewLinkCa
       </div>
 
       {previewUrl ? (
-        <div className="mt-4 border border-sky-200 bg-white p-4" style={{ borderRadius: 8 }}>
+        <div className="mt-4 border border-sky-200 p-4" style={{ borderRadius: 8, background: 'var(--surface-0)' }}>
           <p className="text-xs uppercase tracking-[0.18em] text-sky-700">URL de teste</p>
           <p className="mt-2 break-all text-sm text-slate-700">{previewUrl}</p>
 
