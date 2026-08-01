@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Download, Gift, MessageCircle, X } from 'lucide-react'
+import { CheckCircle2, Download, Gift, MessageCircle, Trophy, Sparkles, PartyPopper, Target, Clock, ExternalLink, Instagram, Star, X } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -330,6 +330,69 @@ function getRetryTaskTypeLabel(type: RewardRetryTask['type']) {
   }
 
   return 'Link personalizado'
+}
+
+function getRetryTaskTypeIcon(type: RewardRetryTask['type']) {
+  if (type === 'google_review') {
+    return Star
+  }
+
+  if (type === 'instagram_follow') {
+    return Instagram
+  }
+
+  return ExternalLink
+}
+
+function getRetryTaskTypeColor(type: RewardRetryTask['type']) {
+  if (type === 'google_review') {
+    return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: 'text-amber-500' }
+  }
+
+  if (type === 'instagram_follow') {
+    return { bg: 'bg-pink-50', border: 'border-pink-200', text: 'text-pink-700', icon: 'text-pink-500' }
+  }
+
+  return { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-700', icon: 'text-sky-500' }
+}
+
+function RetryStepper({ currentStep }: { currentStep: number }) {
+  const steps = ['Abrir', 'Voltar', 'Confirmar', 'Girar']
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      {steps.map((label, index) => {
+        const step = index + 1
+        const isActive = step === currentStep
+        const isCompleted = step < currentStep
+        return (
+          <div key={label} className="flex items-center">
+            <div
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold sm:h-8 sm:w-8 sm:text-xs ${
+                isCompleted
+                  ? 'bg-emerald-500 text-white'
+                  : isActive
+                    ? 'bg-sky-500 text-white ring-4 ring-sky-100'
+                    : 'bg-slate-100 text-slate-400'
+              }`}
+            >
+              {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : step}
+            </div>
+            <span
+              className={`ml-1 hidden text-[10px] font-semibold sm:inline ${
+                isActive ? 'text-sky-700' : isCompleted ? 'text-emerald-600' : 'text-slate-400'
+              }`}
+            >
+              {label}
+            </span>
+            {index < steps.length - 1 ? (
+              <div className={`mx-1 h-0.5 w-4 sm:w-6 ${isCompleted ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function buildPrizeWheelSegments(
@@ -1841,13 +1904,20 @@ export function PublicSurveyPage() {
                     />
 
                     {rewardResult?.won ? (
-                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
-                        <div className="absolute inset-0 rounded-[inherit] bg-white/78 backdrop-blur-[2px]" />
-                        <div className="relative w-full max-w-[min(94vw,540px)] rounded-[24px] border border-amber-200 bg-white px-5 py-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.14)] sm:px-7 sm:py-8">
-                          <p className="text-xs uppercase tracking-[0.22em] text-amber-700">Prêmio confirmado</p>
-                          <p className="mt-3 text-base font-semibold text-slate-900 sm:text-lg">Você ganhou:</p>
+                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
+                        <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
+                        <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-amber-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(245,158,11,0.22)] sm:px-8 sm:py-9 animate-fade-in-scale">
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600 shadow-[0_8px_24px_rgba(245,158,11,0.28)] sm:h-16 sm:w-16">
+                            <Trophy className="h-7 w-7 sm:h-8 sm:w-8" />
+                          </div>
+                          <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-amber-600">Prêmio confirmado</p>
+                          <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+                            {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">Você ganhou:</p>
+
                           {rewardResult.itemImageUrl ? (
-                            <div className="mt-5 overflow-hidden rounded-[20px] border border-amber-100 bg-amber-50">
+                            <div className="mt-5 overflow-hidden rounded-[22px] border-2 border-amber-200 bg-amber-50 shadow-[0_12px_32px_rgba(245,158,11,0.16)]">
                               <img
                                 src={rewardResult.itemImageUrl}
                                 alt={rewardResult.item || 'Prêmio'}
@@ -1855,67 +1925,128 @@ export function PublicSurveyPage() {
                               />
                             </div>
                           ) : null}
-                          <p className="mt-3 font-display text-3xl leading-tight text-slate-950 sm:text-4xl">{rewardResult.item}</p>
-                          <p className="mt-3 text-sm text-slate-600">{rewardInstructionText}</p>
+
+                          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-1.5">
+                            <Sparkles className="h-4 w-4 text-amber-500" />
+                            <p className="font-display text-2xl font-bold text-slate-950 sm:text-3xl">{rewardResult.item}</p>
+                          </div>
+
+                          <p className="mt-4 text-sm text-slate-600">{rewardInstructionText}</p>
+
                           {rewardResult.couponCode ? (
-                            <div className="mt-5 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3">
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Protocolo</p>
-                              <p className="mt-2 text-lg font-bold text-slate-950 sm:text-xl">{rewardResult.couponCode}</p>
+                            <div className="mt-5 overflow-hidden rounded-[18px] border-2 border-dashed border-amber-300 bg-amber-50/70 px-5 py-4">
+                              <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Protocolo</p>
+                              <div className="mt-2 flex items-center justify-center gap-3">
+                                <p className="text-2xl font-black tracking-widest text-slate-950 sm:text-3xl">{rewardResult.couponCode}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
+                                  className="rounded-lg bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-800 transition hover:bg-amber-300"
+                                >
+                                  Copiar
+                                </button>
+                              </div>
                             </div>
                           ) : null}
+
                           {rewardProofExpiresAt ? (
-                            <div className="mt-4 rounded-[18px] border border-amber-100 bg-amber-50 px-4 py-3 text-left">
-                              <p className="text-xs uppercase tracking-[0.18em] text-amber-700">Válido até</p>
-                              <p className="mt-2 text-sm font-semibold text-slate-900">{formatDatePtBr(rewardProofExpiresAt)}</p>
+                            <div className="mt-4 flex items-center gap-3 rounded-[16px] border border-amber-100 bg-amber-50 px-4 py-3 text-left">
+                              <Clock className="h-5 w-5 flex-shrink-0 text-amber-500" />
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Válido até</p>
+                                <p className="text-sm font-semibold text-slate-900">{formatDatePtBr(rewardProofExpiresAt)}</p>
+                              </div>
                             </div>
                           ) : null}
+
                           {rewardPickupAddress ? (
-                            <div className="mt-4 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 text-left">
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Retirada</p>
-                              <p className="mt-2 text-sm text-slate-700">{rewardPickupAddress}</p>
+                            <div className="mt-3 flex items-center gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+                              <Target className="h-5 w-5 flex-shrink-0 text-slate-400" />
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Retirada</p>
+                                <p className="text-sm text-slate-700">{rewardPickupAddress}</p>
+                              </div>
                             </div>
                           ) : null}
-                          <div className="mt-5 flex flex-col gap-3">
-                            <button
-                              type="button"
-                              onClick={() => void handleDownloadRewardProof()}
-                              disabled={savingRewardProof}
-                              className="admin-button-primary w-full justify-center"
-                            >
-                              <Download className="h-4 w-4" />
-                              {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
-                            </button>
+
+                          <div className="mt-6 flex flex-col gap-3">
                             {rewardContactWhatsAppUrl ? (
                               <a
                                 href={rewardContactWhatsAppUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="admin-button w-full justify-center"
+                                className="admin-button-primary w-full justify-center"
+                                style={{ backgroundColor: '#22c55e' }}
                               >
-                                <MessageCircle className="h-4 w-4" />
+                                <MessageCircle className="h-5 w-5" />
                                 Resgatar pelo WhatsApp
                               </a>
                             ) : null}
+                            <button
+                              type="button"
+                              onClick={() => void handleDownloadRewardProof()}
+                              disabled={savingRewardProof}
+                              className="admin-button w-full justify-center"
+                            >
+                              <Download className="h-4 w-4" />
+                              {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
+                            </button>
                           </div>
                         </div>
                       </div>
                     ) : null}
 
                     {showRetryTaskOverlay && currentRetryTask ? (
-                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5">
-                        <div className="absolute inset-0 rounded-[inherit] bg-white/82 backdrop-blur-[2px]" />
-                        <div className="relative w-full max-w-[min(94vw,540px)] rounded-[24px] border border-slate-200 bg-white px-5 py-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.14)] sm:px-7 sm:py-8">
-                          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Mais uma chance</p>
-                          <p className="mt-3 text-base font-semibold text-slate-900 sm:text-lg">
+                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
+                        <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
+                        <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-sky-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(14,165,233,0.18)] sm:px-8 sm:py-9 animate-fade-in-scale">
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-[0_8px_24px_rgba(14,165,233,0.24)] sm:h-16 sm:w-16">
+                            <PartyPopper className="h-7 w-7 sm:h-8 sm:w-8" />
+                          </div>
+                          <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
+                          <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
                             {rewardResult?.landedLabel ? `A roleta parou em ${rewardResult.landedLabel}.` : 'Você não ganhou neste giro.'}
                           </p>
-                          <p className="mt-3 text-sm text-slate-600 sm:text-base">Abra a tarefa e depois confirme aqui.</p>
+                          <p className="mt-1 text-sm text-slate-500">Complete a tarefa abaixo para girar novamente.</p>
+
+                          <div className="mt-5">
+                            <RetryStepper
+                              currentStep={
+                                currentRetryTaskCanConfirm
+                                  ? 3
+                                  : currentRetryTaskReturned
+                                    ? 2
+                                    : currentRetryTaskProgress
+                                      ? 2
+                                      : 1
+                              }
+                            />
+                          </div>
+
+                          {rewardResult?.spinAttempt && rewardResult.maxAttempts ? (
+                            <div className="mt-4">
+                              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                                <span>Progresso</span>
+                                <span>
+                                  Tentativa {rewardResult.spinAttempt} de {rewardResult.maxAttempts}
+                                </span>
+                              </div>
+                              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-sky-500 transition-all duration-500"
+                                  style={{
+                                    width: `${Math.min(100, ((rewardResult.spinAttempt - 1) / (rewardResult.maxAttempts - 1 || 1)) * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
 
                           <div
-                            className={`mt-5 rounded-[18px] border px-4 py-4 text-left transition ${
+                            className={`mt-5 rounded-[20px] border px-5 py-4 text-left transition ${
                               currentRetryTaskCanConfirm || currentRetryTaskIsLoading
                                 ? 'border-slate-200 bg-slate-50'
-                                : 'cursor-pointer border-sky-200 bg-sky-50 hover:border-sky-300 hover:bg-sky-100/70'
+                                : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer hover:shadow-md`
                             }`}
                             role="button"
                             tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
@@ -1939,24 +2070,54 @@ export function PublicSurveyPage() {
                               }
                             }}
                           >
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
-                            <p className="mt-2 text-xl font-semibold text-slate-950">{currentRetryTask.title}</p>
-                            <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">
-                              {getRetryTaskTypeLabel(currentRetryTask.type)}
-                            </p>
+                            <div className="flex items-start gap-3">
+                              <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
+                                {(() => {
+                                  const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
+                                  return <Icon className="h-5 w-5" />
+                                })()}
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
+                                <p className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{currentRetryTask.title}</p>
+                                <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
+                                  {getRetryTaskTypeLabel(currentRetryTask.type)}
+                                </p>
+                              </div>
+                            </div>
                           </div>
 
                           <div className="mt-4 flex items-center justify-center">
                             <span
-                              className={`admin-badge ${
+                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
                                 currentRetryTaskCanConfirm
-                                  ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                  : 'border-slate-200 bg-slate-50 text-slate-700'
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                  : currentRetryTaskReturned
+                                    ? 'border-sky-200 bg-sky-50 text-sky-700'
+                                    : 'border-slate-200 bg-slate-50 text-slate-700'
                               }`}
                             >
+                              {currentRetryTaskCanConfirm ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
                               {currentRetryTaskStatusLabel}
                             </span>
                           </div>
+
+                          {currentRetryTaskRemainingSeconds > 0 ? (
+                            <div className="mt-4">
+                              <div className="flex items-center justify-between text-xs text-slate-500">
+                                <span>Tempo para confirmar</span>
+                                <span className="font-mono font-semibold">{currentRetryTaskRemainingSeconds}s</span>
+                              </div>
+                              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-sky-400 transition-all"
+                                  style={{
+                                    width: `${Math.min(100, ((RETRY_TASK_MIN_WAIT_MS - currentRetryTaskRemainingSeconds * 1000) / RETRY_TASK_MIN_WAIT_MS) * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
 
                           <div className="mt-5 flex flex-col gap-3">
                             <button
@@ -1982,24 +2143,40 @@ export function PublicSurveyPage() {
                   </div>
 
                   {!showRetryTaskOverlay && !rewardResult?.won && !wheelSpinning ? (
-                    <div className="mt-4">
+                    <div className="mt-4 animate-fade-in-up">
                       {rewardResult?.retryAvailable && canSpinReward ? (
-                        <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-center">
-                          <p className="text-sm font-semibold text-emerald-700">Sua próxima tentativa está liberada.</p>
+                        <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-5 py-5 text-center shadow-[0_12px_32px_rgba(16,185,129,0.12)]">
+                          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                            <Sparkles className="h-5 w-5" />
+                          </div>
+                          <p className="mt-2 text-base font-bold text-emerald-800">Sua próxima tentativa está liberada!</p>
+                          <p className="mt-1 text-sm text-emerald-700">Gire a roleta novamente para tentar ganhar.</p>
                         </div>
                       ) : rewardResult ? (
-                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-center">
+                        <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-5 text-center shadow-[0_12px_32px_rgba(245,158,11,0.12)]">
+                          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                            <Star className="h-5 w-5" />
+                          </div>
                           {rewardResult.landedLabel ? (
-                            <p className="text-sm text-slate-600">
-                              A roleta parou em <span className="font-semibold text-slate-950">{rewardResult.landedLabel}</span>
+                            <p className="mt-2 text-sm text-amber-800">
+                              A roleta parou em <span className="font-bold text-amber-900">{rewardResult.landedLabel}</span>
                             </p>
                           ) : null}
-                          <p className="mt-2 text-base font-semibold text-slate-950">
-                            {rewardResult.message || 'Desta vez não houve prêmio disponível.'}
+                          <p className="mt-1 text-base font-bold text-amber-900">
+                            {rewardResult.message || 'Não foi dessa vez, mas não desanime!'}
                           </p>
+                          {rewardResult.finalAttempt ? (
+                            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                              Suas tentativas desta experiência foram usadas
+                            </p>
+                          ) : rewardResult.maxAttempts ? (
+                            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                              Tentativa {rewardResult.spinAttempt} de {rewardResult.maxAttempts}
+                            </p>
+                          ) : null}
                         </div>
                       ) : !canSpinReward ? (
-                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4 text-center">
+                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-5 py-4 text-center">
                           <p className="text-sm font-semibold text-slate-700">Aguardando resultado</p>
                         </div>
                       ) : null}

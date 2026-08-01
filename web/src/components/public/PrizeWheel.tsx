@@ -286,6 +286,40 @@ export function PrizeWheel({
     oscillator.stop(now + 0.06)
   }
 
+  function playWinSound(audioContext: AudioContext) {
+    const now = audioContext.currentTime
+    const notes = [523.25, 659.25, 783.99, 1046.5]
+    notes.forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(frequency, now + index * 0.08)
+      gainNode.gain.setValueAtTime(0.0001, now + index * 0.08)
+      gainNode.gain.exponentialRampToValueAtTime(0.08, now + index * 0.08 + 0.04)
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.08 + 0.35)
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      oscillator.start(now + index * 0.08)
+      oscillator.stop(now + index * 0.08 + 0.4)
+    })
+  }
+
+  function playNeutralSound(audioContext: AudioContext) {
+    const now = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    oscillator.type = 'triangle'
+    oscillator.frequency.setValueAtTime(300, now)
+    oscillator.frequency.linearRampToValueAtTime(250, now + 0.25)
+    gainNode.gain.setValueAtTime(0.0001, now)
+    gainNode.gain.exponentialRampToValueAtTime(0.05, now + 0.04)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.35)
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    oscillator.start(now)
+    oscillator.stop(now + 0.4)
+  }
+
   useEffect(() => {
     if (!isSpinning || !audioUnlockedRef.current) {
       clearSpinSoundLoop()
@@ -321,6 +355,43 @@ export function PrizeWheel({
       clearSpinSoundLoop()
     }
   }, [isSpinning])
+
+  useEffect(() => {
+    if (!showCelebration || !audioUnlockedRef.current) {
+      return
+    }
+
+    const audioContext = getAudioContext()
+    if (!audioContext || audioContext.state !== 'running') {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      playWinSound(audioContext)
+    }, 200)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [showCelebration, celebrationKey])
+
+  useEffect(() => {
+    if (isSpinning || !activeSegmentId || !audioUnlockedRef.current) {
+      return
+    }
+
+    const activeSegment = segments.find((segment) => segment.id === activeSegmentId)
+    if (!activeSegment || activeSegment.kind === 'reward') {
+      return
+    }
+
+    const audioContext = getAudioContext()
+    if (!audioContext || audioContext.state !== 'running') {
+      return
+    }
+
+    playNeutralSound(audioContext)
+  }, [activeSegmentId, isSpinning, segments])
 
   useEffect(() => {
     return () => {
