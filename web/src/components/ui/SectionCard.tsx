@@ -12,7 +12,7 @@ export function SectionCard({
   children: ReactNode
 }) {
   return (
-    <section className="overflow-hidden rounded-[8px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-4 shadow-card">
+    <section className="overflow-hidden rounded-[8px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-4 shadow-card" style={{ background: 'linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%)' }}>
       <div className="mb-4 border-b border-slate-100 pb-4">
         <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>
         <div className="mt-2 h-[3px] w-12 bg-[linear-gradient(90deg,#0b5cff_0%,#93c5fd_100%)]" />

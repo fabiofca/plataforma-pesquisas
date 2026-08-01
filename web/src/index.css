@@ -59,54 +59,68 @@ body {
   background: var(--app-bg);
 }
 
-/* AppShell structural dark mode (uses Tailwind utility classes that need overrides) */
+/* ────────────────────────────────────────────────────────────
+   Dark mode — global Tailwind utility overrides
+   Cobre TODOS os elementos do JSX que usam classes slate/white
+   sem precisar alterar cada arquivo individualmente
+   ─────────────────────────────────────────────────────────── */
 
-:root.dark .min-h-screen.bg-slate-100 {
-  background-color: var(--app-bg);
-}
+/* Backgrounds */
+:root.dark .bg-white   { background-color: var(--surface-0) !important; }
+:root.dark .bg-slate-50  { background-color: var(--surface-1) !important; }
+:root.dark .bg-slate-100 { background-color: var(--surface-2) !important; }
+:root.dark .bg-white\/95 { background-color: rgba(15,23,42,0.96) !important; }
+:root.dark .bg-slate-950\/45 { background-color: rgba(0,0,0,0.65) !important; }
 
-/* Top header bar */
-:root.dark .border-slate-200.bg-white\/95 {
-  background-color: rgba(15, 23, 42, 0.96) !important;
-  border-color: var(--border) !important;
-}
+/* Borders */
+:root.dark .border-slate-100  { border-color: rgba(45,63,85,0.6) !important; }
+:root.dark .border-slate-200  { border-color: var(--border) !important; }
+:root.dark .border-slate-300  { border-color: var(--border-strong) !important; }
+:root.dark .border-b-slate-200 { border-bottom-color: var(--border) !important; }
+:root.dark .border-t-slate-200 { border-top-color: var(--border) !important; }
+:root.dark .divide-slate-200 > * + * { border-color: var(--border) !important; }
+:root.dark .border-dashed.border-slate-300 { border-color: var(--border-strong) !important; }
 
-/* Main content panel (the white card wrapping every page) */
+/* Texto */
+:root.dark .text-slate-950 { color: #f8fafc !important; }
+:root.dark .text-slate-900 { color: #e2e8f0 !important; }
+:root.dark .text-slate-800 { color: #e2e8f0 !important; }
+:root.dark .text-slate-700 { color: #cbd5e1 !important; }
+:root.dark .text-slate-600 { color: #94a3b8 !important; }
+:root.dark .text-slate-500 { color: #94a3b8 !important; }
+
+/* Hover backgrounds comuns */
+:root.dark .hover\:bg-slate-50:hover  { background-color: var(--surface-2) !important; }
+:root.dark .hover\:bg-slate-100:hover { background-color: var(--surface-3) !important; }
+:root.dark .hover\:bg-white:hover     { background-color: var(--surface-1) !important; }
+:root.dark .hover\:border-slate-300:hover { border-color: var(--border-strong) !important; }
+
+/* Page shell e header */
+:root.dark .min-h-screen.bg-slate-100 { background-color: var(--app-bg) !important; }
 :root.dark .border-slate-200.bg-white.shadow-card {
   background-color: var(--surface-0) !important;
   border-color: var(--border) !important;
 }
 
-/* Dividers and inner borders */
-:root.dark .border-slate-200 {
-  border-color: var(--border);
-}
+/* Alertas e badges coloridos no dark mode */
+:root.dark .bg-rose-50    { background-color: rgba(159,18,57,0.18) !important; }
+:root.dark .text-rose-900 { color: #fca5a5 !important; }
+:root.dark .text-rose-700 { color: #fca5a5 !important; }
+:root.dark .border-rose-200 { border-color: rgba(159,18,57,0.35) !important; }
 
-/* Text colors */
-:root.dark .text-slate-950 { color: #f8fafc; }
-:root.dark .text-slate-900 { color: #e2e8f0; }
-:root.dark .text-slate-700 { color: #cbd5e1; }
-:root.dark .text-slate-600 { color: #94a3b8; }
-:root.dark .text-slate-500 { color: #94a3b8; }
+:root.dark .bg-emerald-50    { background-color: rgba(6,78,59,0.2) !important; }
+:root.dark .text-emerald-900 { color: #6ee7b7 !important; }
+:root.dark .text-emerald-700 { color: #6ee7b7 !important; }
+:root.dark .border-emerald-200 { border-color: rgba(6,78,59,0.4) !important; }
 
-/* Surface overrides */
-:root.dark .bg-white   { background-color: var(--surface-0); }
-:root.dark .bg-slate-50 { background-color: var(--surface-1); }
-:root.dark .bg-slate-100 { background-color: var(--surface-2); }
+:root.dark .bg-amber-50    { background-color: rgba(120,53,15,0.18) !important; }
+:root.dark .text-amber-900 { color: #fcd34d !important; }
+:root.dark .text-amber-700 { color: #fcd34d !important; }
+:root.dark .border-amber-200 { border-color: rgba(120,53,15,0.35) !important; }
 
-/* Mobile overlay */
-:root.dark .bg-slate-950\/45 { background-color: rgba(0, 0, 0, 0.65); }
-
-/* Dark mode: header toggle button */
-:root.dark .border-slate-200.bg-slate-50.text-slate-700 {
-  background-color: var(--surface-2) !important;
-  border-color: var(--border) !important;
-  color: #94a3b8 !important;
-}
-
-:root.dark .border-slate-200.bg-slate-50.text-slate-700:hover {
-  background-color: var(--surface-3) !important;
-}
+:root.dark .bg-sky-50    { background-color: rgba(12,74,110,0.2) !important; }
+:root.dark .text-sky-700  { color: #7dd3fc !important; }
+:root.dark .border-sky-200 { border-color: rgba(12,74,110,0.4) !important; }
 
 #root {
   min-height: 100vh;

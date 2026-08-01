@@ -21,6 +21,23 @@ export default {
           600: 'var(--brand-primary-600, #1d4ed8)',
           700: 'var(--brand-primary-700, #1e40af)',
         },
+        // Remapeia as cores slate mais usadas para CSS variables
+        // Assim dark: prefix funciona em todos os elementos JSX automaticamente
+        surface: {
+          0: 'var(--surface-0)',
+          1: 'var(--surface-1)',
+          2: 'var(--surface-2)',
+          3: 'var(--surface-3)',
+        },
+        border: {
+          DEFAULT: 'var(--border)',
+          strong: 'var(--border-strong)',
+        },
+        ink: {
+          primary:   'var(--text-primary)',
+          secondary: 'var(--text-secondary)',
+          muted:     'var(--text-muted)',
+        },
       },
       borderRadius: {
         card: '12px',
