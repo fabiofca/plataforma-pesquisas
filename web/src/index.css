@@ -15,6 +15,11 @@
   background: #f8fafc;
 }
 
+:root.dark {
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -26,6 +31,54 @@ body {
   font-family: 'Inter', sans-serif;
   line-height: 1.6;
   background: #f8fafc;
+}
+
+:root.dark body {
+  background: #0f172a;
+}
+
+:root.dark .bg-slate-100 {
+  background-color: #0f172a;
+}
+
+:root.dark .bg-white\/95 {
+  background-color: rgba(15, 23, 42, 0.95);
+}
+
+:root.dark .border-slate-200 {
+  border-color: #334155;
+}
+
+:root.dark .text-slate-900 {
+  color: #e2e8f0;
+}
+
+:root.dark .text-slate-950 {
+  color: #f8fafc;
+}
+
+:root.dark .text-slate-700 {
+  color: #cbd5e1;
+}
+
+:root.dark .text-slate-600 {
+  color: #94a3b8;
+}
+
+:root.dark .text-slate-500 {
+  color: #94a3b8;
+}
+
+:root.dark .bg-white {
+  background-color: #1e293b;
+}
+
+:root.dark .bg-slate-50 {
+  background-color: #334155;
+}
+
+:root.dark .bg-slate-950\/45 {
+  background-color: rgba(0, 0, 0, 0.6);
 }
 
 #root {
@@ -325,6 +378,245 @@ textarea {
     border-radius: 8px;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.035);
   }
+}
+
+/* ── Mobile touch targets (44px minimum) ── */
+
+@media (max-width: 768px) {
+  .admin-button,
+  .admin-button-primary,
+  .admin-button-danger {
+    min-height: 44px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .admin-input,
+  .admin-select {
+    min-height: 44px;
+  }
+}
+
+/* ── Dark mode overrides ── */
+
+:root.dark .glass-panel {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(15, 23, 42, 0.74));
+}
+
+:root.dark .shadow-soft {
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+}
+
+:root.dark .shadow-card {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+}
+
+@layer components {
+  :root.dark .admin-input {
+    @apply border-slate-600 bg-slate-800 text-slate-200;
+  }
+
+  :root.dark .admin-input:focus {
+    @apply border-blue-500 ring-2 ring-blue-900;
+  }
+
+  :root.dark .admin-select {
+    @apply border-slate-600 bg-slate-800 text-slate-200;
+  }
+
+  :root.dark .admin-select:focus {
+    @apply border-blue-500 ring-2 ring-blue-900;
+  }
+
+  :root.dark .admin-button {
+    @apply border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700;
+  }
+
+  :root.dark .admin-button-primary {
+    @apply border-slate-500 bg-slate-700 text-white hover:bg-slate-600;
+  }
+
+  :root.dark .admin-button-danger {
+    @apply border-rose-800 bg-rose-950 text-rose-300 hover:bg-rose-900;
+  }
+
+  :root.dark .admin-badge {
+    @apply border-slate-600 bg-slate-800 text-slate-400;
+  }
+
+  :root.dark .admin-panel {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #1a2332 100%);
+  }
+
+  :root.dark .admin-table-shell {
+    @apply border-slate-700 bg-slate-800;
+  }
+
+  :root.dark .admin-alert {
+    @apply border-slate-600;
+  }
+
+  :root.dark .admin-empty-state {
+    @apply border-slate-600 bg-slate-800 text-slate-400;
+  }
+
+  :root.dark .admin-stat-card {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  :root.dark .admin-subcard {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #1a2332 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .admin-checkrow {
+    @apply border-slate-700 bg-slate-800 text-slate-300;
+  }
+
+  :root.dark .admin-page-hero {
+    @apply border-slate-700;
+    background-image:
+      radial-gradient(circle at top right, rgba(59, 130, 246, 0.15), transparent 30%),
+      radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.08), transparent 26%),
+      linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  }
+
+  :root.dark .admin-page-hero-muted {
+    @apply border-slate-700;
+    background-image:
+      radial-gradient(circle at top right, rgba(148, 163, 184, 0.08), transparent 28%),
+      linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .admin-action-card {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .admin-action-card:hover {
+    @apply border-slate-500;
+    background: #1e293b;
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.25);
+  }
+
+  :root.dark .admin-icon-chip {
+    @apply border-slate-600 bg-slate-800 text-slate-300;
+  }
+
+  :root.dark .admin-highlight-card {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .admin-inline-stat {
+    @apply border-slate-700 bg-slate-800;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  }
+
+  :root.dark .dashboard-chart-card {
+    @apply border-slate-700;
+    background-image:
+      radial-gradient(circle at top right, rgba(59, 130, 246, 0.06), transparent 24%),
+      linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.2);
+  }
+
+  :root.dark .dashboard-kpi-card {
+    @apply border-slate-700;
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.2);
+  }
+
+  :root.dark .report-filter-panel {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #1a2332 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .report-insight-card {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .report-table-head {
+    @apply border-b-slate-600 bg-slate-800 text-slate-400;
+  }
+
+  :root.dark .report-summary-strip {
+    @apply border-slate-700;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .builder-step-card-blue {
+    @apply border-sky-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+  }
+
+  :root.dark .builder-step-card-violet {
+    @apply border-violet-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+  }
+
+  :root.dark .builder-step-card-amber {
+    @apply border-amber-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+  }
+
+  :root.dark .builder-step-card-emerald {
+    @apply border-emerald-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+  }
+
+  :root.dark .builder-subcard-blue {
+    @apply border-sky-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .builder-subcard-violet {
+    @apply border-violet-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .builder-subcard-amber {
+    @apply border-amber-800;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  :root.dark .builder-section-card {
+    @apply border-slate-700 bg-slate-800;
+  }
+
+  :root.dark .builder-question-card {
+    @apply border-slate-700 bg-slate-800;
+  }
+
+  :root.dark .builder-soft-panel {
+    @apply border-slate-700 bg-slate-800 text-slate-300;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+:root.dark .skeleton {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 800px 100%;
 }
 
 .confetti-piece {

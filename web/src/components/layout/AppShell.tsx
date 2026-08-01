@@ -10,13 +10,16 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Settings,
+  Sun,
   Users2,
   X,
 } from 'lucide-react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 
 import { defaultBrandingSettings, useBrandingSettings } from '@/hooks/useBrandingSettings'
+import { useTheme } from '@/hooks/useTheme'
 import { useAuthStore } from '@/store/use-auth-store'
 
 const DESKTOP_BREAKPOINT = 900
@@ -224,8 +227,10 @@ export function AppShell({
   }>
   hideHeader?: boolean
 }) {
+  const location = useLocation()
   const { user, signOut } = useAuthStore()
   const navigate = useNavigate()
+  const { theme, toggleTheme, isDark } = useTheme()
   const branding = useBrandingSettings().data ?? defaultBrandingSettings
   const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
     typeof window === 'undefined' ? true : window.innerWidth >= DESKTOP_BREAKPOINT,
@@ -304,7 +309,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
+    <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors duration-200">
       {!isDesktopViewport && isMobileSidebarOpen ? (
         <button
           type="button"
@@ -383,7 +388,7 @@ export function AppShell({
         style={{ marginLeft: contentOffset }}
       >
         <header
-          className="fixed top-0 right-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur"
+          className="fixed top-0 right-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur transition-colors duration-200"
           style={{
             left: contentOffset,
             height: HEADER_HEIGHT,
@@ -408,13 +413,23 @@ export function AppShell({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100"
+                style={{ borderRadius: 8 }}
+                aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+                title={isDark ? 'Modo claro' : 'Modo escuro'}
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
               <div className="admin-badge hidden sm:block">Painel rápido</div>
               <div className="admin-badge hidden md:block">{user?.roleCode === 'master' ? 'Conta master' : 'Seu painel'}</div>
             </div>
           </div>
         </header>
 
-        <main className="px-2 pb-2 pt-[64px] md:px-3">
+        <main key={location.pathname} className="animate-fade-in px-2 pb-2 pt-[64px] md:px-3">
           <div className={`min-h-[calc(100vh-4.5rem)] w-full border border-slate-200 bg-white shadow-card ${hideHeader ? '' : 'p-3 md:p-4 xl:p-5'}`}>
             {!hideHeader ? (
               <header className="mb-4 border-b border-slate-200 pb-3">

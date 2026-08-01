@@ -1694,7 +1694,7 @@ export function RewardsPage() {
                             type="button"
                             disabled={isUpdating}
                             onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'pending' })}
-                            className="admin-button disabled:opacity-60"
+                            className="admin-button min-h-[44px] disabled:opacity-60"
                           >
                             Pendente
                           </button>
@@ -1702,7 +1702,7 @@ export function RewardsPage() {
                             type="button"
                             disabled={isUpdating}
                             onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'delivered' })}
-                            className="admin-button-primary disabled:opacity-60"
+                            className="admin-button-primary min-h-[44px] disabled:opacity-60"
                           >
                             Entregue
                           </button>
@@ -1710,7 +1710,7 @@ export function RewardsPage() {
                             type="button"
                             disabled={isUpdating}
                             onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'cancelled' })}
-                            className="admin-button-danger disabled:opacity-60"
+                            className="admin-button-danger min-h-[44px] disabled:opacity-60"
                           >
                             Cancelar
                           </button>
@@ -1765,7 +1765,7 @@ export function RewardsPage() {
                             type="button"
                             disabled={isUpdating}
                             onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'pending' })}
-                            className="admin-button disabled:opacity-60"
+                            className="admin-button min-h-[44px] disabled:opacity-60"
                           >
                             Pendente
                           </button>
@@ -1773,7 +1773,7 @@ export function RewardsPage() {
                             type="button"
                             disabled={isUpdating}
                             onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'delivered' })}
-                            className="admin-button-primary disabled:opacity-60"
+                            className="admin-button-primary min-h-[44px] disabled:opacity-60"
                           >
                             Entregue
                           </button>
@@ -1781,7 +1781,7 @@ export function RewardsPage() {
                             type="button"
                             disabled={isUpdating}
                             onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'cancelled' })}
-                            className="admin-button-danger disabled:opacity-60"
+                            className="admin-button-danger min-h-[44px] disabled:opacity-60"
                           >
                             Cancelar
                           </button>
