@@ -133,6 +133,38 @@ body {
 :root.dark .bg-blue-50   { background-color: rgba(30,64,175,0.15) !important; }
 :root.dark .bg-violet-50 { background-color: rgba(76,29,149,0.15) !important; }
 
+/* Force light theme for specific sections (e.g. RewardsPage) */
+[data-force-light],
+[data-force-light] * {
+  color-scheme: light;
+}
+:root.dark [data-force-light] {
+  --app-bg:        #f1f5f9;
+  --surface-0:     #ffffff;
+  --surface-1:     #f8fafc;
+  --surface-2:     #f1f5f9;
+  --surface-3:     #e2e8f0;
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+  --text-primary:  #0f172a;
+  --text-secondary:#475569;
+  --text-muted:    #94a3b8;
+}
+/* Undo the global dark-mode Tailwind overrides inside force-light zones */
+:root.dark [data-force-light] .bg-white   { background-color: #ffffff !important; }
+:root.dark [data-force-light] .bg-slate-50  { background-color: #f8fafc !important; }
+:root.dark [data-force-light] .bg-slate-100 { background-color: #f1f5f9 !important; }
+:root.dark [data-force-light] .text-slate-950 { color: #0f172a !important; }
+:root.dark [data-force-light] .text-slate-900 { color: #0f172a !important; }
+:root.dark [data-force-light] .text-slate-800 { color: #1e293b !important; }
+:root.dark [data-force-light] .text-slate-700 { color: #334155 !important; }
+:root.dark [data-force-light] .text-slate-600 { color: #475569 !important; }
+:root.dark [data-force-light] .text-slate-500 { color: #64748b !important; }
+:root.dark [data-force-light] .border-slate-200 { border-color: #e2e8f0 !important; }
+:root.dark [data-force-light] .border-slate-300 { border-color: #cbd5e1 !important; }
+:root.dark [data-force-light] .hover\:bg-slate-50:hover  { background-color: #f8fafc !important; }
+:root.dark [data-force-light] .hover\:bg-slate-100:hover { background-color: #f1f5f9 !important; }
+
 #root {
   min-height: 100vh;
 }
