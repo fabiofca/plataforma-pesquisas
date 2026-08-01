@@ -54,7 +54,7 @@ export function MetricCard({
   const palette = toneClasses[tone]
 
   return (
-    <article className={`overflow-hidden rounded-[6px] border p-3 shadow-card ${palette.card} ${palette.border}`}>
+    <article className={`overflow-hidden rounded-[8px] border p-3 shadow-card ${palette.card} ${palette.border}`}>
       <div className={`mb-3 h-[3px] w-14 bg-gradient-to-r ${palette.glow}`} />
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -63,14 +63,14 @@ export function MetricCard({
         </div>
 
         {Icon ? (
-          <div className={`flex h-9 w-9 items-center justify-center rounded-[6px] ${palette.icon}`}>
+          <div className={`flex h-9 w-9 items-center justify-center rounded-[8px] ${palette.icon}`}>
             <Icon className="h-4 w-4" />
           </div>
         ) : null}
       </div>
 
       <div className="mt-3 space-y-1.5">
-        <span className={`inline-flex rounded-[6px] px-2.5 py-1 text-[10px] font-semibold ${palette.badge}`}>{change}</span>
+        <span className={`inline-flex rounded-[8px] px-2.5 py-1 text-[10px] font-semibold ${palette.badge}`}>{change}</span>
         {detail ? <p className="text-[13px] text-slate-500">{detail}</p> : null}
       </div>
     </article>

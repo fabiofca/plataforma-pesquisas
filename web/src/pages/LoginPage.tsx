@@ -73,7 +73,7 @@ export function LoginPage() {
           </div>
         </section>
 
-        <section className="border border-slate-200 bg-white p-6 shadow-card lg:p-8" style={{ borderRadius: 6 }}>
+        <section className="border border-slate-200 bg-white p-6 shadow-card lg:p-8" style={{ borderRadius: 8 }}>
           <div className="w-full">
             <div className="mb-8">
               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Login</p>

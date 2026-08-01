@@ -301,7 +301,7 @@ export function SettingsPage() {
               ? 'border border-rose-200 bg-rose-50 text-rose-900'
               : 'border border-emerald-200 bg-emerald-50 text-emerald-900'
           }`}
-          style={{ borderRadius: 6 }}
+          style={{ borderRadius: 8 }}
         >
           {feedback}
         </div>
@@ -313,7 +313,7 @@ export function SettingsPage() {
         description="Esses campos serão persistidos no banco em `system_settings`."
       >
         {settingsQuery.isError ? (
-          <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" style={{ borderRadius: 6 }}>
+          <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" style={{ borderRadius: 8 }}>
             Não foi possível carregar as configurações agora. Os valores atuais não estão disponíveis sem a API.
           </div>
         ) : null}
@@ -341,7 +341,7 @@ export function SettingsPage() {
                       type="color"
                       aria-label={setting.key === 'sidebar_color' ? 'Selecionar cor da barra lateral' : 'Selecionar cor primÃ¡ria padrÃ£o'}
                       className="h-12 w-16 cursor-pointer border border-slate-200 bg-white p-1"
-                      style={{ borderRadius: 6 }}
+                      style={{ borderRadius: 8 }}
                       value={normalizeColorValue(
                         values[setting.key] ?? '',
                         setting.key === 'sidebar_color' ? defaultBrandingSettings.sidebarColor : defaultBrandingSettings.primaryColor,
@@ -356,7 +356,7 @@ export function SettingsPage() {
                     <div
                       className="h-12 w-12 border border-slate-200"
                       style={{
-                        borderRadius: 6,
+                        borderRadius: 8,
                         backgroundColor: normalizeColorValue(
                           values[setting.key] ?? '',
                           setting.key === 'sidebar_color'
@@ -385,7 +385,7 @@ export function SettingsPage() {
                 </div>
               ) : setting.key === 'favicon_url' ? (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 6 }}>
+                  <div className="flex h-12 w-12 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 8 }}>
                     {values[setting.key] ? (
                       <img
                         src={values[setting.key]}
@@ -402,7 +402,7 @@ export function SettingsPage() {
                       type="file"
                       accept=".png,.jpg,.jpeg,.svg,.webp,.ico,image/png,image/jpeg,image/svg+xml,image/webp,image/x-icon"
                       className="block w-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
-                      style={{ borderRadius: 6 }}
+                      style={{ borderRadius: 8 }}
                       onChange={(event) => void handleUpload('favicon_url', event.target.files?.[0])}
                     />
                     <div className="flex justify-end">
@@ -430,11 +430,11 @@ export function SettingsPage() {
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
                     className="block w-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
-                    style={{ borderRadius: 6 }}
+                    style={{ borderRadius: 8 }}
                     onChange={(event) => void handleUpload('brand_logo_url', event.target.files?.[0])}
                   />
                   {values[setting.key] ? (
-                    <div className="flex min-h-20 items-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 6 }}>
+                    <div className="flex min-h-20 items-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 8 }}>
                       <img
                         src={values[setting.key]}
                         alt="Preview da logo"
@@ -442,7 +442,7 @@ export function SettingsPage() {
                       />
                     </div>
                   ) : (
-                    <div className="flex min-h-20 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                    <div className="flex min-h-20 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 8 }}>
                       Nenhuma logo configurada.
                     </div>
                   )}

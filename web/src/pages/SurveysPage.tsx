@@ -188,7 +188,7 @@ export function SurveysPage() {
 
       {feedback ? <div className="admin-alert mb-6 border-rose-200 bg-rose-50 text-rose-900">{feedback}</div> : null}
 
-      <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+      <section className="admin-page-hero mb-6 grid gap-3 animate-fade-in-up lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
         <div>
           <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Pesquisas livres</p>
           <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
@@ -234,20 +234,23 @@ export function SurveysPage() {
         description="Aqui ficam as pesquisas montadas do zero. A lista abre os detalhes só quando você clicar, para a página ficar mais leve."
       >
         {surveysQuery.isError ? (
-          <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" style={{ borderRadius: 6 }}>
+          <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" style={{ borderRadius: 8 }}>
         Não foi possível carregar as pesquisas agora. Verifique a API e tente novamente.
           </div>
         ) : null}
 
         {!surveysQuery.isError && !data.length ? (
-          <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600" style={{ borderRadius: 6 }}>
+          <div className="border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600" style={{ borderRadius: 8 }}>
             Nenhuma pesquisa personalizada cadastrada ainda. Crie a primeira para começar.
           </div>
         ) : null}
 
         <div className="space-y-3">
-          {data.map((survey) => (
-            <Link key={survey.id} to={`/app/pesquisas/${survey.id}`} className="admin-panel block overflow-hidden transition hover:border-slate-300 hover:bg-white">
+          {data.map((survey, index) => (
+            <Link
+              key={survey.id}
+              to={`/app/pesquisas/${survey.id}`}
+              className={`admin-panel block overflow-hidden transition hover:border-slate-300 hover:bg-white animate-fade-in-up delay-${Math.min(index * 50, 350)}`}>
               <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="mb-2 h-2 w-14" style={{ backgroundColor: survey.primaryColor, borderRadius: 2 }} />
@@ -259,7 +262,7 @@ export function SurveysPage() {
                   <span className="admin-badge bg-white">{survey.responses} resposta(s)</span>
                   <span className="admin-badge bg-white">{survey.participationMode}</span>
                   <span className="admin-badge border-slate-900 bg-slate-950 text-white">{survey.status}</span>
-                  <span className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600" style={{ borderRadius: 6 }}>
+                  <span className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600" style={{ borderRadius: 8 }}>
                     <ChevronRight className="h-4 w-4" />
                   </span>
                 </div>

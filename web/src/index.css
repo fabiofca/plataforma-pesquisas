@@ -63,78 +63,78 @@ textarea {
 @layer components {
   .admin-input {
     @apply w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-input:focus {
-    @apply border-slate-400;
+    @apply border-blue-400 ring-2 ring-blue-100;
   }
 
   .admin-select {
     @apply w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-select:focus {
-    @apply border-slate-400;
+    @apply border-blue-400 ring-2 ring-blue-100;
   }
 
   .admin-button {
     @apply inline-flex items-center justify-center gap-2 border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-button-primary {
     @apply inline-flex items-center justify-center gap-2 border border-slate-900 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-button-danger {
     @apply inline-flex items-center justify-center gap-2 border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-60;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-badge {
     @apply inline-flex items-center border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-600;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-panel {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)];
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 14px 30px rgba(15, 23, 42, 0.04);
   }
 
   .admin-table-shell {
     @apply overflow-hidden border border-slate-200 bg-white;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-alert {
     @apply border px-4 py-3 text-sm;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-empty-state {
     @apply border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-600;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-stat-card {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 14px 30px rgba(15, 23, 42, 0.05);
   }
 
   .admin-subcard {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.035);
   }
 
   .admin-checkrow {
     @apply flex items-center gap-3 border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700;
-    border-radius: 6px;
+    border-radius: 8px;
   }
 
   .admin-page-hero {
@@ -143,7 +143,7 @@ textarea {
       radial-gradient(circle at top right, rgba(59, 130, 246, 0.2), transparent 30%),
       radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.12), transparent 26%),
       linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
   }
 
@@ -152,13 +152,13 @@ textarea {
     background-image:
       radial-gradient(circle at top right, rgba(148, 163, 184, 0.14), transparent 28%),
       linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 20px 40px rgba(15, 23, 42, 0.05);
   }
 
   .admin-action-card {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4 transition;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 12px 26px rgba(15, 23, 42, 0.04);
   }
 
@@ -170,25 +170,25 @@ textarea {
 
   .admin-icon-chip {
     @apply inline-flex h-10 w-10 items-center justify-center border border-slate-200 bg-white text-slate-700;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   .admin-highlight-card {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] p-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 14px 28px rgba(15, 23, 42, 0.045);
   }
 
   .admin-inline-stat {
     @apply border border-slate-200 bg-white px-3 py-2.5;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
   }
 
   .builder-step-card {
     @apply border p-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 14px 28px rgba(15, 23, 42, 0.045);
   }
 
@@ -252,7 +252,7 @@ textarea {
 
   .builder-section-card {
     @apply overflow-hidden border border-slate-200 bg-white;
-    border-radius: 8px;
+    border-radius: 12px;
     box-shadow: 0 18px 36px rgba(15, 23, 42, 0.055);
   }
 
@@ -263,13 +263,13 @@ textarea {
 
   .builder-question-card {
     @apply overflow-hidden border border-slate-200 bg-white;
-    border-radius: 8px;
+    border-radius: 12px;
     box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
   }
 
   .builder-soft-panel {
     @apply border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700;
-    border-radius: 8px;
+    border-radius: 12px;
   }
 
   .builder-question-meta {
@@ -290,25 +290,25 @@ textarea {
     background-image:
       radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 24%),
       linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 18px 36px rgba(15, 23, 42, 0.055);
   }
 
   .dashboard-kpi-card {
     @apply overflow-hidden border p-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 18px 36px rgba(15, 23, 42, 0.055);
   }
 
   .report-filter-panel {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.035);
   }
 
   .report-insight-card {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-4;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 12px 24px rgba(15, 23, 42, 0.04);
   }
 
@@ -322,7 +322,7 @@ textarea {
 
   .report-summary-strip {
     @apply border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-4 py-3 text-sm text-slate-700;
-    border-radius: 6px;
+    border-radius: 8px;
     box-shadow: 0 10px 24px rgba(15, 23, 42, 0.035);
   }
 }
@@ -352,3 +352,77 @@ textarea {
     transform: translate(calc(-50% + var(--confetti-x)), calc(-50% + var(--confetti-y))) scale(1) rotate(var(--confetti-rotate));
   }
 }
+
+/* ── Premium micro-interactions ── */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-scale {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out both;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s ease-out both;
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.25s ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out both;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.skeleton-text {
+  height: 0.875rem;
+  border-radius: 4px;
+}
+
+.skeleton-heading {
+  height: 1.25rem;
+  width: 60%;
+  border-radius: 6px;
+}
+
+.skeleton-card {
+  height: 120px;
+}
+
+/* Delay utility for staggered entrance */
+.delay-50  { animation-delay: 50ms; }
+.delay-100 { animation-delay: 100ms; }
+.delay-150 { animation-delay: 150ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-250 { animation-delay: 250ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-350 { animation-delay: 350ms; }

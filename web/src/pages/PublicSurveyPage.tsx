@@ -1437,7 +1437,7 @@ export function PublicSurveyPage() {
   if (surveyQuery.isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6">
-        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
+        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 8 }}>
           <p className="text-sm text-slate-500">Carregando pesquisa...</p>
         </div>
       </div>
@@ -1452,7 +1452,7 @@ export function PublicSurveyPage() {
 
     return (
       <div className="min-h-screen bg-slate-50 px-3 py-4 sm:px-4 sm:py-6">
-        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 6 }}>
+        <div className="mx-auto max-w-4xl border border-slate-200 bg-white p-6 text-center shadow-card sm:p-10" style={{ borderRadius: 8 }}>
           <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pesquisa indisponível</p>
           <h1 className="mt-4 font-display text-4xl text-slate-950">Não foi possível abrir esta pesquisa agora</h1>
           <p className="mt-4 text-sm text-slate-600">{errorMessage}</p>
@@ -1464,9 +1464,9 @@ export function PublicSurveyPage() {
   return (
     <div className="min-h-screen bg-slate-50 px-2 py-3 sm:px-4 sm:py-6 lg:px-6">
       <div className="mx-auto w-full max-w-4xl">
-        <div className="overflow-hidden border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:p-8" style={{ borderRadius: 6 }}>
+        <div className="overflow-hidden border border-slate-200 bg-white p-4 shadow-card sm:p-6 lg:p-8" style={{ borderRadius: 8 }}>
           {previewMode ? (
-            <div className="mb-5 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-3 py-3 text-sky-950 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4" style={{ borderRadius: 6 }}>
+            <div className="mb-5 flex flex-col gap-3 border border-sky-200 bg-sky-50 px-3 py-3 text-sky-950 sm:mb-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4" style={{ borderRadius: 8 }}>
               <div>
                 <p className="text-xs uppercase tracking-[0.18em] text-sky-700">
                   {sharedPreviewMode ? 'Link de teste' : 'Modo teste'}
@@ -1486,7 +1486,7 @@ export function PublicSurveyPage() {
           ) : null}
 
           {survey.bannerUrl ? (
-            <div className="mb-5 overflow-hidden sm:-mx-6 sm:-mt-8 lg:-mx-8 lg:-mt-8" style={{ borderRadius: '6px 6px 0 0' }}>
+            <div className="mb-5 overflow-hidden sm:-mx-6 sm:-mt-8 lg:-mx-8 lg:-mt-8" style={{ borderRadius: '8px 8px 0 0' }}>
               <img src={survey.bannerUrl} alt="" className="h-40 w-full object-cover sm:h-52" />
             </div>
           ) : null}
@@ -1522,7 +1522,7 @@ export function PublicSurveyPage() {
                 void submitMutation.mutateAsync()
               }}
             >
-              <section className="grid gap-4 border border-slate-200 bg-white p-4 sm:p-5 md:grid-cols-2" style={{ borderRadius: 6 }}>
+              <section className="grid gap-4 border border-slate-200 bg-white p-4 sm:p-5 md:grid-cols-2" style={{ borderRadius: 8 }}>
                 <label className="grid gap-2 text-sm">
                   <span className="text-slate-600">Nome completo</span>
                   <input
@@ -1593,7 +1593,7 @@ export function PublicSurveyPage() {
                     : Array.isArray(currentAnswer) && currentAnswer.includes(option)
 
                 return (
-                  <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 6 }}>
+                  <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 8 }}>
                     <div className="mb-4 flex items-start gap-3">
                       <span
                         className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -1625,7 +1625,7 @@ export function PublicSurveyPage() {
                           return (
                             <label
                               key={option}
-                              className={`flex cursor-pointer items-center gap-3 rounded-[6px] border px-4 py-3 text-sm transition ${
+                              className={`flex cursor-pointer items-center gap-3 rounded-[8px] border px-4 py-3 text-sm transition ${
                                 selected
                                   ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
                                   : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
@@ -1659,7 +1659,7 @@ export function PublicSurveyPage() {
                           return (
                             <label
                               key={option}
-                              className={`flex cursor-pointer items-center gap-3 rounded-[6px] border px-4 py-3 text-sm transition ${
+                              className={`flex cursor-pointer items-center gap-3 rounded-[8px] border px-4 py-3 text-sm transition ${
                                 selected
                                   ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
                                   : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
@@ -1715,7 +1715,7 @@ export function PublicSurveyPage() {
                                   ? 'border-slate-950 bg-slate-950 text-white'
                                   : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300'
                               }`}
-                              style={currentAnswer === value && survey.primaryColor ? { borderColor: survey.primaryColor, backgroundColor: survey.primaryColor, borderRadius: 6 } : { borderRadius: 6 }}
+                              style={currentAnswer === value && survey.primaryColor ? { borderColor: survey.primaryColor, backgroundColor: survey.primaryColor, borderRadius: 8 } : { borderRadius: 8 }}
                             >
                               <span className="block text-base leading-none">{value}</span>
                             </button>
@@ -1744,13 +1744,13 @@ export function PublicSurveyPage() {
                 type="submit"
                 disabled={submitMutation.isPending}
                 className="w-full justify-center border px-6 py-3 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60"
-                style={{ borderRadius: 6, backgroundColor: survey.primaryColor || '#0f172a' }}
+                style={{ borderRadius: 8, backgroundColor: survey.primaryColor || '#0f172a' }}
               >
                 {submitMutation.isPending ? 'Enviando...' : 'Enviar pesquisa'}
               </button>
             </form>
           ) : (
-            <section className="mt-6 border border-slate-200 bg-white p-6 text-center shadow-card" style={{ borderRadius: 6 }}>
+            <section className="mt-6 border border-slate-200 bg-white p-6 text-center shadow-card" style={{ borderRadius: 8 }}>
               <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" strokeWidth={1.5} />
               <h2 className="mt-4 font-display text-3xl text-slate-950 sm:text-4xl">Obrigado por participar</h2>
               <p className="mt-3 text-sm text-slate-600">

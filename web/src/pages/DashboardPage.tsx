@@ -393,12 +393,12 @@ export function DashboardPage() {
   return (
     <AppShell title="Painel" subtitle="Resumo rápido para encontrar o que importa.">
       {hasConnectivityIssue ? (
-        <div className="mb-4 rounded-[6px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="mb-4 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Não foi possível carregar todo o painel agora. Verifique a API e tente novamente.
         </div>
       ) : null}
 
-      <section className="admin-page-hero mb-3 grid gap-3 lg:grid-cols-[1.3fr_0.7fr] lg:items-center">
+      <section className="admin-page-hero mb-3 grid gap-3 animate-fade-in-up lg:grid-cols-[1.3fr_0.7fr] lg:items-center">
         <div>
           <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Resumo</p>
           <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
@@ -441,8 +441,10 @@ export function DashboardPage() {
       </section>
 
       <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <MetricCard key={metric.label} {...metric} />
+        {metrics.map((metric, index) => (
+          <div key={metric.label} className={`animate-fade-in-up delay-${Math.min(index * 50, 350)}`}>
+            <MetricCard {...metric} />
+          </div>
         ))}
       </div>
 
@@ -479,7 +481,7 @@ export function DashboardPage() {
 
             <div className="mt-3 grid gap-2">
               {statusChartData.map((item) => (
-                <div key={item.name} className="flex items-center justify-between rounded-[6px] border border-slate-200 bg-white px-3 py-2">
+                <div key={item.name} className="flex items-center justify-between rounded-[8px] border border-slate-200 bg-white px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
                     <span className="text-sm text-slate-700">{item.name}</span>
@@ -521,7 +523,7 @@ export function DashboardPage() {
 
             <div className="mt-3 grid gap-2">
               {rewardChartData.map((item) => (
-                <div key={item.name} className="flex items-center justify-between rounded-[6px] border border-slate-200 bg-white px-3 py-2">
+                <div key={item.name} className="flex items-center justify-between rounded-[8px] border border-slate-200 bg-white px-3 py-2">
                   <div className="flex items-center gap-2">
                     <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
                     <span className="text-sm text-slate-700">{item.name}</span>
@@ -581,15 +583,15 @@ export function DashboardPage() {
                   <p className="mt-2 font-display text-5xl text-slate-950">{npsOverviewQuery.data.npsScore}</p>
                   <p className="mt-2 text-sm font-medium text-slate-700">{npsOverviewQuery.data.classification}</p>
                   <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                    <div className="rounded-[6px] border border-emerald-100 bg-[linear-gradient(180deg,#ffffff_0%,#f7fcfa_100%)] px-3 py-2">
+                    <div className="rounded-[8px] border border-emerald-100 bg-[linear-gradient(180deg,#ffffff_0%,#f7fcfa_100%)] px-3 py-2">
                       <p className="text-[10px] uppercase tracking-[0.14em] text-emerald-700">Promotores</p>
                       <p className="mt-1 text-lg font-semibold text-emerald-900">{npsOverviewQuery.data.promoters}</p>
                     </div>
-                    <div className="rounded-[6px] border border-amber-100 bg-[linear-gradient(180deg,#ffffff_0%,#fffaf2_100%)] px-3 py-2">
+                    <div className="rounded-[8px] border border-amber-100 bg-[linear-gradient(180deg,#ffffff_0%,#fffaf2_100%)] px-3 py-2">
                       <p className="text-[10px] uppercase tracking-[0.14em] text-amber-700">Neutros</p>
                       <p className="mt-1 text-lg font-semibold text-amber-900">{npsOverviewQuery.data.neutrals}</p>
                     </div>
-                    <div className="rounded-[6px] border border-rose-100 bg-[linear-gradient(180deg,#ffffff_0%,#fff6f6_100%)] px-3 py-2">
+                    <div className="rounded-[8px] border border-rose-100 bg-[linear-gradient(180deg,#ffffff_0%,#fff6f6_100%)] px-3 py-2">
                       <p className="text-[10px] uppercase tracking-[0.14em] text-rose-700">Detratores</p>
                       <p className="mt-1 text-lg font-semibold text-rose-900">{npsOverviewQuery.data.detractors}</p>
                     </div>
@@ -612,7 +614,7 @@ export function DashboardPage() {
                     </div>
                     <div className="grid gap-2">
                       {npsCompositionData.map((item) => (
-                        <div key={item.name} className="flex items-center justify-between rounded-[6px] border border-slate-200 bg-white px-3 py-2">
+                        <div key={item.name} className="flex items-center justify-between rounded-[8px] border border-slate-200 bg-white px-3 py-2">
                           <div className="flex items-center gap-2">
                             <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
                             <span className="text-sm text-slate-700">{item.name}</span>
@@ -724,7 +726,7 @@ export function DashboardPage() {
           {user?.roleCode === 'master' ? (
             <div className="space-y-3">
               {masterPriorities.map((item) => (
-                <article key={item.title} className="rounded-[6px] border border-slate-200 bg-slate-50 p-3">
+                <article key={item.title} className="rounded-[8px] border border-slate-200 bg-slate-50 p-3">
                   <p className="font-semibold text-slate-950">{item.title}</p>
                   <p className="mt-1 text-[13px] leading-5 text-slate-600">{item.description}</p>
                 </article>
@@ -745,17 +747,17 @@ export function DashboardPage() {
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="inline-flex items-center gap-1 rounded-[6px] border border-slate-200 bg-white px-2 py-1">
+                        <span className="inline-flex items-center gap-1 rounded-[8px] border border-slate-200 bg-white px-2 py-1">
                           <Link2 className="h-3 w-3" />
                           /{survey.slug}
                         </span>
-                        <span className="inline-flex rounded-[6px] border border-slate-200 bg-white px-2 py-1">
+                        <span className="inline-flex rounded-[8px] border border-slate-200 bg-white px-2 py-1">
                           {survey.participationMode}
                         </span>
                       </div>
                     </div>
 
-                    <span className={`rounded-[6px] px-3 py-1 text-xs font-semibold ${getStatusTone(survey.status)}`}>
+                    <span className={`rounded-[8px] px-3 py-1 text-xs font-semibold ${getStatusTone(survey.status)}`}>
                       {survey.status}
                     </span>
                   </div>
@@ -784,7 +786,7 @@ export function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="rounded-[6px] border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-600">
+            <div className="rounded-[8px] border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-600">
               Nenhuma pesquisa disponível para destaque no momento.
             </div>
           )}
@@ -794,7 +796,7 @@ export function DashboardPage() {
           <div className="space-y-3">
             {checklistItems.map((item, index) => (
               <div key={item} className="admin-highlight-card flex gap-3">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] bg-slate-950 text-[11px] font-semibold text-white">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px] bg-slate-950 text-[11px] font-semibold text-white">
                   {index + 1}
                 </div>
                 <p className="text-[13px] leading-5 text-slate-600">{item}</p>

@@ -694,10 +694,10 @@ export function SurveyBuilderPage() {
               {form.questions[0]?.description?.trim() || 'Voce pode usar a descricao de apoio para orientar a resposta do cliente.'}
             </p>
             <div className="mt-4 grid gap-2">
-              <div className="h-10 border border-slate-200 bg-slate-50" style={{ borderRadius: 6 }} />
+              <div className="h-10 border border-slate-200 bg-slate-50" style={{ borderRadius: 8 }} />
               <div
                 className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white"
-                style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
+                style={{ borderRadius: 8, backgroundColor: form.primaryColor || '#0b5cff' }}
               >
                 Continuar
               </div>
@@ -708,21 +708,21 @@ export function SurveyBuilderPage() {
         <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
           <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Resumo da identidade</p>
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
+            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 8 }}>
               <p className="text-xs text-slate-500">Cor principal</p>
               <div className="mt-2 flex items-center gap-2">
                 <div
                   className="h-8 w-8 border border-slate-200"
-                  style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
+                  style={{ borderRadius: 8, backgroundColor: form.primaryColor || '#0b5cff' }}
                 />
                 <span className="text-sm font-medium text-slate-900">{form.primaryColor || '#0b5cff'}</span>
               </div>
             </div>
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
+            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 8 }}>
               <p className="text-xs text-slate-500">Logo</p>
               <p className="mt-2 text-sm font-medium text-slate-900">{form.logoUrl ? 'Enviada' : 'Pendente'}</p>
             </div>
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
+            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 8 }}>
               <p className="text-xs text-slate-500">Banner</p>
               <p className="mt-2 text-sm font-medium text-slate-900">{form.bannerUrl ? 'Enviado' : 'Pendente'}</p>
             </div>
@@ -994,7 +994,7 @@ export function SurveyBuilderPage() {
                       className="h-10 w-12 cursor-pointer border border-slate-300 bg-white p-1"
                       value={form.primaryColor}
                       onChange={(event) => updateForm('primaryColor', event.target.value)}
-                      style={{ borderRadius: 6 }}
+                      style={{ borderRadius: 8 }}
                     />
                     <input
                       className="admin-input h-10"
@@ -1014,7 +1014,7 @@ export function SurveyBuilderPage() {
                             ? 'border-slate-950 ring-2 ring-slate-200'
                             : 'border-slate-200'
                         }`}
-                        style={{ borderRadius: 6, backgroundColor: color }}
+                        style={{ borderRadius: 8, backgroundColor: color }}
                         onClick={() => updateForm('primaryColor', color)}
                       />
                     ))}
@@ -1042,11 +1042,11 @@ export function SurveyBuilderPage() {
                 </div>
 
                 {form.logoUrl ? (
-                  <div className="flex h-20 items-center justify-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 6 }}>
+                  <div className="flex h-20 items-center justify-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 8 }}>
                     <img src={form.logoUrl} alt="Preview da logo da pesquisa" className="h-12 w-auto max-w-full object-contain" />
                   </div>
                 ) : (
-                  <div className="flex h-20 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                  <div className="flex h-20 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 8 }}>
                     Nenhuma logo enviada.
                   </div>
                 )}
@@ -1057,7 +1057,7 @@ export function SurveyBuilderPage() {
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
                     className="block w-full border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
-                    style={{ borderRadius: 6 }}
+                    style={{ borderRadius: 8 }}
                     onChange={(event) => void handleSurveyImageUpload('logo', event.target.files?.[0])}
                   />
                   <p className="text-xs text-slate-500">
@@ -1084,11 +1084,11 @@ export function SurveyBuilderPage() {
                 </div>
 
                 {form.bannerUrl ? (
-                  <div className="flex h-24 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 6 }}>
+                  <div className="flex h-24 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 8 }}>
                     <img src={form.bannerUrl} alt="Preview do banner da pesquisa" className="h-full w-full object-cover" />
                   </div>
                 ) : (
-                  <div className="flex h-24 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
+                  <div className="flex h-24 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 8 }}>
                     Nenhum banner enviado.
                   </div>
                 )}
@@ -1099,7 +1099,7 @@ export function SurveyBuilderPage() {
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
                     className="block w-full border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
-                    style={{ borderRadius: 6 }}
+                    style={{ borderRadius: 8 }}
                     onChange={(event) => void handleSurveyImageUpload('banner', event.target.files?.[0])}
                   />
                   <p className="text-xs text-slate-500">

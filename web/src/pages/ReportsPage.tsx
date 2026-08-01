@@ -333,7 +333,7 @@ function TextSamplesList({ samples, questionId }: { samples: string[]; questionI
         <div
           key={`${questionId}-sample-${sampleIndex}`}
           className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-          style={{ borderRadius: 6 }}
+          style={{ borderRadius: 8 }}
         >
           {sample}
         </div>
@@ -629,7 +629,7 @@ export function ReportsPage() {
                   ? 'bg-slate-950 text-white'
                   : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
-              style={{ borderRadius: 6 }}
+              style={{ borderRadius: 8 }}
             >
               {label}
             </button>

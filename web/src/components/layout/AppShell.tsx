@@ -117,7 +117,7 @@ function SidebarBody({
         {!compact && roleCode ? (
           <span
             className="shrink-0 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white"
-            style={{ backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 6 }}
+            style={{ backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 8 }}
           >
             {roleCode}
           </span>
@@ -131,7 +131,7 @@ function SidebarBody({
             style={{
               borderColor: withAlpha('#ffffff', 0.08),
               backgroundColor: withAlpha('#ffffff', 0.05),
-              borderRadius: 6,
+              borderRadius: 8,
             }}
           >
             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Usuário atual</p>
@@ -155,7 +155,7 @@ function SidebarBody({
                     compact ? 'justify-center' : ''
                   } ${isNavigationActive(item.to) ? 'bg-white text-slate-950' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`
                 }
-                style={{ borderRadius: 6 }}
+                style={{ borderRadius: 8 }}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!compact ? <span className="truncate">{item.label}</span> : null}
@@ -173,7 +173,7 @@ function SidebarBody({
           style={{
             borderColor: withAlpha('#ffffff', 0.08),
             backgroundColor: withAlpha('#ffffff', 0.06),
-            borderRadius: 6,
+            borderRadius: 8,
           }}
           title={compact ? 'Sair' : undefined}
         >
@@ -186,7 +186,7 @@ function SidebarBody({
           style={{
             borderColor: withAlpha('#ffffff', 0.08),
             backgroundColor: withAlpha('#ffffff', 0.04),
-            borderRadius: 6,
+            borderRadius: 8,
           }}
           title={`Commit ${APP_COMMIT_SHA}`}
         >
@@ -353,7 +353,7 @@ export function AppShell({
               type="button"
               onClick={handleMobileClose}
               className="inline-flex h-9 w-9 items-center justify-center border text-white"
-              style={{ borderColor: withAlpha('#ffffff', 0.12), borderRadius: 6 }}
+              style={{ borderColor: withAlpha('#ffffff', 0.12), borderRadius: 8 }}
               aria-label="Fechar menu lateral"
             >
               <X className="h-4 w-4" />
@@ -395,7 +395,7 @@ export function AppShell({
                 type="button"
                 onClick={handleSidebarToggle}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100"
-                style={{ borderRadius: 6 }}
+                style={{ borderRadius: 8 }}
                 aria-label={isDesktopViewport ? 'Abrir ou fechar barra lateral' : 'Abrir menu lateral'}
               >
                 <Menu className="h-4 w-4" />
@@ -426,7 +426,7 @@ export function AppShell({
                           type="button"
                           onClick={handleBackNavigation}
                           className="inline-flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                          style={{ borderRadius: 6 }}
+                          style={{ borderRadius: 8 }}
                         >
                           <ArrowLeft className="h-4 w-4" />
                           {backLabel}
