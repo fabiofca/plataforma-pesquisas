@@ -127,7 +127,8 @@ function getWheelDisplayLabel(label: string) {
 function getSegmentColors(segment: PrizeWheelSegment, index: number, primaryColor: string) {
   if (segment.kind === 'reward') {
     const selected = rewardSegmentPalette[index % rewardSegmentPalette.length]
-    return index === 0 ? { ...selected, end: primaryColor, text: '#ffffff' } : selected
+    // First reward segment is branded with primaryColor; keep it solid and let the vignette overlay create depth
+    return index === 0 ? { start: primaryColor, end: primaryColor, text: '#ffffff' } : selected
   }
 
   if (segment.kind === 'retry') {
@@ -399,11 +400,11 @@ export function PrizeWheel({
               const textShadow =
                 isRewardSegment || isRetrySegment
                   ? text === '#1f2937' || text === '#e11d48'
-                    ? '0 1px 0 rgba(255,255,255,0.7), 0 0 10px rgba(255,255,255,0.35)'
-                    : '0 2px 4px rgba(0,0,0,0.55), 0 0 1px rgba(0,0,0,0.8)'
+                    ? '0 1px 0 rgba(255,255,255,0.55)'
+                    : '0 1px 2px rgba(0,0,0,0.55), 0 0 1px rgba(0,0,0,0.6)'
                   : text === '#1f2937' || text === '#e11d48'
-                    ? '0 1px 0 rgba(255,255,255,0.6), 0 0 6px rgba(255,255,255,0.25)'
-                    : '0 2px 4px rgba(0,0,0,0.45), 0 0 1px rgba(0,0,0,0.65)'
+                    ? '0 1px 0 rgba(255,255,255,0.4)'
+                    : '0 1px 2px rgba(0,0,0,0.45), 0 0 1px rgba(0,0,0,0.5)'
 
               return (
                 <div
@@ -432,7 +433,7 @@ export function PrizeWheel({
                             : undefined,
                       color: text,
                       textShadow: isActive
-                        ? `${textShadow}, 0 0 18px rgba(255,255,255,0.65)`
+                        ? `${textShadow}, 0 0 14px rgba(255,255,255,0.5)`
                         : textShadow,
                       fontSize:
                         isRewardSegment || isRetrySegment
