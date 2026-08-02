@@ -1159,8 +1159,9 @@ export function PublicSurveyPage() {
       }
 
       if (previewMode) {
-        const rewardSegments = wheelSegments.filter((segment) => segment.kind === 'reward')
-        const neutralSegments = wheelSegments.filter((segment) => segment.kind !== 'reward')
+        const realRewardSegments = wheelSegments.filter((segment) => segment.kind === 'reward')
+        const neutralSegments = wheelSegments.filter((segment) => segment.kind === 'neutral')
+        const showcaseSegments = wheelSegments.filter((segment) => segment.kind === 'showcase')
         const previewCompletedTaskIds = Array.from(new Set(completedRetryTaskIds))
         const previewRemainingRetryTasks = (survey.rewardRetryTasks ?? []).filter(
           (task) => !previewCompletedTaskIds.includes(task.id),
@@ -1168,10 +1169,22 @@ export function PublicSurveyPage() {
         const previewMaxAttempts = 1 + (survey.rewardRetryTasks?.length ?? 0)
         const previewSpinAttempt = previewCompletedTaskIds.length + 1
         const previewIsFinalAttempt = previewSpinAttempt >= previewMaxAttempts
-        const shouldWin = previewIsFinalAttempt && rewardSegments.length > 0 && Math.random() < 0.45
+        const guaranteedPrize = survey.rewardFinalSpinMode === 'guaranteed_prize'
+        const shouldWin =
+          previewIsFinalAttempt && realRewardSegments.length > 0
+            ? guaranteedPrize || Math.random() < 0.45
+            : realRewardSegments.length > 0 && Math.random() < 0.2
+        // Perdeu: prefere cair em segmentos neutros (sem premio). Se nao houver,
+        // usa vitrine como fallback visual, nunca como premio real.
+        const losingPool =
+          neutralSegments.length > 0
+            ? neutralSegments
+            : showcaseSegments.length > 0
+              ? showcaseSegments
+              : wheelSegments
         const selectedSegment = shouldWin
-          ? pickRandomItem(rewardSegments)
-          : pickRandomItem(neutralSegments.length ? neutralSegments : wheelSegments)
+          ? pickRandomItem(realRewardSegments)
+          : pickRandomItem(losingPool)
 
         return {
           won: shouldWin,
