@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Download, Gift, MessageCircle, Trophy, Sparkles, PartyPopper, Target, Clock, ExternalLink, Instagram, Star, X } from 'lucide-react'
+import { CheckCircle2, Download, Gift, MessageCircle, Trophy, Sparkles, PartyPopper, Target, Clock, ExternalLink, Instagram, Star, X, Frown, AlertTriangle, ArrowLeft, MousePointerClick } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
+import { getBrowserCookieId, getBrowserFingerprint } from '@/lib/browser-identity'
 import { ApiError, apiRequest } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
 import type { SurveyShareSource } from '@/lib/public-survey'
@@ -32,6 +33,22 @@ const birthdayMonths = [
   { value: 11, label: 'Novembro' },
   { value: 12, label: 'Dezembro' },
 ]
+
+function getDaysInBirthMonth(month: number) {
+  if (!month || month < 1 || month > 12) {
+    return 31
+  }
+
+  if (month === 2) {
+    return 29
+  }
+
+  if ([4, 6, 9, 11].includes(month)) {
+    return 30
+  }
+
+  return 31
+}
 
 const neutralWheelLabels = [
   'Valeu!',
@@ -356,38 +373,71 @@ function getRetryTaskTypeColor(type: RewardRetryTask['type']) {
   return { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-700', icon: 'text-sky-500' }
 }
 
-function RetryStepper({ currentStep }: { currentStep: number }) {
-  const steps = ['Abrir', 'Voltar', 'Confirmar', 'Girar']
+function RetryTaskInstructions({ currentStep }: { currentStep: number }) {
+  const steps = [
+    {
+      label: 'Abrir tarefa',
+      description: 'Clique no botão para ir até a tarefa.',
+      icon: MousePointerClick,
+    },
+    {
+      label: 'Voltar pelo navegador',
+      description: 'Use o botão voltar do navegador para retornar.',
+      icon: ArrowLeft,
+    },
+    {
+      label: 'Roleta liberada',
+      description: 'A roleta será desbloqueada automaticamente.',
+      icon: Gift,
+    },
+  ]
 
   return (
-    <div className="flex items-center justify-center gap-1">
-      {steps.map((label, index) => {
-        const step = index + 1
-        const isActive = step === currentStep
-        const isCompleted = step < currentStep
+    <div className="space-y-3">
+      {steps.map((step, index) => {
+        const stepNumber = index + 1
+        const isActive = stepNumber === currentStep
+        const isCompleted = stepNumber < currentStep
+        const Icon = step.icon
+
         return (
-          <div key={label} className="flex items-center">
+          <div
+            key={step.label}
+            className={`flex items-start gap-3 rounded-[14px] border p-3 text-left transition ${
+              isCompleted
+                ? 'border-emerald-200 bg-emerald-50'
+                : isActive
+                  ? 'border-sky-200 bg-sky-50 ring-1 ring-sky-100'
+                  : 'border-slate-200 bg-slate-50'
+            }`}
+          >
             <div
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold sm:h-8 sm:w-8 sm:text-xs ${
+              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full sm:h-9 sm:w-9 ${
                 isCompleted
                   ? 'bg-emerald-500 text-white'
                   : isActive
-                    ? 'bg-sky-500 text-white ring-4 ring-sky-100'
-                    : 'bg-slate-100 text-slate-400'
+                    ? 'bg-sky-500 text-white'
+                    : 'bg-white text-slate-400 shadow-sm'
               }`}
             >
-              {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : step}
+              {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
             </div>
-            <span
-              className={`ml-1 hidden text-[10px] font-semibold sm:inline ${
-                isActive ? 'text-sky-700' : isCompleted ? 'text-emerald-600' : 'text-slate-400'
-              }`}
-            >
-              {label}
-            </span>
-            {index < steps.length - 1 ? (
-              <div className={`mx-1 h-0.5 w-4 sm:w-6 ${isCompleted ? 'bg-emerald-400' : 'bg-slate-200'}`} />
-            ) : null}
+            <div>
+              <p
+                className={`text-sm font-semibold ${
+                  isCompleted ? 'text-emerald-800' : isActive ? 'text-sky-800' : 'text-slate-600'
+                }`}
+              >
+                {stepNumber}. {step.label}
+              </p>
+              <p
+                className={`mt-0.5 text-xs ${
+                  isCompleted ? 'text-emerald-700' : isActive ? 'text-sky-700' : 'text-slate-500'
+                }`}
+              >
+                {step.description}
+              </p>
+            </div>
           </div>
         )
       })}
@@ -508,6 +558,7 @@ export function PublicSurveyPage() {
   const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
+  const autoConfirmTriggeredRef = useRef<Record<string, boolean>>({})
   const source = searchParams.get('src')
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
 
@@ -1046,8 +1097,8 @@ export function PublicSurveyPage() {
             birthDay: normalizedBirthDay,
             birthMonth: normalizedBirthMonth,
           },
-          browserCookieId: 'local-browser-cookie',
-          fingerprint: 'local-browser-fingerprint',
+          browserCookieId: getBrowserCookieId(),
+          fingerprint: getBrowserFingerprint(),
           answers: visibleQuestions.map((question) => ({
             questionId: question.id,
             value: answers[question.id] ?? '',
@@ -1272,23 +1323,49 @@ export function PublicSurveyPage() {
     : false
   const currentRetryTaskStatusLabel = !currentRetryTask
     ? ''
-    : !currentRetryTaskProgress
-      ? 'Pendente'
-      : !currentRetryTaskReturned
-        ? 'Volte para a página'
-        : currentRetryTaskCanConfirm
-          ? 'Pronto para confirmar'
-          : `Aguarde ${currentRetryTaskRemainingSeconds}s`
+    : currentRetryTaskIsLoading
+      ? 'Confirmando...'
+      : !currentRetryTaskProgress
+        ? 'Pendente'
+        : !currentRetryTaskReturned
+          ? 'Volte para a página'
+          : currentRetryTaskCanConfirm
+            ? 'Pronto para girar'
+            : 'Verificando tarefa'
   const currentRetryTaskButtonLabel = !currentRetryTask
     ? ''
-    : !currentRetryTaskProgress
-      ? 'Ir para a tarefa'
-      : !currentRetryTaskReturned
-        ? 'Volte para esta página'
-        : currentRetryTaskCanConfirm
-          ? 'Já concluí'
-          : `Aguarde ${currentRetryTaskRemainingSeconds}s`
+    : currentRetryTaskIsLoading
+      ? 'Liberando roleta...'
+      : !currentRetryTaskProgress
+        ? 'Ir para a tarefa'
+        : !currentRetryTaskReturned
+          ? 'Volte para esta página'
+          : currentRetryTaskCanConfirm
+            ? 'Liberar roleta'
+            : `Aguarde ${currentRetryTaskRemainingSeconds}s`
   const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
+
+  useEffect(() => {
+    if (!currentRetryTask || !currentRetryTaskReturned || !currentRetryTaskCanConfirm) {
+      return
+    }
+
+    if (autoConfirmTriggeredRef.current[currentRetryTask.id]) {
+      return
+    }
+
+    if (retryTaskClickMutation.isPending) {
+      return
+    }
+
+    autoConfirmTriggeredRef.current[currentRetryTask.id] = true
+    void retryTaskClickMutation.mutateAsync(currentRetryTask)
+  }, [
+    currentRetryTask,
+    currentRetryTaskReturned,
+    currentRetryTaskCanConfirm,
+    retryTaskClickMutation,
+  ])
 
   function openRetryTaskLink(task: RewardRetryTask) {
     window.location.assign(task.url)
@@ -1344,7 +1421,11 @@ export function PublicSurveyPage() {
       return 0
     }
 
-    return Math.max(0, Math.ceil((progress.startedAt + RETRY_TASK_MIN_WAIT_MS - retryTaskNow) / 1000))
+    if (!progress.returnedAt) {
+      return Math.ceil(RETRY_TASK_MIN_WAIT_MS / 1000)
+    }
+
+    return Math.max(0, Math.ceil((progress.returnedAt + RETRY_TASK_MIN_WAIT_MS - retryTaskNow) / 1000))
   }
 
   function canConfirmRetryTask(taskId: string) {
@@ -1354,7 +1435,7 @@ export function PublicSurveyPage() {
       return false
     }
 
-    return retryTaskNow - progress.startedAt >= RETRY_TASK_MIN_WAIT_MS
+    return retryTaskNow - progress.returnedAt >= RETRY_TASK_MIN_WAIT_MS
   }
 
   async function handleDownloadRewardProof() {
@@ -1367,108 +1448,145 @@ export function PublicSurveyPage() {
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = 1350
+      canvas.height = rewardPickupAddress ? 1280 : 1120
       const context = canvas.getContext('2d')
 
       if (!context) {
         throw new Error('Não foi possível gerar a imagem do comprovante.')
       }
 
-      const background = context.createLinearGradient(0, 0, 0, canvas.height)
-      background.addColorStop(0, '#ffffff')
-      background.addColorStop(0.58, '#f8fafc')
-      background.addColorStop(1, '#fefce8')
+      const primaryHex = survey?.primaryColor && /^#([0-9A-Fa-f]{6})$/.test(survey.primaryColor) ? survey.primaryColor : '#f59e0b'
+
+      const background = context.createLinearGradient(0, 0, canvas.width, canvas.height)
+      background.addColorStop(0, '#fffbeb')
+      background.addColorStop(0.5, '#ffffff')
+      background.addColorStop(1, '#fff7ed')
       context.fillStyle = background
       context.fillRect(0, 0, canvas.width, canvas.height)
 
-      const glow = context.createRadialGradient(220, 180, 40, 220, 180, 520)
-      glow.addColorStop(0, 'rgba(59,130,246,0.10)')
-      glow.addColorStop(0.42, 'rgba(245,158,11,0.12)')
-      glow.addColorStop(1, 'rgba(255,255,255,0)')
-      context.fillStyle = glow
-      context.fillRect(0, 0, canvas.width, canvas.height)
-
+      context.shadowColor = 'rgba(0,0,0,0.08)'
+      context.shadowBlur = 40
+      context.shadowOffsetY = 16
       context.fillStyle = '#ffffff'
-      fillRoundedRect(context, 72, 72, 936, 1206, 36)
+      fillRoundedRect(context, 72, 72, 936, canvas.height - 144, 36)
+      context.shadowColor = 'transparent'
+      context.shadowBlur = 0
+      context.shadowOffsetY = 0
 
-      context.fillStyle = '#e2e8f0'
-      fillRoundedRect(context, 72, 72, 936, 12, 6)
+      context.fillStyle = primaryHex
+      fillRoundedRect(context, 72, 72, 936, 160, 36)
+      context.beginPath()
+      context.moveTo(72, 210)
+      context.lineTo(1008, 210)
+      context.lineTo(1008, 232)
+      context.quadraticCurveTo(1008, 236, 1004, 236)
+      context.lineTo(76, 236)
+      context.quadraticCurveTo(72, 236, 72, 232)
+      context.closePath()
+      context.fillStyle = 'rgba(255,255,255,0.18)'
+      context.fill()
+
+      context.textAlign = 'center'
+      context.fillStyle = '#ffffff'
+      context.font = '800 30px Arial'
+      context.fillText('COMPROVANTE DE PRÊMIO', 540, 136)
+      context.fillStyle = 'rgba(255,255,255,0.85)'
+      context.font = '500 22px Arial'
+      const brandName = survey?.brandName || survey?.title || 'Campanha'
+      context.fillText(brandName, 540, 176)
+
+      context.fillStyle = primaryHex
+      context.beginPath()
+      context.arc(540, 302, 48, 0, Math.PI * 2)
+      context.fill()
+      context.fillStyle = '#ffffff'
+      context.font = '700 44px Arial'
+      context.textBaseline = 'middle'
+      context.fillText('🏆', 540, 306)
+      context.textBaseline = 'alphabetic'
 
       context.fillStyle = '#92400e'
-      context.font = '700 28px Arial'
-      context.fillText('Comprovante do prêmio', 120, 152)
-
-      const brandName = survey?.brandName || survey?.title || 'Campanha'
-      context.fillStyle = '#64748b'
-      context.font = '500 24px Arial'
-      context.fillText(brandName, 120, 196)
-
-      context.fillStyle = '#15803d'
+      context.font = '700 22px Arial'
+      context.fillText('PARABÉNS', 540, 400)
+      context.fillStyle = '#0f172a'
       context.font = '700 36px Arial'
-      context.fillText(`Parabéns, ${participantName || 'participante'}!`, 120, 280)
+      context.fillText(participantName || 'Participante', 540, 446)
 
-      context.fillStyle = '#0f172a'
-      context.font = '700 66px Arial'
+      context.fillStyle = '#64748b'
+      context.font = '500 20px Arial'
+      context.fillText('Você ganhou:', 540, 494)
+
+      context.fillStyle = primaryHex
+      context.font = '900 60px Arial'
       const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 840)
-      let currentY = 370
+      let prizeY = 552
       for (const line of prizeLines.slice(0, 3)) {
-        context.fillText(line, 120, currentY)
-        currentY += 78
+        context.fillText(line, 540, prizeY)
+        prizeY += 70
       }
 
-      context.fillStyle = '#f8fafc'
-      fillRoundedRect(context, 120, 500, 840, 200, 28)
-      context.fillStyle = '#64748b'
-      context.font = '600 24px Arial'
-      context.fillText('Protocolo', 156, 554)
+      const codeBoxY = prizeY + 28
       context.fillStyle = '#0f172a'
-      context.font = '700 42px Arial'
-      context.fillText(rewardResult.couponCode || 'Sem protocolo', 156, 610)
+      fillRoundedRect(context, 120, codeBoxY, 840, 136, 24)
 
-      if (rewardProofExpiresAt) {
-        context.fillStyle = '#64748b'
-        context.font = '600 24px Arial'
-        context.fillText('Validade para retirada', 156, 664)
-        context.fillStyle = '#b45309'
-        context.font = '700 34px Arial'
-        context.fillText(formatDatePtBr(rewardProofExpiresAt), 156, 714)
-      }
+      context.textAlign = 'left'
+      context.fillStyle = '#fbbf24'
+      context.font = '700 18px Arial'
+      context.fillText('PROTOCOLO / CUPOM', 156, codeBoxY + 42)
+      context.fillStyle = '#ffffff'
+      context.font = '900 46px Arial'
+      context.fillText(rewardResult.couponCode || 'SEM PROTOCOLO', 156, codeBoxY + 96)
 
-      context.fillStyle = '#f8fafc'
-      fillRoundedRect(context, 120, 744, 840, 236, 28)
-      context.fillStyle = '#64748b'
-      context.font = '600 24px Arial'
-      context.fillText('Orientação para resgate', 156, 798)
+      context.textAlign = 'right'
+      context.fillStyle = 'rgba(255,255,255,0.70)'
+      context.font = '500 18px Arial'
+      context.fillText('Apresente no resgate', 924, codeBoxY + 56)
+      context.textAlign = 'center'
 
-      context.fillStyle = '#0f172a'
-      context.font = '600 32px Arial'
-      const instructionLines = wrapCanvasText(context, rewardInstructionText, 768)
-      let instructionY = 854
-      for (const line of instructionLines.slice(0, 4)) {
-        context.fillText(line, 156, instructionY)
-        instructionY += 42
-      }
+      const infoStartY = codeBoxY + 176
+      context.fillStyle = '#fff7ed'
+      fillRoundedRect(context, 120, infoStartY, 840, rewardPickupAddress ? 280 : 200, 24)
+
+      context.textAlign = 'left'
+      context.fillStyle = '#92400e'
+      context.font = '700 18px Arial'
+      context.fillText('VALIDADE PARA RETIRADA', 156, infoStartY + 44)
+      context.fillStyle = rewardProofExpiresAt ? '#b45309' : '#78716c'
+      context.font = rewardProofExpiresAt ? '800 32px Arial' : '600 24px Arial'
+      context.fillText(rewardProofExpiresAt ? formatDatePtBr(rewardProofExpiresAt) : 'Consulte a campanha', 156, infoStartY + 86)
+
+      context.fillStyle = '#d97706'
+      context.fillRect(156, infoStartY + 110, 768, 2)
+
+      context.fillStyle = '#92400e'
+      context.font = '700 18px Arial'
+      context.fillText('ORIENTAÇÃO', 156, infoStartY + 148)
+      context.fillStyle = '#451a03'
+      context.font = '600 26px Arial'
+      context.fillText('Guarde este comprovante e apresente na loja', 156, infoStartY + 188)
+      context.fillText('dentro do prazo informado.', 156, infoStartY + 222)
 
       if (rewardPickupAddress) {
-        context.fillStyle = '#fff7ed'
-        fillRoundedRect(context, 120, 1024, 840, 188, 28)
-        context.fillStyle = '#9a3412'
-        context.font = '600 24px Arial'
-        context.fillText('Endereço de retirada', 156, 1078)
-
-        context.fillStyle = '#0f172a'
-        context.font = '500 30px Arial'
+        context.fillStyle = primaryHex
+        fillRoundedRect(context, 120, infoStartY + 224, 840, 148, 20)
+        context.fillStyle = 'rgba(255,255,255,0.95)'
+        context.font = '700 18px Arial'
+        context.fillText('ENDEREÇO DE RETIRADA', 156, infoStartY + 264)
+        context.fillStyle = '#ffffff'
+        context.font = '600 26px Arial'
         const addressLines = wrapCanvasText(context, rewardPickupAddress, 768)
-        let addressY = 1132
+        let addressY = infoStartY + 302
         for (const line of addressLines.slice(0, 4)) {
           context.fillText(line, 156, addressY)
-          addressY += 38
+          addressY += 36
         }
       }
 
-      context.fillStyle = '#64748b'
-      context.font = '500 22px Arial'
-      context.fillText('Guarde esta imagem e apresente no resgate do prêmio dentro do prazo.', 120, 1284)
+      const footerY = canvas.height - 110
+      context.textAlign = 'center'
+      context.fillStyle = '#78716c'
+      context.font = '500 18px Arial'
+      context.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')} • Esta imagem é seu comprovante oficial de prêmio.`, 540, footerY)
 
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
@@ -1603,7 +1721,7 @@ export function PublicSurveyPage() {
                     inputMode="numeric"
                     maxLength={11}
                     className="admin-input"
-                    placeholder="21996336092"
+                    placeholder="21989988988"
                     value={participantPhone}
                     onChange={(event) => setParticipantPhone(sanitizePhone(event.target.value))}
                   />
@@ -1623,24 +1741,44 @@ export function PublicSurveyPage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="grid gap-2 text-sm">
-                    <span className="text-slate-600">Dia do aniversário</span>
-                    <select aria-label="Dia do aniversário" className="admin-select" value={birthDay} onChange={(event) => setBirthDay(event.target.value)}>
-                      <option value="">Selecione</option>
-                      {Array.from({ length: 31 }, (_, index) => (
-                        <option key={index + 1} value={index + 1}>
-                          {index + 1}
+                    <span className="text-slate-600">Mês</span>
+                    <select
+                      aria-label="Mês do aniversário"
+                      className="admin-select"
+                      value={birthMonth}
+                      onChange={(event) => {
+                        const nextMonth = event.target.value
+                        setBirthMonth(nextMonth)
+                        if (birthDay) {
+                          const maxDay = getDaysInBirthMonth(Number(nextMonth))
+                          if (Number(birthDay) > maxDay) {
+                            setBirthDay('')
+                          }
+                        }
+                      }}
+                    >
+                      <option value="">Selecione o mês</option>
+                      {birthdayMonths.map((month) => (
+                        <option key={month.value} value={month.value}>
+                          {month.label}
                         </option>
                       ))}
                     </select>
                   </label>
 
                   <label className="grid gap-2 text-sm">
-                    <span className="text-slate-600">Mês do aniversário</span>
-                    <select aria-label="Mês do aniversário" className="admin-select" value={birthMonth} onChange={(event) => setBirthMonth(event.target.value)}>
-                      <option value="">Selecione</option>
-                      {birthdayMonths.map((month) => (
-                        <option key={month.value} value={month.value}>
-                          {month.label}
+                    <span className="text-slate-600">Dia</span>
+                    <select
+                      aria-label="Dia do aniversário"
+                      className="admin-select"
+                      value={birthDay}
+                      disabled={!birthMonth}
+                      onChange={(event) => setBirthDay(event.target.value)}
+                    >
+                      <option value="">{birthMonth ? 'Selecione o dia' : 'Escolha o mês primeiro'}</option>
+                      {Array.from({ length: getDaysInBirthMonth(Number(birthMonth)) }, (_, index) => (
+                        <option key={index + 1} value={index + 1}>
+                          {index + 1}
                         </option>
                       ))}
                     </select>
@@ -1813,35 +1951,46 @@ export function PublicSurveyPage() {
               </button>
             </form>
           ) : (
-            <section className="mt-6 border border-slate-200 bg-white p-6 text-center shadow-card" style={{ borderRadius: 8 }}>
-              <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-500" strokeWidth={1.5} />
-              <h2 className="mt-4 font-display text-3xl text-slate-950 sm:text-4xl">Obrigado por participar</h2>
-              <p className="mt-3 text-sm text-slate-600">
+            <section className="mt-6 border border-slate-200 bg-white p-6 text-center shadow-card sm:p-8" style={{ borderRadius: 8 }}>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-[0_8px_24px_rgba(16,185,129,0.22)] sm:h-20 sm:w-20">
+                <CheckCircle2 className="h-8 w-8 sm:h-10 sm:w-10" strokeWidth={1.5} />
+              </div>
+              <h2 className="mt-5 font-display text-3xl text-slate-950 sm:text-4xl">Obrigado por participar</h2>
+              <p className="mx-auto mt-3 max-w-lg text-sm text-slate-600 sm:text-base">
                 {submitMessage || 'Sua resposta foi registrada com sucesso.'}
               </p>
 
               {survey.rewardEnabled ? (
-                <div className="mt-6 rounded-[16px] border border-slate-200 bg-slate-50 p-4 sm:p-5">
-                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-slate-900">
-                    <Gift className="h-4 w-4" />
-                    Roleta
+                <div className="mt-7 overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50 p-5 text-center shadow-[0_12px_32px_rgba(245,158,11,0.12)] sm:p-6">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-amber-500 shadow-sm">
+                    <Gift className="h-6 w-6" />
                   </div>
-                  <p className="mt-3 text-sm text-slate-600">
+                  <p className="mt-3 text-base font-semibold text-slate-900">
                     {canSpinReward
-                      ? 'Toque abaixo para girar.'
+                      ? 'Sua vez de girar a roleta!'
                       : rewardResult?.won
-                        ? 'Seu prêmio já está disponível.'
+                        ? 'Você ganhou um prêmio!'
                         : rewardResult
-                          ? 'Seu resultado já está disponível.'
-                          : 'Abra a roleta para continuar.'}
+                          ? 'Seu resultado está disponível.'
+                          : 'A roleta está disponível.'}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {canSpinReward
+                      ? 'Toque abaixo para descobrir se ganhou.'
+                      : rewardResult?.won
+                        ? 'Toque abaixo para ver os detalhes do prêmio.'
+                        : rewardResult
+                          ? 'Toque abaixo para ver o resultado do seu giro.'
+                          : 'Toque abaixo para abrir a roleta.'}
                   </p>
                   <div className="mt-4">
                     <button
                       type="button"
                       onClick={() => setWheelModalOpen(true)}
-                      className="admin-button-primary w-full justify-center"
+                      className="admin-button-primary w-full justify-center px-6"
+                      style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
                     >
-                      {canSpinReward ? 'Abrir roleta' : 'Ver roleta'}
+                      {canSpinReward ? 'Girar roleta' : rewardResult?.won ? 'Ver meu prêmio' : 'Ver roleta'}
                     </button>
                   </div>
                 </div>
@@ -1849,7 +1998,11 @@ export function PublicSurveyPage() {
 
               {previewMode ? (
                 <div className="mt-5 flex justify-center">
-                  <button type="button" onClick={resetPreviewSession} className="admin-button">
+                  <button
+                    type="button"
+                    onClick={resetPreviewSession}
+                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                  >
                     Responder novamente
                   </button>
                 </div>
@@ -2005,26 +2158,155 @@ export function PublicSurveyPage() {
                           </div>
                           <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
                           <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
-                            {rewardResult?.landedLabel ? `A roleta parou em ${rewardResult.landedLabel}.` : 'Você não ganhou neste giro.'}
+                            Você não ganhou neste giro.
                           </p>
                           <p className="mt-1 text-sm text-slate-500">Complete a tarefa abaixo para girar novamente.</p>
 
-                          <div className="mt-5">
-                            <RetryStepper
-                              currentStep={
-                                currentRetryTaskCanConfirm
-                                  ? 3
-                                  : currentRetryTaskReturned
-                                    ? 2
-                                    : currentRetryTaskProgress
-                                      ? 2
-                                      : 1
-                              }
-                            />
-                          </div>
+                          {!currentRetryTaskReturned ? (
+                            <>
+                              <div className="mt-5">
+                                <RetryTaskInstructions
+                                  currentStep={currentRetryTaskProgress ? 2 : 1}
+                                />
+                              </div>
 
-                          {rewardResult?.spinAttempt && rewardResult.maxAttempts ? (
+                              <div
+                                className={`mt-5 rounded-[20px] border px-5 py-4 text-left transition ${
+                                  currentRetryTaskIsLoading
+                                    ? 'border-slate-200 bg-slate-50'
+                                    : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer hover:shadow-md`
+                                }`}
+                                role="button"
+                                tabIndex={currentRetryTaskIsLoading ? -1 : 0}
+                                onClick={() =>
+                                  handleRetryTaskCardClick({
+                                    task: currentRetryTask,
+                                    taskProgress: currentRetryTaskProgress ?? undefined,
+                                    canConfirm: currentRetryTaskCanConfirm,
+                                    isLoading: currentRetryTaskIsLoading,
+                                  })
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    handleRetryTaskCardClick({
+                                      task: currentRetryTask,
+                                      taskProgress: currentRetryTaskProgress ?? undefined,
+                                      canConfirm: currentRetryTaskCanConfirm,
+                                      isLoading: currentRetryTaskIsLoading,
+                                    })
+                                  }
+                                }}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
+                                    {(() => {
+                                      const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
+                                      return <Icon className="h-5 w-5" />
+                                    })()}
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
+                                    <p className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{currentRetryTask.title}</p>
+                                    <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
+                                      {getRetryTaskTypeLabel(currentRetryTask.type)}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex items-center justify-center">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                                  {currentRetryTaskStatusLabel}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="mt-5 flex gap-3 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-left">
+                              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                              <div>
+                                <p className="text-sm font-semibold text-amber-900">Atenção</p>
+                                <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                                  Se você ganhar o prêmio, será necessário apresentar comprovantes de que cumpriu a tarefa (print da tela, por exemplo) no momento da retirada.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {currentRetryTaskReturned ? (
                             <div className="mt-4">
+                              <div className="flex items-center justify-between text-xs text-slate-600">
+                                <span className="font-medium">Aguarde, a roleta já será liberada</span>
+                                <span className="font-mono font-semibold">{currentRetryTaskRemainingSeconds}s</span>
+                              </div>
+                              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-sky-500 transition-all duration-300"
+                                  style={{
+                                    width: `${Math.min(
+                                      100,
+                                      ((retryTaskNow - currentRetryTaskProgress.startedAt) / RETRY_TASK_MIN_WAIT_MS) * 100,
+                                    )}%`,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
+
+                          <div className="mt-5 flex items-center justify-center">
+                            {currentRetryTaskReturned ? (
+                              <button
+                                type="button"
+                                disabled={!currentRetryTaskCanConfirm || currentRetryTaskIsLoading}
+                                onClick={() => void retryTaskClickMutation.mutateAsync(currentRetryTask)}
+                                className="admin-button-primary w-full justify-center px-6 py-3 text-sm"
+                                style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
+                              >
+                                {currentRetryTaskIsLoading ? 'Liberando roleta...' : 'Girar roleta novamente'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={currentRetryTaskIsLoading || Boolean(currentRetryTaskProgress)}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  if (currentRetryTaskProgress) {
+                                    openRetryTaskLink(currentRetryTask)
+                                    return
+                                  }
+                                  startRetryTask(currentRetryTask)
+                                }}
+                                className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                {currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {rewardResult && !rewardResult.won && !showRetryTaskOverlay && !wheelSpinning && !canSpinReward ? (
+                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
+                        <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
+                        <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-slate-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.14)] sm:px-8 sm:py-9 animate-fade-in-scale">
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.12)] sm:h-16 sm:w-16">
+                            <Frown className="h-7 w-7 sm:h-8 sm:w-8" />
+                          </div>
+                          <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Não foi dessa vez</p>
+                          <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+                            Você não ganhou desta vez.
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {rewardResult.finalAttempt
+                              ? 'Suas tentativas desta experiência já foram usadas.'
+                              : 'Não desanime, continue participando das próximas campanhas.'}
+                          </p>
+                          <p className="mt-3 text-sm font-semibold text-slate-700">Obrigado por participar!</p>
+
+                          {rewardResult.spinAttempt && rewardResult.maxAttempts ? (
+                            <div className="mt-5">
                               <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
                                 <span>Progresso</span>
                                 <span>
@@ -2033,7 +2315,7 @@ export function PublicSurveyPage() {
                               </div>
                               <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
                                 <div
-                                  className="h-full rounded-full bg-sky-500 transition-all duration-500"
+                                  className="h-full rounded-full bg-slate-400 transition-all duration-500"
                                   style={{
                                     width: `${Math.min(100, ((rewardResult.spinAttempt - 1) / (rewardResult.maxAttempts - 1 || 1)) * 100)}%`,
                                   }}
@@ -2042,99 +2324,14 @@ export function PublicSurveyPage() {
                             </div>
                           ) : null}
 
-                          <div
-                            className={`mt-5 rounded-[20px] border px-5 py-4 text-left transition ${
-                              currentRetryTaskCanConfirm || currentRetryTaskIsLoading
-                                ? 'border-slate-200 bg-slate-50'
-                                : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer hover:shadow-md`
-                            }`}
-                            role="button"
-                            tabIndex={currentRetryTaskCanConfirm || currentRetryTaskIsLoading ? -1 : 0}
-                            onClick={() =>
-                              handleRetryTaskCardClick({
-                                task: currentRetryTask,
-                                taskProgress: currentRetryTaskProgress ?? undefined,
-                                canConfirm: currentRetryTaskCanConfirm,
-                                isLoading: currentRetryTaskIsLoading,
-                              })
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                handleRetryTaskCardClick({
-                                  task: currentRetryTask,
-                                  taskProgress: currentRetryTaskProgress ?? undefined,
-                                  canConfirm: currentRetryTaskCanConfirm,
-                                  isLoading: currentRetryTaskIsLoading,
-                                })
-                              }
-                            }}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
-                                {(() => {
-                                  const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
-                                  return <Icon className="h-5 w-5" />
-                                })()}
-                              </div>
-                              <div className="flex-1">
-                                <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
-                                <p className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{currentRetryTask.title}</p>
-                                <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
-                                  {getRetryTaskTypeLabel(currentRetryTask.type)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex items-center justify-center">
-                            <span
-                              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
-                                currentRetryTaskCanConfirm
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                  : currentRetryTaskReturned
-                                    ? 'border-sky-200 bg-sky-50 text-sky-700'
-                                    : 'border-slate-200 bg-slate-50 text-slate-700'
-                              }`}
-                            >
-                              {currentRetryTaskCanConfirm ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
-                              {currentRetryTaskStatusLabel}
-                            </span>
-                          </div>
-
-                          {currentRetryTaskRemainingSeconds > 0 ? (
-                            <div className="mt-4">
-                              <div className="flex items-center justify-between text-xs text-slate-500">
-                                <span>Tempo para confirmar</span>
-                                <span className="font-mono font-semibold">{currentRetryTaskRemainingSeconds}s</span>
-                              </div>
-                              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full rounded-full bg-sky-400 transition-all"
-                                  style={{
-                                    width: `${Math.min(100, ((RETRY_TASK_MIN_WAIT_MS - currentRetryTaskRemainingSeconds * 1000) / RETRY_TASK_MIN_WAIT_MS) * 100)}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="mt-5 flex flex-col gap-3">
+                          <div className="mt-6 flex flex-col gap-3">
                             <button
                               type="button"
-                              disabled={currentRetryTaskIsLoading || (Boolean(currentRetryTaskProgress) && !currentRetryTaskCanConfirm)}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                if (currentRetryTaskProgress) {
-                                  void retryTaskClickMutation.mutateAsync(currentRetryTask)
-                                  return
-                                }
-
-                                startRetryTask(currentRetryTask)
-                              }}
-                              className="admin-button-primary w-full justify-center disabled:opacity-60"
+                              onClick={() => setWheelModalOpen(false)}
+                              className="admin-button-primary w-full justify-center"
+                              style={{ backgroundColor: survey?.primaryColor }}
                             >
-                              {currentRetryTaskIsLoading ? 'Confirmando...' : currentRetryTaskButtonLabel}
+                              Entendi
                             </button>
                           </div>
                         </div>

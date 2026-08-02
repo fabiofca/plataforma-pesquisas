@@ -96,7 +96,7 @@ function normalizeRewardRetryTasks(value: unknown): RewardRetryTask[] {
             typeof item.url === 'string',
         ),
     )
-    .slice(0, 2)
+    .slice(0, 5)
 }
 
 async function loadSurveyQuestions(surveyId: string) {
@@ -560,9 +560,9 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
 
   await query(
     `insert into surveys (
-      id, owner_user_id, title, description, participation_mode, brand_name, logo_url, primary_color, banner_url, closing_message, reward_enabled, prevent_duplicate_responses
+      id, owner_user_id, title, description, participation_mode, brand_name, logo_url, primary_color, banner_url, closing_message, reward_enabled, prevent_duplicate_responses, duplicate_response_cooldown_days
       , builder_mode, flow_json
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
     [
       surveyId,
       request.auth!.userId,
@@ -576,6 +576,7 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
       payload.closingMessage ?? null,
       payload.rewardEnabled,
       payload.preventDuplicateResponses,
+      payload.duplicateResponseCooldownDays,
       payload.builderMode,
       JSON.stringify(payload.flowLayout ?? { version: 1, nodes: [] }),
     ],
@@ -650,8 +651,9 @@ surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
          closing_message = $9,
          reward_enabled = $10,
          prevent_duplicate_responses = $11,
-         builder_mode = $12,
-         flow_json = $13,
+         duplicate_response_cooldown_days = $12,
+         builder_mode = $13,
+         flow_json = $14,
          updated_at = now()
      where id = $1`,
     [
@@ -666,6 +668,7 @@ surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
       payload.closingMessage ?? null,
       payload.rewardEnabled,
       payload.preventDuplicateResponses,
+      payload.duplicateResponseCooldownDays,
       payload.builderMode,
       JSON.stringify(payload.flowLayout ?? { version: 1, nodes: [] }),
     ],

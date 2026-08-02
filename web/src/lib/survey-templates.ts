@@ -38,7 +38,8 @@ export function buildCustomSurveyPayload(form: SurveyCreateFormState) {
     bannerUrl: '',
     closingMessage: 'Obrigado por participar. Sua resposta foi registrada com sucesso.',
     rewardEnabled: false,
-    preventDuplicateResponses: false,
+    preventDuplicateResponses: true,
+    duplicateResponseCooldownDays: 15,
     questions: [
       {
         title: 'Como você avalia sua experiência?',
@@ -66,7 +67,8 @@ export function buildNpsSurveyPayload(form: SurveyCreateFormState) {
     bannerUrl: '',
     closingMessage: 'Obrigado por compartilhar sua nota. Sua opinião vai ajudar a melhorar a experiência.',
     rewardEnabled: false,
-    preventDuplicateResponses: false,
+    preventDuplicateResponses: true,
+    duplicateResponseCooldownDays: 15,
     questions: [
       {
         title: 'De 0 a 10, o quanto você indicaria nossa empresa para um amigo ou colega?',

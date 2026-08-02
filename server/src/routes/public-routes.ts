@@ -34,6 +34,8 @@ type PublicSurveyRecord = {
   banner_url: string | null
   closing_message: string | null
   reward_enabled: boolean
+  prevent_duplicate_responses: boolean
+  duplicate_response_cooldown_days: number
   reward_campaign_id: string | null
   reward_campaign_status: 'active' | 'paused' | 'ended' | null
   reward_wheel_mode: 'standard' | 'advanced' | null
@@ -110,7 +112,7 @@ function normalizeRewardRetryTasks(value: PublicSurveyRecord['reward_retry_unloc
           typeof item.url === 'string',
       )
     })
-    .slice(0, 2)
+    .slice(0, 5)
 }
 
 async function loadRewardPreviewItems(input: {
@@ -173,6 +175,8 @@ async function getSurveyBySlug(slug: string) {
         surveys.banner_url,
         surveys.closing_message,
         surveys.reward_enabled,
+        surveys.prevent_duplicate_responses,
+        surveys.duplicate_response_cooldown_days,
         reward_campaigns.id as reward_campaign_id,
         reward_campaigns.status as reward_campaign_status,
         reward_campaigns.wheel_mode as reward_wheel_mode,
@@ -263,6 +267,8 @@ async function getSurveyPreviewById(surveyId: string) {
         surveys.banner_url,
         surveys.closing_message,
         surveys.reward_enabled,
+        surveys.prevent_duplicate_responses,
+        surveys.duplicate_response_cooldown_days,
         reward_campaigns.id as reward_campaign_id,
         reward_campaigns.status as reward_campaign_status,
         reward_campaigns.wheel_mode as reward_wheel_mode,
@@ -352,26 +358,44 @@ function isRewardCampaignAvailable(survey: Awaited<ReturnType<typeof getSurveyBy
   return survey.reward_campaign_expires_at >= new Date().toISOString().slice(0, 10)
 }
 
+function formatCooldownDays(days: number) {
+  if (days <= 1) {
+    return '1 dia'
+  }
+
+  return `${days} dias`
+}
+
 function buildRewardSubmitMessage(
   survey: Awaited<ReturnType<typeof getSurveyBySlug>>,
   rewardEligible: boolean,
+  recentParticipant?: boolean,
 ) {
   if (!survey?.reward_enabled || rewardEligible) {
     return null
   }
 
-  return isRewardCampaignAvailable(survey)
-    ? 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi registrada normalmente, mas a roleta não gira novamente.'
-    : 'A campanha de prêmios está pausada, encerrada ou indisponível no momento. Sua resposta foi registrada normalmente.'
+  if (!isRewardCampaignAvailable(survey)) {
+    return 'A campanha de prêmios está pausada, encerrada ou indisponível no momento. Sua resposta foi registrada normalmente.'
+  }
+
+  if (recentParticipant) {
+    return `Este cliente já participou desta campanha recentemente. A resposta foi registrada normalmente, mas a roleta só poderá ser usada novamente após ${formatCooldownDays(survey.duplicate_response_cooldown_days)}.`
+  }
+
+  return 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi registrada normalmente, mas a roleta não gira novamente.'
 }
 
-async function countExistingRewardParticipants(input: {
+async function countRecentRewardParticipants(input: {
   surveyId: string
   phone: string
   email?: string
+  browserCookieId?: string
+  fingerprint?: string
+  cooldownDays: number
 }) {
   const conditions = ['participant_phone = $2']
-  const values: Array<string | null> = [input.surveyId, input.phone]
+  const values: Array<string | null | number> = [input.surveyId, input.phone]
   let index = 3
 
   if (input.email) {
@@ -380,11 +404,26 @@ async function countExistingRewardParticipants(input: {
     index += 1
   }
 
+  if (input.browserCookieId) {
+    conditions.push(`browser_cookie_id = $${index}`)
+    values.push(input.browserCookieId)
+    index += 1
+  }
+
+  if (input.fingerprint) {
+    conditions.push(`browser_fingerprint = $${index}`)
+    values.push(input.fingerprint)
+    index += 1
+  }
+
+  values.push(input.cooldownDays)
+
   const result = await query<{ count: string }>(
     `select cast(count(*) as text) as count
      from survey_responses
      where survey_id = $1
-       and (${conditions.join(' or ')})`,
+       and (${conditions.join(' or ')})
+       and submitted_at > now() - make_interval(days => $${index})`,
     values,
   )
 
@@ -686,10 +725,14 @@ publicRouter.post('/surveys/:slug/eligibility', async (request, response) => {
     return
   }
 
-  const duplicateCount = await countExistingRewardParticipants({
+  const cooldownDays = survey.prevent_duplicate_responses ? survey.duplicate_response_cooldown_days : 0
+  const duplicateCount = await countRecentRewardParticipants({
     surveyId: survey.id,
     phone: payload.participant.phone,
     email: payload.participant.email,
+    browserCookieId: payload.browserCookieId,
+    fingerprint: payload.fingerprint,
+    cooldownDays,
   })
 
   response.json({
@@ -707,10 +750,14 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
   }
 
   const sourceIp = request.ip ? hashValue(request.ip) : null
-  const previousResponsesCount = await countExistingRewardParticipants({
+  const cooldownDays = survey.prevent_duplicate_responses ? survey.duplicate_response_cooldown_days : 0
+  const previousResponsesCount = await countRecentRewardParticipants({
     surveyId: survey.id,
     phone: payload.participant.phone,
     email: payload.participant.email,
+    browserCookieId: payload.browserCookieId,
+    fingerprint: payload.fingerprint,
+    cooldownDays,
   })
   const rewardEligible = isRewardCampaignAvailable(survey) && previousResponsesCount === 0
 
@@ -754,7 +801,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     responseId,
     rewardEnabled: survey.reward_enabled,
     rewardEligible,
-    rewardMessage: buildRewardSubmitMessage(survey, rewardEligible),
+    rewardMessage: buildRewardSubmitMessage(survey, rewardEligible, previousResponsesCount > 0),
   })
 })
 
@@ -1075,9 +1122,11 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
 
     if (currentAttempt === 1 && !surveyResponse.reward_eligible) {
       await client.query('commit')
-      response.status(409).json({
-        message: 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi salva, mas a roleta não pode ser usada novamente.',
-      })
+      const cooldownDays = survey.prevent_duplicate_responses ? survey.duplicate_response_cooldown_days : 0
+      const message = cooldownDays > 0
+        ? `Este cliente já participou desta campanha recentemente. A resposta foi salva, mas a roleta só poderá ser usada novamente após ${formatCooldownDays(cooldownDays)}.`
+        : 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi salva, mas a roleta não pode ser usada novamente.'
+      response.status(409).json({ message })
       return
     }
 

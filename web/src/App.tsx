@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { BrandingEffects } from '@/components/BrandingEffects'
+import Home from '@/pages/Home'
 import { useAuthStore } from '@/store/use-auth-store'
 
 const DashboardPage = lazy(async () => {
@@ -205,7 +206,7 @@ export default function App() {
       <BrandingEffects />
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/" element={<Navigate to={user || isBootstrapping ? '/app' : '/login'} replace />} />
+          <Route path="/" element={user || isBootstrapping ? <Navigate to="/app" replace /> : <Home />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/criar-conta" element={<SignUpPage />} />
           <Route

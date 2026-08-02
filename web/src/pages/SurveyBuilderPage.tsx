@@ -43,6 +43,7 @@ type BuilderState = {
   participationMode: 'anonymous' | 'identified'
   rewardEnabled: boolean
   preventDuplicateResponses: boolean
+  duplicateResponseCooldownDays: number
   builderMode: SurveyBuilderMode
   flowLayout: SurveyFlowLayout
   questions: BuilderQuestion[]
@@ -97,7 +98,8 @@ function makeEmptyBuilderState(): BuilderState {
     closingMessage: 'Obrigado por participar. Sua resposta foi registrada com sucesso.',
     participationMode: 'identified',
     rewardEnabled: false,
-    preventDuplicateResponses: false,
+    preventDuplicateResponses: true,
+    duplicateResponseCooldownDays: 15,
     builderMode: 'visual',
     flowLayout: mergeFlowLayout(initialQuestions.map((question) => question.id), { version: 1, nodes: [] }),
     questions: initialQuestions,
@@ -172,7 +174,8 @@ function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
     closingMessage: survey.closingMessage ?? 'Obrigado por participar. Sua resposta foi registrada com sucesso.',
     participationMode: 'identified',
     rewardEnabled: survey.rewardEnabled,
-    preventDuplicateResponses: false,
+    preventDuplicateResponses: survey.preventDuplicateResponses ?? true,
+    duplicateResponseCooldownDays: survey.duplicateResponseCooldownDays ?? 15,
     builderMode: 'visual',
     flowLayout: mergeFlowLayout(
       questions.map((question) => question.id),
@@ -223,6 +226,7 @@ export function SurveyBuilderPage() {
           builder_mode?: SurveyBuilderMode
           flow_json?: SurveyFlowLayout | null
           prevent_duplicate_responses: boolean
+          duplicate_response_cooldown_days: number
           link_clicks: string
           qr_scans: string
           status: string
@@ -326,7 +330,8 @@ export function SurveyBuilderPage() {
         bannerUrl: form.bannerUrl.trim(),
         closingMessage: form.closingMessage.trim(),
         rewardEnabled: form.rewardEnabled,
-        preventDuplicateResponses: false,
+        preventDuplicateResponses: form.preventDuplicateResponses,
+        duplicateResponseCooldownDays: form.duplicateResponseCooldownDays,
         builderMode: 'visual',
         flowLayout: normalizedFlowLayout,
         questions: orderedQuestions.map((question, index) => ({
@@ -1142,6 +1147,47 @@ export function SurveyBuilderPage() {
                   <span className="text-slate-500">Liga a campanha de prêmios para esta pesquisa.</span>
                 </span>
               </label>
+            </div>
+
+            <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-4">
+              <label className="admin-checkrow">
+                <input
+                  type="checkbox"
+                  checked={form.preventDuplicateResponses}
+                  onChange={(event) => {
+                    const preventDuplicateResponses = event.target.checked
+                    setForm((current) => ({
+                      ...current,
+                      preventDuplicateResponses,
+                      duplicateResponseCooldownDays: preventDuplicateResponses && current.duplicateResponseCooldownDays < 1 ? 15 : current.duplicateResponseCooldownDays,
+                    }))
+                  }}
+                />
+                <span>
+                  <span className="block font-semibold text-slate-950">Limitar giros da roleta</span>
+                  <span className="text-slate-500">A pessoa pode responder novamente, mas só pode girar a roleta uma vez dentro do prazo.</span>
+                </span>
+              </label>
+
+              {form.preventDuplicateResponses ? (
+                <label className="mt-4 grid gap-2 text-sm">
+                  <span className="text-slate-600">Prazo para novo giro (dias)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    className="admin-input w-32"
+                    value={form.duplicateResponseCooldownDays}
+                    onChange={(event) => {
+                      const value = Number.parseInt(event.target.value, 10)
+                      setForm((current) => ({
+                        ...current,
+                        duplicateResponseCooldownDays: Number.isNaN(value) ? current.duplicateResponseCooldownDays : Math.max(1, Math.min(365, value)),
+                      }))
+                    }}
+                  />
+                </label>
+              ) : null}
             </div>
 
             <label className="grid gap-2 text-sm">

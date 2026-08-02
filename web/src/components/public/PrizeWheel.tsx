@@ -21,35 +21,35 @@ type PrizeWheelProps = {
 }
 
 const rewardSegmentPalette = [
-  { start: '#1d4ed8', end: '#3b82f6', text: '#ffffff' },
-  { start: '#7c3aed', end: '#a78bfa', text: '#ffffff' },
-  { start: '#db2777', end: '#f472b6', text: '#ffffff' },
-  { start: '#ea580c', end: '#fb923c', text: '#ffffff' },
-  { start: '#0d9488', end: '#2dd4bf', text: '#ffffff' },
-  { start: '#475569', end: '#64748b', text: '#ffffff' },
+  { start: '#dc2626', end: '#ef4444', text: '#ffffff' },
+  { start: '#7c3aed', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#db2777', end: '#ec4899', text: '#ffffff' },
+  { start: '#ea580c', end: '#f97316', text: '#ffffff' },
+  { start: '#059669', end: '#10b981', text: '#ffffff' },
+  { start: '#2563eb', end: '#3b82f6', text: '#ffffff' },
 ]
 
 const retrySegmentPalette = [
-  { start: '#0284c7', end: '#38bdf8', text: '#ffffff' },
-  { start: '#0891b2', end: '#22d3ee', text: '#ffffff' },
-  { start: '#7c3aed', end: '#a78bfa', text: '#ffffff' },
-  { start: '#16a34a', end: '#4ade80', text: '#ffffff' },
+  { start: '#0284c7', end: '#0ea5e9', text: '#ffffff' },
+  { start: '#0891b2', end: '#06b6d4', text: '#ffffff' },
+  { start: '#7c3aed', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#16a34a', end: '#22c55e', text: '#ffffff' },
 ]
 
 const showcaseSegmentPalette = [
-  { start: '#d97706', end: '#fbbf24', text: '#ffffff' },
-  { start: '#dc2626', end: '#f87171', text: '#ffffff' },
-  { start: '#4f46e5', end: '#818cf8', text: '#ffffff' },
-  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
+  { start: '#d97706', end: '#f59e0b', text: '#ffffff' },
+  { start: '#dc2626', end: '#ef4444', text: '#ffffff' },
+  { start: '#4f46e5', end: '#6366f1', text: '#ffffff' },
+  { start: '#0d9488', end: '#14b8a6', text: '#ffffff' },
 ]
 
 const neutralSegmentPalette = [
-  { start: '#93c5fd', end: '#bfdbfe', text: '#1e3a8a' },
-  { start: '#c4b5fd', end: '#ddd6fe', text: '#5b21b6' },
-  { start: '#fca5a5', end: '#fecaca', text: '#991b1b' },
-  { start: '#fcd34d', end: '#fde68a', text: '#92400e' },
-  { start: '#86efac', end: '#bbf7d0', text: '#166534' },
-  { start: '#67e8f9', end: '#a5f3fc', text: '#155e75' },
+  { start: '#3b82f6', end: '#60a5fa', text: '#ffffff' },
+  { start: '#8b5cf6', end: '#a78bfa', text: '#ffffff' },
+  { start: '#f43f5e', end: '#fb7185', text: '#ffffff' },
+  { start: '#f59e0b', end: '#fbbf24', text: '#451a03' },
+  { start: '#22c55e', end: '#4ade80', text: '#ffffff' },
+  { start: '#06b6d4', end: '#22d3ee', text: '#ffffff' },
 ]
 
 const confettiPalette = ['#facc15', '#ff006e', '#6366f1', '#22c55e', '#38bdf8', '#ffffff']
@@ -402,7 +402,7 @@ export function PrizeWheel({
   return (
     <div className="mx-auto w-full" style={wheelWrapperStyle}>
       <div className="relative aspect-square">
-        <div className="absolute inset-[-5%] rounded-full bg-[radial-gradient(circle,_rgba(96,165,250,0.22)_0%,_rgba(168,85,247,0.18)_30%,_rgba(244,114,182,0.14)_52%,_rgba(255,255,255,0)_76%)] blur-2xl" />
+        <div className="absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,_rgba(250,204,21,0.35)_0%,_rgba(249,115,22,0.28)_22%,_rgba(236,72,153,0.24)_45%,_rgba(139,92,246,0.18)_68%,_rgba(255,255,255,0)_88%)] blur-2xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
             {confettiPieces.map((piece, index) => (
@@ -428,10 +428,10 @@ export function PrizeWheel({
         <div className={pointerBaseClass} />
         <div className={pointerTipClass} />
 
-        <div className="absolute inset-0 rounded-full border-[6px] border-transparent bg-clip-padding shadow-[0_22px_50px_rgba(15,23,42,0.12),inset_0_0_0_1px_rgba(255,255,255,0.35)]" style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%)' }} />
-        <div className="absolute inset-[0.7%] rounded-full border-[5px] border-white/60" style={{ background: 'linear-gradient(135deg, #e2e8f0 0%, #94a3b8 25%, #f1f5f9 50%, #94a3b8 75%, #e2e8f0 100%)' }} />
-        <div className="absolute inset-[1.6%] rounded-full border border-white/70 shadow-[inset_0_2px_6px_rgba(15,23,42,0.08)]" style={{ background: 'linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%)' }} />
-        <div className="absolute inset-[2.6%] rounded-full border border-slate-300/60 bg-white shadow-[inset_0_0_12px_rgba(148,163,184,0.12)]" />
+        <div className="absolute inset-0 rounded-full border-[6px] border-transparent bg-clip-padding shadow-[0_22px_50px_rgba(245,158,11,0.22),inset_0_0_0_1px_rgba(255,255,255,0.45)]" style={{ background: 'linear-gradient(180deg, #fefce8 0%, #fde68a 100%)' }} />
+        <div className="absolute inset-[0.7%] rounded-full border-[5px] border-white/70" style={{ background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 20%, #fcd34d 40%, #f59e0b 60%, #fbbf24 80%, #f59e0b 100%)' }} />
+        <div className="absolute inset-[1.6%] rounded-full border border-white/80 shadow-[inset_0_2px_6px_rgba(180,83,9,0.12)]" style={{ background: 'linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%)' }} />
+        <div className="absolute inset-[2.6%] rounded-full border border-amber-300/70 bg-white shadow-[inset_0_0_14px_rgba(245,158,11,0.18)]" />
 
         <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[4px] border-white/90 shadow-[0_18px_36px_rgba(15,23,42,0.14),inset_0_0_18px_rgba(0,0,0,0.06)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
           style={{

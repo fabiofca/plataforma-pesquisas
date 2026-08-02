@@ -103,6 +103,7 @@ export interface SurveyItem {
   linkClicks?: number
   qrScans?: number
   preventDuplicateResponses?: boolean
+  duplicateResponseCooldownDays?: number
   rewardPreviewItems?: Array<{
     id: string
     title: string

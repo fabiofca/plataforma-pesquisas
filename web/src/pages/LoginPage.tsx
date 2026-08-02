@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Eye, EyeOff, Loader2, Moon, ShieldCheck, Sun } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Loader2, Moon, Sun } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { defaultBrandingSettings, useBrandingSettings } from '@/hooks/useBrandingSettings'
@@ -66,9 +66,9 @@ export function LoginPage() {
             )}
 
             <p className="mt-6 text-[11px] uppercase tracking-[0.18em] text-slate-500">Acesso ao painel</p>
-            <h1 className="mt-2 font-display text-4xl text-slate-950 lg:text-5xl">Entre e vá direto ao ponto.</h1>
+            <h1 className="mt-2 font-display text-4xl text-slate-950 lg:text-5xl">Acesse suas pesquisas.</h1>
             <p className="mt-4 max-w-xl text-sm text-slate-600">
-              Crie pesquisas, acompanhe respostas e veja relatórios sem complicação.
+              Entre com seu e-mail e senha para gerenciar pesquisas, acompanhar respostas e controlar prêmios.
             </p>
           </div>
 
@@ -149,13 +149,7 @@ export function LoginPage() {
               </Link>
             </div>
 
-            <div className="mt-6 admin-alert border-emerald-200 bg-emerald-50 text-emerald-900">
-              <div className="flex items-center gap-2 font-medium">
-                <ShieldCheck className="h-4 w-4" />
-                Acesso inicial do sistema
-              </div>
-              <p className="mt-2">E-mail: `master@plataforma.local` | Senha padrão: `master1234`.</p>
-            </div>
+
           </div>
         </section>
       </div>
