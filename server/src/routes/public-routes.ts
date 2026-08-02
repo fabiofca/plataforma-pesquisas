@@ -155,6 +155,7 @@ async function loadRewardPreviewItems(input: {
      from reward_items
      where campaign_id = $1
        and is_active = true
+       and outcome_role = 'prize'
        and quantity_total > quantity_awarded
      order by sort_order asc, created_at asc
      limit $2`,

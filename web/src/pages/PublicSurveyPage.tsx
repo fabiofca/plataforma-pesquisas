@@ -483,7 +483,9 @@ function buildPrizeWheelSegments(
     return [...visibleItems, ...fallbackSegments]
   }
 
-  const rewardItems = items.slice(0, 3)
+  const rewardItems = items
+    .filter((item) => item.outcomeRole === 'prize')
+    .slice(0, 3)
   if (!rewardItems.length) {
     return neutralWheelLabels.map((label, index) => ({
         id: `neutral-${index}`,

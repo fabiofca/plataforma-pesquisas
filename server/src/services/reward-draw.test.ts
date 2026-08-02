@@ -6,6 +6,8 @@ import {
   createNextReleaseSpin,
   getAvailableRewardItems,
   getFrequencyTarget,
+  isAdvancedPrizeItem,
+  isAdvancedShowcaseItem,
   selectDueRewardItem,
   selectGuaranteedPrizeItem,
   selectNoPrizeLabel,
@@ -243,6 +245,41 @@ describe('reward draw', () => {
   it('calcula intervalos mínimos sem exigir configuração manual', () => {
     expect(calculateMinimumGapSpins(30)).toBe(6)
     expect(calculateCampaignMinimumGap([30, 60, 120])).toBe(6)
+  })
+
+  it('exclui itens vitrine do sorteio de prêmios reais', () => {
+    const items = [
+      {
+        id: '1',
+        title: 'Vitrine A',
+        quantity_total: 5,
+        quantity_awarded: 0,
+        frequency_mode: 'balanced' as const,
+        frequency_target: 60,
+        next_release_spin: 1,
+        last_awarded_spin: 0,
+        min_gap_spins: 10,
+        outcome_role: 'showcase' as const,
+      },
+      {
+        id: '2',
+        title: 'Prêmio real',
+        quantity_total: 5,
+        quantity_awarded: 0,
+        frequency_mode: 'balanced' as const,
+        frequency_target: 60,
+        next_release_spin: 1,
+        last_awarded_spin: 0,
+        min_gap_spins: 10,
+        outcome_role: 'prize' as const,
+      },
+    ]
+
+    expect(isAdvancedShowcaseItem(items[0])).toBe(true)
+    expect(isAdvancedPrizeItem(items[0])).toBe(false)
+    expect(getAvailableRewardItems(items)).toHaveLength(1)
+    expect(getAvailableRewardItems(items)[0]?.id).toBe('2')
+    expect(selectDueRewardItem(items, 1)?.id).toBe('2')
   })
 
   it('seleciona um rótulo neutro quando nenhum prêmio é liberado', () => {
