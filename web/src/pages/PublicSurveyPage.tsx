@@ -266,7 +266,8 @@ function fillRoundedRect(
 }
 
 function formatDatePtBr(value: string) {
-  const parsed = new Date(value.includes('T') ? value : `${value}T00:00:00`)
+  const normalized = value.trim().replace(' ', 'T')
+  const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`)
 
   if (Number.isNaN(parsed.getTime())) {
     return ''
@@ -1552,18 +1553,21 @@ export function PublicSurveyPage() {
 
         context.textAlign = 'left'
         context.fillStyle = '#0f172a'
-        context.font = '900 36px Arial'
-        context.fillText(rewardResult.couponCode, pagePadding + 68, codeBoxY + 84)
+        context.font = '900 34px Arial'
+        context.fillText(rewardResult.couponCode, pagePadding + 68, codeBoxY + 82)
 
-        // Botão "Copiar" visual
-        const copyButtonX = pagePadding + contentWidth - 68 - 108
-        const copyButtonY = codeBoxY + 58
-        context.fillStyle = primaryHex
-        fillRoundedRect(context, copyButtonX, copyButtonY, 108, 42, 10)
-        context.textAlign = 'center'
+        // Botão "Copiar" visual — branco com borda, sem cor forte
+        const copyButtonX = pagePadding + contentWidth - 68 - 96
+        const copyButtonY = codeBoxY + 60
+        context.strokeStyle = '#cbd5e1'
+        context.lineWidth = 2
         context.fillStyle = '#ffffff'
-        context.font = '700 16px Arial'
-        context.fillText('Copiar', copyButtonX + 54, copyButtonY + 28)
+        fillRoundedRect(context, copyButtonX, copyButtonY, 96, 40, 10)
+        context.stroke()
+        context.textAlign = 'center'
+        context.fillStyle = '#334155'
+        context.font = '700 15px Arial'
+        context.fillText('Copiar', copyButtonX + 48, copyButtonY + 27)
 
         currentY += codeBoxHeight + 22
       }
@@ -1576,14 +1580,15 @@ export function PublicSurveyPage() {
         fillRoundedRect(context, pagePadding + 40, infoBoxY, contentWidth - 80, infoBoxHeight, 16)
 
         // Ícone de relógio
+        const iconCenterY = infoBoxY + infoBoxHeight / 2
         context.fillStyle = hexToRgba(primaryHex, 0.12)
         context.beginPath()
-        context.arc(pagePadding + 84, infoBoxY + infoBoxHeight / 2, 24, 0, Math.PI * 2)
+        context.arc(pagePadding + 84, iconCenterY, 24, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
         context.font = '700 24px Arial'
         context.textBaseline = 'middle'
-        context.fillText('🕐', pagePadding + 84, infoBoxY + infoBoxHeight / 2 + 2)
+        context.fillText('🕐', pagePadding + 84, iconCenterY + 4)
         context.textBaseline = 'alphabetic'
 
         context.textAlign = 'left'
@@ -1610,14 +1615,15 @@ export function PublicSurveyPage() {
         fillRoundedRect(context, pagePadding + 40, addressBoxY, contentWidth - 80, addressBoxHeight, 16)
 
         // Ícone de alvo
+        const iconCenterY = addressBoxY + 42
         context.fillStyle = hexToRgba(primaryHex, 0.12)
         context.beginPath()
-        context.arc(pagePadding + 84, addressBoxY + 42, 24, 0, Math.PI * 2)
+        context.arc(pagePadding + 84, iconCenterY, 24, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
         context.font = '700 24px Arial'
         context.textBaseline = 'middle'
-        context.fillText('🎯', pagePadding + 84, addressBoxY + 42 + 2)
+        context.fillText('🎯', pagePadding + 84, iconCenterY + 4)
         context.textBaseline = 'alphabetic'
 
         context.textAlign = 'left'
