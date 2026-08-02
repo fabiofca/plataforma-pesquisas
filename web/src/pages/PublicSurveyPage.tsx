@@ -1460,7 +1460,7 @@ export function PublicSurveyPage() {
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = rewardPickupAddress ? 1480 : 1280
+      canvas.height = rewardPickupAddress ? 1240 : 1040
       const context = canvas.getContext('2d')
 
       if (!context) {
@@ -1468,182 +1468,182 @@ export function PublicSurveyPage() {
       }
 
       const primaryHex = survey?.primaryColor && /^#([0-9A-Fa-f]{6})$/.test(survey.primaryColor) ? survey.primaryColor : '#0f172a'
-      const pagePadding = 70
+      const pagePadding = 64
       const contentWidth = canvas.width - pagePadding * 2
 
       // Fundo com gradiente sutil na cor primária
       const gradient = context.createLinearGradient(0, 0, 0, canvas.height)
       gradient.addColorStop(0, '#ffffff')
-      gradient.addColorStop(0.5, '#ffffff')
-      gradient.addColorStop(1, hexToRgba(primaryHex, 0.08))
+      gradient.addColorStop(0.6, '#ffffff')
+      gradient.addColorStop(1, hexToRgba(primaryHex, 0.1))
       context.fillStyle = gradient
       context.fillRect(0, 0, canvas.width, canvas.height)
 
       // Cartão principal
       context.shadowColor = 'rgba(15,23,42,0.08)'
-      context.shadowBlur = 40
-      context.shadowOffsetY = 16
+      context.shadowBlur = 36
+      context.shadowOffsetY = 14
       context.fillStyle = '#ffffff'
-      fillRoundedRect(context, pagePadding, pagePadding, contentWidth, canvas.height - pagePadding * 2, 32)
+      fillRoundedRect(context, pagePadding, pagePadding, contentWidth, canvas.height - pagePadding * 2, 28)
       context.shadowColor = 'transparent'
       context.shadowBlur = 0
       context.shadowOffsetY = 0
 
-      let currentY = pagePadding + 70
+      let currentY = pagePadding + 56
 
       // Troféu
       context.fillStyle = hexToRgba(primaryHex, 0.1)
       context.beginPath()
-      context.arc(canvas.width / 2, currentY, 52, 0, Math.PI * 2)
+      context.arc(canvas.width / 2, currentY, 44, 0, Math.PI * 2)
       context.fill()
       context.fillStyle = primaryHex
-      context.font = '700 52px Arial'
+      context.font = '700 44px Arial'
       context.textBaseline = 'middle'
       context.fillText('🏆', canvas.width / 2, currentY + 2)
       context.textBaseline = 'alphabetic'
 
       // Prêmio confirmado
-      currentY += 84
+      currentY += 68
       context.textAlign = 'center'
       context.fillStyle = '#64748b'
-      context.font = '800 20px Arial'
-      context.letterSpacing = '3px'
+      context.font = '800 16px Arial'
+      context.letterSpacing = '2px'
       context.fillText('PRÊMIO CONFIRMADO', canvas.width / 2, currentY)
       context.letterSpacing = '0px'
 
       // Parabéns
-      currentY += 46
+      currentY += 38
       context.fillStyle = '#0f172a'
-      context.font = '700 34px Arial'
+      context.font = '700 30px Arial'
       context.fillText(`Parabéns, ${participantName || 'você'}!`, canvas.width / 2, currentY)
 
       // Prêmio
-      currentY += 64
+      currentY += 50
       context.fillStyle = '#64748b'
-      context.font = '500 22px Arial'
+      context.font = '500 18px Arial'
       context.fillText('Você ganhou:', canvas.width / 2, currentY)
 
-      currentY += 52
+      currentY += 42
       context.fillStyle = primaryHex
-      context.font = '900 56px Arial'
-      const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 860)
+      context.font = '900 48px Arial'
+      const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 880)
       for (const line of prizeLines.slice(0, 3)) {
         context.fillText(line, canvas.width / 2, currentY)
-        currentY += 70
+        currentY += 60
       }
 
-      currentY += 20
+      currentY += 10
 
       // Protocolo / Cupom
       if (rewardResult.couponCode) {
         const codeBoxY = currentY
-        const codeBoxHeight = 148
+        const codeBoxHeight = 124
         context.strokeStyle = '#e2e8f0'
         context.lineWidth = 2
-        fillRoundedRect(context, pagePadding + 48, codeBoxY, contentWidth - 96, codeBoxHeight, 20)
+        fillRoundedRect(context, pagePadding + 40, codeBoxY, contentWidth - 80, codeBoxHeight, 16)
         context.stroke()
 
         context.textAlign = 'center'
         context.fillStyle = '#64748b'
-        context.font = '800 16px Arial'
+        context.font = '800 14px Arial'
         context.letterSpacing = '2px'
-        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, codeBoxY + 40)
+        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, codeBoxY + 34)
         context.letterSpacing = '0px'
 
         context.textAlign = 'left'
         context.fillStyle = '#0f172a'
-        context.font = '900 42px Arial'
-        context.fillText(rewardResult.couponCode, pagePadding + 80, codeBoxY + 100)
+        context.font = '900 36px Arial'
+        context.fillText(rewardResult.couponCode, pagePadding + 68, codeBoxY + 84)
 
         // Botão "Copiar" visual
-        const copyButtonX = pagePadding + contentWidth - 80 - 124
-        const copyButtonY = codeBoxY + 70
+        const copyButtonX = pagePadding + contentWidth - 68 - 108
+        const copyButtonY = codeBoxY + 58
         context.fillStyle = primaryHex
-        fillRoundedRect(context, copyButtonX, copyButtonY, 124, 48, 12)
+        fillRoundedRect(context, copyButtonX, copyButtonY, 108, 42, 10)
         context.textAlign = 'center'
         context.fillStyle = '#ffffff'
-        context.font = '700 18px Arial'
-        context.fillText('Copiar', copyButtonX + 62, copyButtonY + 32)
+        context.font = '700 16px Arial'
+        context.fillText('Copiar', copyButtonX + 54, copyButtonY + 28)
 
-        currentY += codeBoxHeight + 30
+        currentY += codeBoxHeight + 22
       }
 
       // Válido até
       if (rewardProofExpiresAt) {
         const infoBoxY = currentY
-        const infoBoxHeight = 110
+        const infoBoxHeight = 92
         context.fillStyle = '#f8fafc'
-        fillRoundedRect(context, pagePadding + 48, infoBoxY, contentWidth - 96, infoBoxHeight, 20)
+        fillRoundedRect(context, pagePadding + 40, infoBoxY, contentWidth - 80, infoBoxHeight, 16)
 
         // Ícone de relógio
         context.fillStyle = hexToRgba(primaryHex, 0.12)
         context.beginPath()
-        context.arc(pagePadding + 100, infoBoxY + infoBoxHeight / 2, 28, 0, Math.PI * 2)
+        context.arc(pagePadding + 84, infoBoxY + infoBoxHeight / 2, 24, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
-        context.font = '700 28px Arial'
+        context.font = '700 24px Arial'
         context.textBaseline = 'middle'
-        context.fillText('🕐', pagePadding + 100, infoBoxY + infoBoxHeight / 2 + 2)
+        context.fillText('🕐', pagePadding + 84, infoBoxY + infoBoxHeight / 2 + 2)
         context.textBaseline = 'alphabetic'
 
         context.textAlign = 'left'
         context.fillStyle = '#64748b'
-        context.font = '800 16px Arial'
-        context.letterSpacing = '2px'
-        context.fillText('VÁLIDO ATÉ', pagePadding + 148, infoBoxY + 46)
+        context.font = '800 13px Arial'
+        context.letterSpacing = '1px'
+        context.fillText('VÁLIDO ATÉ', pagePadding + 124, infoBoxY + 40)
         context.letterSpacing = '0px'
 
         context.fillStyle = '#0f172a'
-        context.font = '800 30px Arial'
-        context.fillText(formatDatePtBr(rewardProofExpiresAt), pagePadding + 148, infoBoxY + 84)
+        context.font = '800 26px Arial'
+        context.fillText(formatDatePtBr(rewardProofExpiresAt), pagePadding + 124, infoBoxY + 72)
 
-        currentY += infoBoxHeight + 20
+        currentY += infoBoxHeight + 16
       }
 
       // Retirada
       if (rewardPickupAddress) {
         const addressBoxY = currentY
-        const addressLines = wrapCanvasText(context, rewardPickupAddress, contentWidth - 220)
-        const addressBoxHeight = Math.max(130, 70 + addressLines.slice(0, 4).length * 34)
+        const addressLines = wrapCanvasText(context, rewardPickupAddress, contentWidth - 200)
+        const addressBoxHeight = Math.max(110, 58 + addressLines.slice(0, 4).length * 28)
 
         context.fillStyle = '#f8fafc'
-        fillRoundedRect(context, pagePadding + 48, addressBoxY, contentWidth - 96, addressBoxHeight, 20)
+        fillRoundedRect(context, pagePadding + 40, addressBoxY, contentWidth - 80, addressBoxHeight, 16)
 
         // Ícone de alvo
         context.fillStyle = hexToRgba(primaryHex, 0.12)
         context.beginPath()
-        context.arc(pagePadding + 100, addressBoxY + 50, 28, 0, Math.PI * 2)
+        context.arc(pagePadding + 84, addressBoxY + 42, 24, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
-        context.font = '700 28px Arial'
+        context.font = '700 24px Arial'
         context.textBaseline = 'middle'
-        context.fillText('🎯', pagePadding + 100, addressBoxY + 50 + 2)
+        context.fillText('🎯', pagePadding + 84, addressBoxY + 42 + 2)
         context.textBaseline = 'alphabetic'
 
         context.textAlign = 'left'
         context.fillStyle = '#64748b'
-        context.font = '800 16px Arial'
-        context.letterSpacing = '2px'
-        context.fillText('RETIRADA', pagePadding + 148, addressBoxY + 42)
+        context.font = '800 13px Arial'
+        context.letterSpacing = '1px'
+        context.fillText('RETIRADA', pagePadding + 124, addressBoxY + 36)
         context.letterSpacing = '0px'
 
         context.fillStyle = '#334155'
-        context.font = '600 24px Arial'
-        let addressY = addressBoxY + 78
+        context.font = '600 20px Arial'
+        let addressY = addressBoxY + 64
         for (const line of addressLines.slice(0, 4)) {
-          context.fillText(line, pagePadding + 148, addressY)
-          addressY += 34
+          context.fillText(line, pagePadding + 124, addressY)
+          addressY += 28
         }
 
-        currentY += addressBoxHeight + 20
+        currentY += addressBoxHeight + 16
       }
 
       // Rodapé
       context.textAlign = 'center'
-      const footerY = canvas.height - pagePadding - 40
+      const footerY = canvas.height - pagePadding - 34
       context.fillStyle = '#94a3b8'
-      context.font = '500 16px Arial'
-      context.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')} • Este é seu comprovante oficial de prêmio.`, canvas.width / 2, footerY)
+      context.font = '500 14px Arial'
+      context.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')} • Comprovante oficial de prêmio.`, canvas.width / 2, footerY)
 
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
@@ -2114,96 +2114,98 @@ export function PublicSurveyPage() {
                     />
 
                     {rewardResult?.won ? (
-                      <div className="absolute inset-0 z-[80] flex flex-col overflow-y-auto bg-gradient-to-b from-white via-white to-slate-50 animate-fade-in">
-                        <div className="mx-auto flex w-full max-w-[min(100vw,540px)] flex-1 flex-col px-5 pb-6 pt-4 sm:px-8 sm:pb-8 sm:pt-6">
-                          <div className="flex flex-1 flex-col items-center text-center">
-                            <div
-                              className="flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)] sm:h-24 sm:w-24"
-                              style={{ color: survey?.primaryColor || '#0f172a' }}
-                            >
-                              <Trophy className="h-10 w-10 sm:h-12 sm:w-12" strokeWidth={1.5} />
-                            </div>
-
-                            <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Prêmio confirmado</p>
-                            <p className="mt-2 text-xl font-semibold text-slate-900 sm:text-2xl">
-                              {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
-                            </p>
-
-                            {rewardResult.itemImageUrl ? (
-                              <div className="mt-5 w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                <img
-                                  src={rewardResult.itemImageUrl}
-                                  alt={rewardResult.item || 'Prêmio'}
-                                  className="h-44 w-full object-cover sm:h-56"
-                                />
+                      <div className="absolute inset-0 z-[80] flex flex-col bg-gradient-to-b from-white via-white to-slate-50 animate-fade-in">
+                        <div className="mx-auto flex h-full w-full max-w-[540px] flex-col px-4 sm:px-8">
+                          <div className="flex flex-1 flex-col overflow-hidden">
+                            <div className="flex flex-1 flex-col items-center justify-center text-center">
+                              <div
+                                className="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)] sm:h-20 sm:w-20"
+                                style={{ color: survey?.primaryColor || '#0f172a' }}
+                              >
+                                <Trophy className="h-8 w-8 sm:h-10 sm:w-10" strokeWidth={1.5} />
                               </div>
-                            ) : null}
 
-                            <div className="mt-5">
-                              <p className="text-sm text-slate-500">Você ganhou:</p>
-                              <p className="mt-1 font-display text-3xl font-bold text-slate-950 sm:text-5xl">{rewardResult.item}</p>
-                            </div>
+                              <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 sm:mt-4 sm:text-xs">Prêmio confirmado</p>
+                              <p className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl">
+                                {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
+                              </p>
 
-                            <p className="mt-4 max-w-sm text-sm leading-relaxed text-slate-600">{rewardInstructionText}</p>
+                              {rewardResult.itemImageUrl ? (
+                                <div className="mt-3 w-full max-w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:mt-4 sm:max-w-[320px]">
+                                  <img
+                                    src={rewardResult.itemImageUrl}
+                                    alt={rewardResult.item || 'Prêmio'}
+                                    className="h-28 w-full object-cover sm:h-36"
+                                  />
+                                </div>
+                              ) : null}
 
-                            {rewardResult.couponCode ? (
-                              <div className="mt-6 w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
-                                <p className="text-center text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Protocolo / Cupom</p>
-                                <div className="mt-3 flex items-center justify-between gap-3">
-                                  <p className="flex-1 break-all text-left text-2xl font-black tracking-widest text-slate-950 sm:text-3xl">{rewardResult.couponCode}</p>
-                                  <button
-                                    type="button"
-                                    onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
-                                    className="flex-shrink-0 rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95"
-                                    style={{ backgroundColor: survey?.primaryColor || '#0f172a' }}
+                              <div className="mt-3 sm:mt-4">
+                                <p className="text-xs text-slate-500 sm:text-sm">Você ganhou:</p>
+                                <p className="mt-0.5 font-display text-2xl font-bold text-slate-950 sm:text-4xl">{rewardResult.item}</p>
+                              </div>
+
+                              <p className="mt-2 max-w-xs text-xs leading-relaxed text-slate-600 sm:mt-3 sm:text-sm">{rewardInstructionText}</p>
+
+                              {rewardResult.couponCode ? (
+                                <div className="mt-4 w-full rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm sm:p-4">
+                                  <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Protocolo / Cupom</p>
+                                  <div className="mt-2 flex items-center justify-between gap-3">
+                                    <p className="flex-1 break-all text-left text-xl font-black tracking-widest text-slate-950 sm:text-2xl">{rewardResult.couponCode}</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
+                                      className="flex-shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95 sm:px-4 sm:py-2 sm:text-sm"
+                                      style={{ backgroundColor: survey?.primaryColor || '#0f172a' }}
+                                    >
+                                      Copiar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {rewardProofExpiresAt ? (
+                                <div className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm sm:mt-4 sm:gap-4 sm:p-4">
+                                  <div
+                                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full sm:h-10 sm:w-10"
+                                    style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
                                   >
-                                    Copiar
-                                  </button>
+                                    <Clock className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">Válido até</p>
+                                    <p className="text-sm font-semibold text-slate-900 sm:text-base">{formatDatePtBr(rewardProofExpiresAt)}</p>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : null}
+                              ) : null}
 
-                            {rewardProofExpiresAt ? (
-                              <div className="mt-4 flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
-                                <div
-                                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
-                                  style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
-                                >
-                                  <Clock className="h-5 w-5" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                              {rewardPickupAddress ? (
+                                <div className="mt-3 flex w-full items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm sm:mt-4 sm:gap-4 sm:p-4">
+                                  <div
+                                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full sm:h-10 sm:w-10"
+                                    style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
+                                  >
+                                    <Target className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">Retirada</p>
+                                    <p className="text-xs leading-relaxed text-slate-700 sm:text-sm">{rewardPickupAddress}</p>
+                                  </div>
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Válido até</p>
-                                  <p className="text-base font-semibold text-slate-900 sm:text-lg">{formatDatePtBr(rewardProofExpiresAt)}</p>
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {rewardPickupAddress ? (
-                              <div className="mt-4 flex w-full items-start gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm">
-                                <div
-                                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
-                                  style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
-                                >
-                                  <Target className="h-5 w-5" style={{ color: survey?.primaryColor || '#0f172a' }} />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Retirada</p>
-                                  <p className="mt-0.5 text-sm leading-relaxed text-slate-700 sm:text-base">{rewardPickupAddress}</p>
-                                </div>
-                              </div>
-                            ) : null}
+                              ) : null}
+                            </div>
                           </div>
 
-                          <div className="mt-6 flex w-full flex-col gap-3">
+                          <div className="flex w-full flex-col gap-2 pb-4 pt-3 sm:gap-3 sm:pb-6 sm:pt-4">
                             {rewardContactWhatsAppUrl ? (
                               <a
                                 href={rewardContactWhatsAppUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-5 py-3.5 text-base font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:text-lg"
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:px-5 sm:py-3.5 sm:text-base"
                                 style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
                               >
-                                <MessageCircle className="h-5 w-5" />
+                                <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
                                 Resgatar pelo WhatsApp
                               </a>
                             ) : null}
@@ -2211,9 +2213,9 @@ export function PublicSurveyPage() {
                               type="button"
                               onClick={() => void handleDownloadRewardProof()}
                               disabled={savingRewardProof}
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-900 bg-white px-5 py-3.5 text-base font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:text-lg"
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:px-5 sm:py-3.5 sm:text-base"
                             >
-                              <Download className="h-5 w-5" />
+                              <Download className="h-4 w-4 sm:h-5 sm:w-5" />
                               {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
                             </button>
                           </div>
