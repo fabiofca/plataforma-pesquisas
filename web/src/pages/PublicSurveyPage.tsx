@@ -1448,145 +1448,171 @@ export function PublicSurveyPage() {
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = rewardPickupAddress ? 1280 : 1120
+      canvas.height = rewardPickupAddress ? 1320 : 1160
       const context = canvas.getContext('2d')
 
       if (!context) {
         throw new Error('Não foi possível gerar a imagem do comprovante.')
       }
 
-      const primaryHex = survey?.primaryColor && /^#([0-9A-Fa-f]{6})$/.test(survey.primaryColor) ? survey.primaryColor : '#f59e0b'
+      const primaryHex = survey?.primaryColor && /^#([0-9A-Fa-f]{6})$/.test(survey.primaryColor) ? survey.primaryColor : '#0f172a'
+      const pagePadding = 80
+      const contentWidth = canvas.width - pagePadding * 2
 
-      const background = context.createLinearGradient(0, 0, canvas.width, canvas.height)
-      background.addColorStop(0, '#fffbeb')
-      background.addColorStop(0.5, '#ffffff')
-      background.addColorStop(1, '#fff7ed')
-      context.fillStyle = background
+      // Fundo
+      context.fillStyle = '#f8fafc'
       context.fillRect(0, 0, canvas.width, canvas.height)
 
-      context.shadowColor = 'rgba(0,0,0,0.08)'
-      context.shadowBlur = 40
-      context.shadowOffsetY = 16
+      // Cartão principal
+      context.shadowColor = 'rgba(15,23,42,0.06)'
+      context.shadowBlur = 32
+      context.shadowOffsetY = 12
       context.fillStyle = '#ffffff'
-      fillRoundedRect(context, 72, 72, 936, canvas.height - 144, 36)
+      fillRoundedRect(context, pagePadding, pagePadding, contentWidth, canvas.height - pagePadding * 2, 28)
       context.shadowColor = 'transparent'
       context.shadowBlur = 0
       context.shadowOffsetY = 0
 
-      context.fillStyle = primaryHex
-      fillRoundedRect(context, 72, 72, 936, 160, 36)
-      context.beginPath()
-      context.moveTo(72, 210)
-      context.lineTo(1008, 210)
-      context.lineTo(1008, 232)
-      context.quadraticCurveTo(1008, 236, 1004, 236)
-      context.lineTo(76, 236)
-      context.quadraticCurveTo(72, 236, 72, 232)
-      context.closePath()
-      context.fillStyle = 'rgba(255,255,255,0.18)'
-      context.fill()
+      let currentY = pagePadding + 64
 
+      // Cabeçalho
       context.textAlign = 'center'
-      context.fillStyle = '#ffffff'
-      context.font = '800 30px Arial'
-      context.fillText('COMPROVANTE DE PRÊMIO', 540, 136)
-      context.fillStyle = 'rgba(255,255,255,0.85)'
-      context.font = '500 22px Arial'
-      const brandName = survey?.brandName || survey?.title || 'Campanha'
-      context.fillText(brandName, 540, 176)
-
       context.fillStyle = primaryHex
+      context.font = '800 26px Arial'
+      context.fillText('COMPROVANTE DE PRÊMIO', canvas.width / 2, currentY)
+
+      currentY += 40
+      const brandName = survey?.brandName || survey?.title || 'Campanha'
+      context.fillStyle = '#64748b'
+      context.font = '500 22px Arial'
+      context.fillText(brandName, canvas.width / 2, currentY)
+
+      // Divisor
+      currentY += 48
+      context.fillStyle = '#e2e8f0'
+      context.fillRect(pagePadding + 48, currentY, contentWidth - 96, 2)
+
+      // Troféu
+      currentY += 72
+      context.fillStyle = '#f1f5f9'
       context.beginPath()
-      context.arc(540, 302, 48, 0, Math.PI * 2)
+      context.arc(canvas.width / 2, currentY, 44, 0, Math.PI * 2)
       context.fill()
-      context.fillStyle = '#ffffff'
-      context.font = '700 44px Arial'
+      context.fillStyle = primaryHex
+      context.font = '700 40px Arial'
       context.textBaseline = 'middle'
-      context.fillText('🏆', 540, 306)
+      context.fillText('🏆', canvas.width / 2, currentY + 2)
       context.textBaseline = 'alphabetic'
 
-      context.fillStyle = '#92400e'
-      context.font = '700 22px Arial'
-      context.fillText('PARABÉNS', 540, 400)
-      context.fillStyle = '#0f172a'
-      context.font = '700 36px Arial'
-      context.fillText(participantName || 'Participante', 540, 446)
+      // Parabéns
+      currentY += 84
+      context.fillStyle = '#475569'
+      context.font = '700 20px Arial'
+      context.fillText('PARABÉNS', canvas.width / 2, currentY)
 
+      currentY += 42
+      context.fillStyle = '#0f172a'
+      context.font = '700 38px Arial'
+      context.fillText(participantName || 'Participante', canvas.width / 2, currentY)
+
+      // Prêmio
+      currentY += 72
       context.fillStyle = '#64748b'
       context.font = '500 20px Arial'
-      context.fillText('Você ganhou:', 540, 494)
+      context.fillText('Você ganhou:', canvas.width / 2, currentY)
 
+      currentY += 52
       context.fillStyle = primaryHex
-      context.font = '900 60px Arial'
+      context.font = '900 54px Arial'
       const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 840)
-      let prizeY = 552
       for (const line of prizeLines.slice(0, 3)) {
-        context.fillText(line, 540, prizeY)
-        prizeY += 70
+        context.fillText(line, canvas.width / 2, currentY)
+        currentY += 66
       }
 
-      const codeBoxY = prizeY + 28
-      context.fillStyle = '#0f172a'
-      fillRoundedRect(context, 120, codeBoxY, 840, 136, 24)
+      // Protocolo
+      currentY += 24
+      const codeBoxHeight = 132
+      context.strokeStyle = '#e2e8f0'
+      context.lineWidth = 3
+      fillRoundedRect(context, pagePadding + 48, currentY, contentWidth - 96, codeBoxHeight, 20)
+      context.stroke()
 
       context.textAlign = 'left'
-      context.fillStyle = '#fbbf24'
-      context.font = '700 18px Arial'
-      context.fillText('PROTOCOLO / CUPOM', 156, codeBoxY + 42)
-      context.fillStyle = '#ffffff'
-      context.font = '900 46px Arial'
-      context.fillText(rewardResult.couponCode || 'SEM PROTOCOLO', 156, codeBoxY + 96)
+      context.fillStyle = '#64748b'
+      context.font = '700 16px Arial'
+      context.fillText('PROTOCOLO / CUPOM', pagePadding + 80, currentY + 38)
+
+      context.fillStyle = '#0f172a'
+      context.font = '900 44px Arial'
+      context.fillText(rewardResult.couponCode || 'SEM PROTOCOLO', pagePadding + 80, currentY + 90)
 
       context.textAlign = 'right'
-      context.fillStyle = 'rgba(255,255,255,0.70)'
-      context.font = '500 18px Arial'
-      context.fillText('Apresente no resgate', 924, codeBoxY + 56)
+      context.fillStyle = '#94a3b8'
+      context.font = '500 16px Arial'
+      context.fillText('Apresente no resgate', pagePadding + contentWidth - 80, currentY + 90)
       context.textAlign = 'center'
 
-      const infoStartY = codeBoxY + 176
-      context.fillStyle = '#fff7ed'
-      fillRoundedRect(context, 120, infoStartY, 840, rewardPickupAddress ? 280 : 200, 24)
+      // Informações
+      currentY += codeBoxHeight + 40
+      const infoBoxHeight = rewardPickupAddress ? 380 : 220
+      context.fillStyle = '#f8fafc'
+      fillRoundedRect(context, pagePadding + 48, currentY, contentWidth - 96, infoBoxHeight, 20)
 
       context.textAlign = 'left'
-      context.fillStyle = '#92400e'
-      context.font = '700 18px Arial'
-      context.fillText('VALIDADE PARA RETIRADA', 156, infoStartY + 44)
-      context.fillStyle = rewardProofExpiresAt ? '#b45309' : '#78716c'
+      let infoY = currentY + 46
+
+      context.fillStyle = '#64748b'
+      context.font = '700 16px Arial'
+      context.fillText('VALIDADE PARA RETIRADA', pagePadding + 80, infoY)
+
+      infoY += 40
+      context.fillStyle = rewardProofExpiresAt ? primaryHex : '#64748b'
       context.font = rewardProofExpiresAt ? '800 32px Arial' : '600 24px Arial'
-      context.fillText(rewardProofExpiresAt ? formatDatePtBr(rewardProofExpiresAt) : 'Consulte a campanha', 156, infoStartY + 86)
+      context.fillText(rewardProofExpiresAt ? formatDatePtBr(rewardProofExpiresAt) : 'Consulte a campanha', pagePadding + 80, infoY)
 
-      context.fillStyle = '#d97706'
-      context.fillRect(156, infoStartY + 110, 768, 2)
+      infoY += 48
+      context.fillStyle = '#cbd5e1'
+      context.fillRect(pagePadding + 80, infoY, contentWidth - 160, 2)
 
-      context.fillStyle = '#92400e'
-      context.font = '700 18px Arial'
-      context.fillText('ORIENTAÇÃO', 156, infoStartY + 148)
-      context.fillStyle = '#451a03'
-      context.font = '600 26px Arial'
-      context.fillText('Guarde este comprovante e apresente na loja', 156, infoStartY + 188)
-      context.fillText('dentro do prazo informado.', 156, infoStartY + 222)
+      infoY += 44
+      context.fillStyle = '#64748b'
+      context.font = '700 16px Arial'
+      context.fillText('ORIENTAÇÃO', pagePadding + 80, infoY)
+
+      infoY += 38
+      context.fillStyle = '#334155'
+      context.font = '600 24px Arial'
+      context.fillText('Guarde este comprovante e apresente na loja', pagePadding + 80, infoY)
+      infoY += 36
+      context.fillText('dentro do prazo informado.', pagePadding + 80, infoY)
 
       if (rewardPickupAddress) {
-        context.fillStyle = primaryHex
-        fillRoundedRect(context, 120, infoStartY + 224, 840, 148, 20)
-        context.fillStyle = 'rgba(255,255,255,0.95)'
-        context.font = '700 18px Arial'
-        context.fillText('ENDEREÇO DE RETIRADA', 156, infoStartY + 264)
-        context.fillStyle = '#ffffff'
-        context.font = '600 26px Arial'
-        const addressLines = wrapCanvasText(context, rewardPickupAddress, 768)
-        let addressY = infoStartY + 302
+        infoY += 54
+        context.fillStyle = '#e2e8f0'
+        fillRoundedRect(context, pagePadding + 64, infoY - 8, contentWidth - 128, 136, 16)
+
+        context.fillStyle = '#64748b'
+        context.font = '700 16px Arial'
+        context.fillText('ENDEREÇO DE RETIRADA', pagePadding + 88, infoY + 28)
+
+        context.fillStyle = '#334155'
+        context.font = '600 22px Arial'
+        const addressLines = wrapCanvasText(context, rewardPickupAddress, contentWidth - 176)
+        let addressY = infoY + 64
         for (const line of addressLines.slice(0, 4)) {
-          context.fillText(line, 156, addressY)
-          addressY += 36
+          context.fillText(line, pagePadding + 88, addressY)
+          addressY += 32
         }
       }
 
-      const footerY = canvas.height - 110
       context.textAlign = 'center'
-      context.fillStyle = '#78716c'
-      context.font = '500 18px Arial'
-      context.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')} • Esta imagem é seu comprovante oficial de prêmio.`, 540, footerY)
+
+      // Rodapé
+      const footerY = canvas.height - pagePadding - 44
+      context.fillStyle = '#94a3b8'
+      context.font = '500 16px Arial'
+      context.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')} • Esta imagem é seu comprovante oficial de prêmio.`, canvas.width / 2, footerY)
 
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
@@ -2059,18 +2085,18 @@ export function PublicSurveyPage() {
                     {rewardResult?.won ? (
                       <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
                         <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
-                        <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-amber-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(245,158,11,0.22)] sm:px-8 sm:py-9 animate-fade-in-scale">
-                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600 shadow-[0_8px_24px_rgba(245,158,11,0.28)] sm:h-16 sm:w-16">
+                        <div className="relative w-full max-w-[min(94vw,480px)] rounded-[24px] border border-slate-200 bg-white px-6 py-8 text-center shadow-[0_24px_60px_rgba(15,23,42,0.12)] sm:px-10 sm:py-10 animate-fade-in-scale">
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-600 sm:h-16 sm:w-16">
                             <Trophy className="h-7 w-7 sm:h-8 sm:w-8" />
                           </div>
-                          <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-amber-600">Prêmio confirmado</p>
-                          <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+
+                          <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Prêmio confirmado</p>
+                          <p className="mt-2 text-lg font-semibold text-slate-900 sm:text-xl">
                             {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
                           </p>
-                          <p className="mt-1 text-sm text-slate-500">Você ganhou:</p>
 
                           {rewardResult.itemImageUrl ? (
-                            <div className="mt-5 overflow-hidden rounded-[22px] border-2 border-amber-200 bg-amber-50 shadow-[0_12px_32px_rgba(245,158,11,0.16)]">
+                            <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                               <img
                                 src={rewardResult.itemImageUrl}
                                 alt={rewardResult.item || 'Prêmio'}
@@ -2079,22 +2105,22 @@ export function PublicSurveyPage() {
                             </div>
                           ) : null}
 
-                          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-1.5">
-                            <Sparkles className="h-4 w-4 text-amber-500" />
-                            <p className="font-display text-2xl font-bold text-slate-950 sm:text-3xl">{rewardResult.item}</p>
+                          <div className="mt-6">
+                            <p className="text-sm text-slate-500">Você ganhou:</p>
+                            <p className="mt-2 font-display text-3xl font-bold text-slate-950 sm:text-4xl">{rewardResult.item}</p>
                           </div>
 
-                          <p className="mt-4 text-sm text-slate-600">{rewardInstructionText}</p>
+                          <p className="mt-6 text-sm leading-relaxed text-slate-600">{rewardInstructionText}</p>
 
                           {rewardResult.couponCode ? (
-                            <div className="mt-5 overflow-hidden rounded-[18px] border-2 border-dashed border-amber-300 bg-amber-50/70 px-5 py-4">
-                              <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Protocolo</p>
-                              <div className="mt-2 flex items-center justify-center gap-3">
-                                <p className="text-2xl font-black tracking-widest text-slate-950 sm:text-3xl">{rewardResult.couponCode}</p>
+                            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-5">
+                              <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Protocolo / Cupom</p>
+                              <div className="mt-3 flex items-center justify-center gap-3">
+                                <p className="text-xl font-black tracking-widest text-slate-950 sm:text-2xl">{rewardResult.couponCode}</p>
                                 <button
                                   type="button"
                                   onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
-                                  className="rounded-lg bg-amber-200 px-2.5 py-1 text-xs font-bold text-amber-800 transition hover:bg-amber-300"
+                                  className="rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
                                 >
                                   Copiar
                                 </button>
@@ -2103,33 +2129,33 @@ export function PublicSurveyPage() {
                           ) : null}
 
                           {rewardProofExpiresAt ? (
-                            <div className="mt-4 flex items-center gap-3 rounded-[16px] border border-amber-100 bg-amber-50 px-4 py-3 text-left">
-                              <Clock className="h-5 w-5 flex-shrink-0 text-amber-500" />
+                            <div className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-left">
+                              <Clock className="h-5 w-5 flex-shrink-0 text-slate-400" />
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-700">Válido até</p>
+                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Válido até</p>
                                 <p className="text-sm font-semibold text-slate-900">{formatDatePtBr(rewardProofExpiresAt)}</p>
                               </div>
                             </div>
                           ) : null}
 
                           {rewardPickupAddress ? (
-                            <div className="mt-3 flex items-center gap-3 rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3 text-left">
-                              <Target className="h-5 w-5 flex-shrink-0 text-slate-400" />
+                            <div className="mt-4 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-left">
+                              <Target className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-400" />
                               <div>
-                                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Retirada</p>
-                                <p className="text-sm text-slate-700">{rewardPickupAddress}</p>
+                                <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-500">Retirada</p>
+                                <p className="mt-1 text-sm leading-relaxed text-slate-700">{rewardPickupAddress}</p>
                               </div>
                             </div>
                           ) : null}
 
-                          <div className="mt-6 flex flex-col gap-3">
+                          <div className="mt-8 flex flex-col gap-3">
                             {rewardContactWhatsAppUrl ? (
                               <a
                                 href={rewardContactWhatsAppUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="admin-button-primary w-full justify-center"
-                                style={{ backgroundColor: '#22c55e' }}
+                                style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
                               >
                                 <MessageCircle className="h-5 w-5" />
                                 Resgatar pelo WhatsApp
