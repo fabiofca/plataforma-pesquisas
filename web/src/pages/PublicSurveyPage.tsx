@@ -265,6 +265,28 @@ function fillRoundedRect(
   context.fill()
 }
 
+function strokeRoundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.lineTo(x + width - radius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + radius)
+  context.lineTo(x + width, y + height - radius)
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+  context.lineTo(x + radius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - radius)
+  context.lineTo(x, y + radius)
+  context.quadraticCurveTo(x, y, x + radius, y)
+  context.closePath()
+  context.stroke()
+}
+
 function formatDatePtBr(value: string) {
   const normalized = value.trim().replace(' ', 'T')
   const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`)
@@ -1468,193 +1490,266 @@ export function PublicSurveyPage() {
     if (!rewardResult?.won) {
       return
     }
-
+  
     setSavingRewardProof(true)
-
+  
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = rewardPickupAddress ? 1280 : 1080
+      canvas.height = rewardPickupAddress ? 1400 : 1200
       const context = canvas.getContext('2d')
-
+  
       if (!context) {
         throw new Error('Não foi possível gerar a imagem do comprovante.')
       }
-
+  
       const primaryHex = survey?.primaryColor && /^#([0-9A-Fa-f]{6})$/.test(survey.primaryColor) ? survey.primaryColor : '#0f172a'
-      const pagePadding = 64
+      const primaryRgba = hexToRgba(primaryHex, 0.08)
+      const pagePadding = 48
       const contentWidth = canvas.width - pagePadding * 2
-
-      // Fundo com gradiente na cor primária
-      const gradient = context.createLinearGradient(0, 0, 0, canvas.height)
-      gradient.addColorStop(0, '#ffffff')
-      gradient.addColorStop(0.55, '#ffffff')
-      gradient.addColorStop(0.85, hexToRgba(primaryHex, 0.16))
-      gradient.addColorStop(1, hexToRgba(primaryHex, 0.28))
-      context.fillStyle = gradient
+  
+      // Fundo slate-50 igual à tela final
+      context.fillStyle = '#f8fafc'
       context.fillRect(0, 0, canvas.width, canvas.height)
-
-      // Cartão principal
-      context.shadowColor = 'rgba(15,23,42,0.08)'
-      context.shadowBlur = 36
-      context.shadowOffsetY = 14
+  
+      let currentY = 80
+  
+      // Troféu em círculo branco com sombra (igual à tela)
+      const trophyCircleY = currentY + 40
+      context.shadowColor = 'rgba(0,0,0,0.1)'
+      context.shadowBlur = 24
+      context.shadowOffsetY = 8
       context.fillStyle = '#ffffff'
-      fillRoundedRect(context, pagePadding, pagePadding, contentWidth, canvas.height - pagePadding * 2, 28)
+      context.beginPath()
+      context.arc(canvas.width / 2, trophyCircleY, 44, 0, Math.PI * 2)
+      context.fill()
       context.shadowColor = 'transparent'
       context.shadowBlur = 0
       context.shadowOffsetY = 0
-
-      let currentY = pagePadding + 56
-
-      // Troféu
+  
       context.fillStyle = primaryHex
-      context.font = '700 56px Arial'
-      context.textBaseline = 'middle'
-      context.fillText('🏆', canvas.width / 2, currentY + 4)
-      context.textBaseline = 'alphabetic'
-
-      // Prêmio confirmado
-      currentY += 68
+      context.font = '700 44px Arial'
       context.textAlign = 'center'
+      context.textBaseline = 'middle'
+      context.fillText('', canvas.width / 2, trophyCircleY + 2)
+      context.textBaseline = 'alphabetic'
+  
+      // Prêmio confirmado
+      currentY = trophyCircleY + 72
       context.fillStyle = '#64748b'
-      context.font = '800 16px Arial'
-      context.letterSpacing = '2px'
+      context.font = '800 18px Arial'
+      context.letterSpacing = '3px'
       context.fillText('PRÊMIO CONFIRMADO', canvas.width / 2, currentY)
       context.letterSpacing = '0px'
-
+  
       // Parabéns
-      currentY += 38
-      context.fillStyle = '#0f172a'
-      context.font = '700 30px Arial'
-      context.fillText(`Parabéns, ${participantName || 'você'}!`, canvas.width / 2, currentY)
-
-      // Prêmio
-      currentY += 50
-      context.fillStyle = '#64748b'
-      context.font = '500 18px Arial'
-      context.fillText('Você ganhou:', canvas.width / 2, currentY)
-
       currentY += 42
-      context.fillStyle = primaryHex
-      context.font = '900 48px Arial'
+      context.fillStyle = '#0f172a'
+      context.font = '700 36px Arial'
+      context.fillText(`Parabéns, ${participantName || 'você'}!`, canvas.width / 2, currentY)
+  
+      // Você ganhou
+      currentY += 52
+      context.fillStyle = '#64748b'
+      context.font = '500 22px Arial'
+      context.fillText('Você ganhou:', canvas.width / 2, currentY)
+  
+      // Nome do prêmio
+      currentY += 48
+      context.fillStyle = '#0f172a'
+      context.font = '900 56px Arial'
       const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 880)
       for (const line of prizeLines.slice(0, 3)) {
         context.fillText(line, canvas.width / 2, currentY)
-        currentY += 60
+        currentY += 72
       }
-
-      currentY += 10
-
+  
+      // Instrução
+      if (rewardInstructionText) {
+        currentY += 12
+        context.fillStyle = '#64748b'
+        context.font = '400 20px Arial'
+        const instructionLines = wrapCanvasText(context, rewardInstructionText, 720)
+        for (const line of instructionLines.slice(0, 3)) {
+          context.fillText(line, canvas.width / 2, currentY)
+          currentY += 30
+        }
+      }
+  
+      currentY += 20
+  
+      // Cards de informação (estilo igual à tela: branco, borda, sombra)
+      const cardX = pagePadding
+      const cardW = contentWidth
+      const cardRadius = 16
+  
       // Protocolo / Cupom
       if (rewardResult.couponCode) {
-        const codeBoxY = currentY
-        const codeBoxHeight = 164
-        const codeBoxX = pagePadding + 40
-        const codeBoxW = contentWidth - 80
-
-        // Corpo branco com bordas arredondadas
+        const codeBoxH = 140
+        context.shadowColor = 'rgba(0,0,0,0.06)'
+        context.shadowBlur = 12
+        context.shadowOffsetY = 4
         context.fillStyle = '#ffffff'
-        fillRoundedRect(context, codeBoxX, codeBoxY, codeBoxW, codeBoxHeight, 16)
-
-        // Faixa superior colorida
-        context.fillStyle = primaryHex
-        fillRoundedRect(context, codeBoxX, codeBoxY, codeBoxW, 56, 16)
-        context.fillRect(codeBoxX, codeBoxY + 40, codeBoxW, 20)
-
+        fillRoundedRect(context, cardX, currentY, cardW, codeBoxH, cardRadius)
+        context.shadowColor = 'transparent'
+        context.shadowBlur = 0
+        context.shadowOffsetY = 0
+  
+        // Borda
+        context.strokeStyle = '#e2e8f0'
+        context.lineWidth = 2
+        strokeRoundedRect(context, cardX, currentY, cardW, codeBoxH, cardRadius)
+  
         context.textAlign = 'center'
-        context.fillStyle = '#ffffff'
-        context.font = '800 14px Arial'
+        context.fillStyle = '#64748b'
+        context.font = '800 16px Arial'
         context.letterSpacing = '2px'
-        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, codeBoxY + 36)
+        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, currentY + 32)
         context.letterSpacing = '0px'
-
-        context.textAlign = 'center'
+  
+        context.textAlign = 'left'
         context.fillStyle = '#0f172a'
-        context.font = '900 42px Arial'
-        context.fillText(rewardResult.couponCode, canvas.width / 2, codeBoxY + 124)
-
-        currentY += codeBoxHeight + 22
+        context.font = '900 40px Arial'
+        context.fillText(rewardResult.couponCode, cardX + 32, currentY + 96)
+  
+        // Botão Copiar
+        const copyBtnW = 140
+        const copyBtnH = 48
+        const copyBtnX = cardX + cardW - copyBtnW - 32
+        const copyBtnY = currentY + 64
+        context.fillStyle = primaryHex
+        fillRoundedRect(context, copyBtnX, copyBtnY, copyBtnW, copyBtnH, 10)
+        context.textAlign = 'center'
+        context.fillStyle = '#ffffff'
+        context.font = '700 18px Arial'
+        context.fillText('Copiar', copyBtnX + copyBtnW / 2, copyBtnY + 30)
+  
+        currentY += codeBoxH + 20
       }
-
+  
       // Válido até
       if (rewardProofExpiresAt) {
-        const infoBoxY = currentY
-        const infoBoxHeight = 92
-        context.fillStyle = '#f8fafc'
-        fillRoundedRect(context, pagePadding + 40, infoBoxY, contentWidth - 80, infoBoxHeight, 16)
-
-        // Ícone de relógio
-        const iconCenterY = infoBoxY + infoBoxHeight / 2
-        context.fillStyle = hexToRgba(primaryHex, 0.12)
+        const infoBoxH = 96
+        context.shadowColor = 'rgba(0,0,0,0.06)'
+        context.shadowBlur = 12
+        context.shadowOffsetY = 4
+        context.fillStyle = '#ffffff'
+        fillRoundedRect(context, cardX, currentY, cardW, infoBoxH, cardRadius)
+        context.shadowColor = 'transparent'
+        context.shadowBlur = 0
+        context.shadowOffsetY = 0
+  
+        context.strokeStyle = '#e2e8f0'
+        context.lineWidth = 2
+        strokeRoundedRect(context, cardX, currentY, cardW, infoBoxH, cardRadius)
+  
+        // Ícone de relógio em círculo colorido
+        const iconCX = cardX + 52
+        const iconCY = currentY + infoBoxH / 2
+        context.fillStyle = hexToRgba(primaryHex, 0.1)
         context.beginPath()
-        context.arc(pagePadding + 84, iconCenterY, 24, 0, Math.PI * 2)
+        context.arc(iconCX, iconCY, 28, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
-        context.font = '700 26px Arial'
+        context.font = '700 28px Arial'
+        context.textAlign = 'center'
         context.textBaseline = 'middle'
-        context.fillText('🕐', pagePadding + 84, iconCenterY + 6)
+        context.fillText('', iconCX, iconCY + 2)
         context.textBaseline = 'alphabetic'
-
+  
         context.textAlign = 'left'
         context.fillStyle = '#64748b'
-        context.font = '800 13px Arial'
-        context.letterSpacing = '1px'
-        context.fillText('VÁLIDO ATÉ:', pagePadding + 124, infoBoxY + 40)
+        context.font = '800 14px Arial'
+        context.letterSpacing = '1.5px'
+        context.fillText('VÁLIDO ATÉ', cardX + 100, currentY + 38)
         context.letterSpacing = '0px'
-
+  
         context.fillStyle = '#0f172a'
-        context.font = '800 26px Arial'
-        context.fillText(formatDatePtBr(rewardProofExpiresAt), pagePadding + 124, infoBoxY + 72)
-
-        currentY += infoBoxHeight + 16
+        context.font = '700 28px Arial'
+        context.fillText(formatDatePtBr(rewardProofExpiresAt), cardX + 100, currentY + 74)
+  
+        currentY += infoBoxH + 20
       }
-
+  
       // Retirada
       if (rewardPickupAddress) {
-        const addressBoxY = currentY
-        const addressLines = wrapCanvasText(context, rewardPickupAddress, contentWidth - 200)
-        const addressBoxHeight = Math.max(110, 58 + addressLines.slice(0, 4).length * 28)
-
-        context.fillStyle = '#f8fafc'
-        fillRoundedRect(context, pagePadding + 40, addressBoxY, contentWidth - 80, addressBoxHeight, 16)
-
-        // Ícone de localização
-        const iconCenterY = addressBoxY + 42
-        context.fillStyle = hexToRgba(primaryHex, 0.12)
+        const addressLines = wrapCanvasText(context, rewardPickupAddress, cardW - 160)
+        const addressBoxH = Math.max(100, 56 + addressLines.slice(0, 4).length * 30)
+  
+        context.shadowColor = 'rgba(0,0,0,0.06)'
+        context.shadowBlur = 12
+        context.shadowOffsetY = 4
+        context.fillStyle = '#ffffff'
+        fillRoundedRect(context, cardX, currentY, cardW, addressBoxH, cardRadius)
+        context.shadowColor = 'transparent'
+        context.shadowBlur = 0
+        context.shadowOffsetY = 0
+  
+        context.strokeStyle = '#e2e8f0'
+        context.lineWidth = 2
+        strokeRoundedRect(context, cardX, currentY, cardW, addressBoxH, cardRadius)
+  
+        // Ícone de localização em círculo colorido
+        const iconCX = cardX + 52
+        const iconCY = currentY + 44
+        context.fillStyle = hexToRgba(primaryHex, 0.1)
         context.beginPath()
-        context.arc(pagePadding + 84, iconCenterY, 24, 0, Math.PI * 2)
+        context.arc(iconCX, iconCY, 28, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
-        context.font = '700 26px Arial'
+        context.font = '700 28px Arial'
+        context.textAlign = 'center'
         context.textBaseline = 'middle'
-        context.fillText('📍', pagePadding + 84, iconCenterY + 6)
+        context.fillText('📍', iconCX, iconCY + 2)
         context.textBaseline = 'alphabetic'
-
+  
         context.textAlign = 'left'
         context.fillStyle = '#64748b'
-        context.font = '800 13px Arial'
-        context.letterSpacing = '1px'
-        context.fillText('RETIRADA:', pagePadding + 124, addressBoxY + 36)
+        context.font = '800 14px Arial'
+        context.letterSpacing = '1.5px'
+        context.fillText('RETIRADA', cardX + 100, currentY + 36)
         context.letterSpacing = '0px'
-
+  
         context.fillStyle = '#334155'
-        context.font = '600 20px Arial'
-        let addressY = addressBoxY + 64
+        context.font = '500 22px Arial'
+        let addressY = currentY + 64
         for (const line of addressLines.slice(0, 4)) {
-          context.fillText(line, pagePadding + 124, addressY)
-          addressY += 28
+          context.fillText(line, cardX + 100, addressY)
+          addressY += 30
         }
-
-        currentY += addressBoxHeight + 16
+  
+        currentY += addressBoxH + 20
       }
-
-      // Rodapé
+  
+      // Botão Salvar comprovante (estilo da tela)
+      const btnH = 64
+      const btnY = currentY + 16
+      context.shadowColor = 'rgba(0,0,0,0.08)'
+      context.shadowBlur = 12
+      context.shadowOffsetY = 4
+      context.fillStyle = '#ffffff'
+      fillRoundedRect(context, cardX, btnY, cardW, btnH, 16)
+      context.shadowColor = 'transparent'
+      context.shadowBlur = 0
+      context.shadowOffsetY = 0
+  
+      context.strokeStyle = '#0f172a'
+      context.lineWidth = 3
+      strokeRoundedRect(context, cardX, btnY, cardW, btnH, 16)
+  
+      // Ícone de download
+      context.fillStyle = '#0f172a'
+      context.font = '700 24px Arial'
       context.textAlign = 'center'
-      const footerY = canvas.height - pagePadding - 34
-      context.fillStyle = '#94a3b8'
-      context.font = '500 14px Arial'
-      context.fillText(`Emitido em ${new Date().toLocaleDateString('pt-BR')} • Comprovante oficial de prêmio.`, canvas.width / 2, footerY)
-
+      context.textBaseline = 'middle'
+      context.fillText('⬇', canvas.width / 2 - 120, btnY + btnH / 2 + 1)
+      context.textBaseline = 'alphabetic'
+  
+      context.fillStyle = '#0f172a'
+      context.font = '700 22px Arial'
+      context.textAlign = 'center'
+      context.fillText('Salvar comprovante', canvas.width / 2 + 20, btnY + btnH / 2 + 1)
+  
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
       link.download = formatRewardProofFileName(rewardResult.item || rewardResult.landedLabel || 'roleta')
