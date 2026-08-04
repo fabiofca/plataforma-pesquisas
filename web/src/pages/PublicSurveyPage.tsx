@@ -280,6 +280,23 @@ function formatDatePtBr(value: string) {
   }).format(parsed)
 }
 
+function formatDateTimePtBr(value: string) {
+  const normalized = value.trim().replace(' ', 'T')
+  const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 function getRewardProofExpiresAt(input: {
   awardedAt?: string
   redemptionExpiresAt?: string
@@ -1474,7 +1491,7 @@ export function PublicSurveyPage() {
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = rewardPickupAddress ? 1240 : 1040
+      canvas.height = rewardPickupAddress ? 1280 : 1080
       const context = canvas.getContext('2d')
 
       if (!context) {
@@ -1485,11 +1502,12 @@ export function PublicSurveyPage() {
       const pagePadding = 64
       const contentWidth = canvas.width - pagePadding * 2
 
-      // Fundo com gradiente sutil na cor primária
+      // Fundo com gradiente na cor primária
       const gradient = context.createLinearGradient(0, 0, 0, canvas.height)
       gradient.addColorStop(0, '#ffffff')
-      gradient.addColorStop(0.6, '#ffffff')
-      gradient.addColorStop(1, hexToRgba(primaryHex, 0.1))
+      gradient.addColorStop(0.55, '#ffffff')
+      gradient.addColorStop(0.85, hexToRgba(primaryHex, 0.16))
+      gradient.addColorStop(1, hexToRgba(primaryHex, 0.28))
       context.fillStyle = gradient
       context.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -1538,7 +1556,7 @@ export function PublicSurveyPage() {
       context.fillText('Você ganhou:', canvas.width / 2, currentY)
 
       currentY += 42
-      context.fillStyle = '#0f172a'
+      context.fillStyle = primaryHex
       context.font = '900 48px Arial'
       const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 880)
       for (const line of prizeLines.slice(0, 3)) {
@@ -1551,33 +1569,30 @@ export function PublicSurveyPage() {
       // Protocolo / Cupom
       if (rewardResult.couponCode) {
         const codeBoxY = currentY
-        const codeBoxHeight = 124
-        context.strokeStyle = '#e2e8f0'
-        context.lineWidth = 2
-        fillRoundedRect(context, pagePadding + 40, codeBoxY, contentWidth - 80, codeBoxHeight, 16)
-        context.stroke()
+        const codeBoxHeight = 164
+        const codeBoxX = pagePadding + 40
+        const codeBoxW = contentWidth - 80
 
-        context.textAlign = 'center'
-        context.fillStyle = '#64748b'
-        context.font = '800 14px Arial'
-        context.letterSpacing = '2px'
-        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, codeBoxY + 34)
-        context.letterSpacing = '0px'
+        // Corpo branco com bordas arredondadas
+        context.fillStyle = '#ffffff'
+        fillRoundedRect(context, codeBoxX, codeBoxY, codeBoxW, codeBoxHeight, 16)
 
-        context.textAlign = 'left'
-        context.fillStyle = '#0f172a'
-        context.font = '900 34px Arial'
-        context.fillText(rewardResult.couponCode, pagePadding + 68, codeBoxY + 82)
-
-        // Botão "Copiar" visual — cor primária, igual à tela
-        const copyButtonX = pagePadding + contentWidth - 68 - 96
-        const copyButtonY = codeBoxY + 60
+        // Faixa superior colorida
         context.fillStyle = primaryHex
-        fillRoundedRect(context, copyButtonX, copyButtonY, 96, 40, 10)
+        fillRoundedRect(context, codeBoxX, codeBoxY, codeBoxW, 56, 16)
+        context.fillRect(codeBoxX, codeBoxY + 40, codeBoxW, 20)
+
         context.textAlign = 'center'
         context.fillStyle = '#ffffff'
-        context.font = '700 15px Arial'
-        context.fillText('Copiar', copyButtonX + 48, copyButtonY + 27)
+        context.font = '800 14px Arial'
+        context.letterSpacing = '2px'
+        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, codeBoxY + 36)
+        context.letterSpacing = '0px'
+
+        context.textAlign = 'center'
+        context.fillStyle = '#0f172a'
+        context.font = '900 42px Arial'
+        context.fillText(rewardResult.couponCode, canvas.width / 2, codeBoxY + 124)
 
         currentY += codeBoxHeight + 22
       }
@@ -1605,12 +1620,12 @@ export function PublicSurveyPage() {
         context.fillStyle = '#64748b'
         context.font = '800 13px Arial'
         context.letterSpacing = '1px'
-        context.fillText('VÁLIDO ATÉ', pagePadding + 124, infoBoxY + 40)
+        context.fillText('VÁLIDO ATÉ:', pagePadding + 124, infoBoxY + 40)
         context.letterSpacing = '0px'
 
         context.fillStyle = '#0f172a'
         context.font = '800 26px Arial'
-        context.fillText(formatDatePtBr(rewardProofExpiresAt), pagePadding + 124, infoBoxY + 72)
+        context.fillText(formatDateTimePtBr(rewardProofExpiresAt), pagePadding + 124, infoBoxY + 72)
 
         currentY += infoBoxHeight + 16
       }
@@ -1640,7 +1655,7 @@ export function PublicSurveyPage() {
         context.fillStyle = '#64748b'
         context.font = '800 13px Arial'
         context.letterSpacing = '1px'
-        context.fillText('RETIRADA', pagePadding + 124, addressBoxY + 36)
+        context.fillText('RETIRADA:', pagePadding + 124, addressBoxY + 36)
         context.letterSpacing = '0px'
 
         context.fillStyle = '#334155'
