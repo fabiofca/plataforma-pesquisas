@@ -871,8 +871,18 @@ export function PublicSurveyPage() {
         setWheelSpinning(false)
         setCompletedRetryTaskIds(nextCompletedTaskIds)
         setCanSpinReward(Boolean(session.canSpinReward))
-        setRewardResult(session.rewardResult ?? null)
-        setWheelModalOpen(Boolean(survey.rewardEnabled && (session.canSpinReward || session.rewardResult)))
+        setRewardResult(
+          session.rewardResult ??
+            (!session.canSpinReward && session.submitMessage
+              ? { won: false, message: session.submitMessage }
+              : null),
+        )
+        setWheelModalOpen(
+          Boolean(
+            survey.rewardEnabled &&
+              (session.canSpinReward || session.rewardResult || (!session.canSpinReward && session.submitMessage)),
+          ),
+        )
         setRetryTaskProgressMap((current) => {
           if (!session.rewardResult?.retryAvailable) {
             return {}
@@ -2238,9 +2248,11 @@ export function PublicSurveyPage() {
                   Você não ganhou desta vez.
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  {rewardResult.finalAttempt
-                    ? 'Suas tentativas desta experiência já foram usadas.'
-                    : 'Não desanime, continue participando das próximas campanhas.'}
+                  {rewardResult.message
+                    ? rewardResult.message
+                    : rewardResult.finalAttempt
+                      ? 'Suas tentativas desta experiência já foram usadas.'
+                      : 'Não desanime, continue participando das próximas campanhas.'}
                 </p>
                 <p className="mt-3 text-sm font-semibold text-slate-700">Obrigado por participar!</p>
 

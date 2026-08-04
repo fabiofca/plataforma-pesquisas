@@ -104,6 +104,7 @@ export interface SurveyItem {
   qrScans?: number
   preventDuplicateResponses?: boolean
   duplicateResponseCooldownDays?: number
+  allowMultipleResponses?: boolean
   rewardPreviewItems?: Array<{
     id: string
     title: string

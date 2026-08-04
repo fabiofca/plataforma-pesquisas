@@ -87,6 +87,7 @@ export const surveySchema = z.object({
   rewardEnabled: z.boolean().default(false),
   preventDuplicateResponses: z.boolean().default(false),
   duplicateResponseCooldownDays: z.number().int().min(1).max(365).default(15),
+  allowMultipleResponses: z.boolean().default(true),
   builderMode: z.enum(['classic', 'visual']).default('classic'),
   flowLayout: surveyFlowLayoutSchema.optional(),
   questions: z.array(surveyQuestionSchema).min(1),

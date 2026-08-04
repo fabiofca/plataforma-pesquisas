@@ -36,6 +36,7 @@ type PublicSurveyRecord = {
   reward_enabled: boolean
   prevent_duplicate_responses: boolean
   duplicate_response_cooldown_days: number
+  allow_multiple_responses: boolean
   reward_campaign_id: string | null
   reward_campaign_status: 'active' | 'paused' | 'ended' | null
   reward_wheel_mode: 'standard' | 'advanced' | null
@@ -178,6 +179,7 @@ async function getSurveyBySlug(slug: string) {
         surveys.reward_enabled,
         surveys.prevent_duplicate_responses,
         surveys.duplicate_response_cooldown_days,
+        surveys.allow_multiple_responses,
         reward_campaigns.id as reward_campaign_id,
         reward_campaigns.status as reward_campaign_status,
         reward_campaigns.wheel_mode as reward_wheel_mode,
@@ -370,7 +372,6 @@ function formatCooldownDays(days: number) {
 function buildRewardSubmitMessage(
   survey: Awaited<ReturnType<typeof getSurveyBySlug>>,
   rewardEligible: boolean,
-  recentParticipant?: boolean,
 ) {
   if (!survey?.reward_enabled || rewardEligible) {
     return null
@@ -380,11 +381,7 @@ function buildRewardSubmitMessage(
     return 'A campanha de prêmios está pausada, encerrada ou indisponível no momento. Sua resposta foi registrada normalmente.'
   }
 
-  if (recentParticipant) {
-    return `Este cliente já participou desta campanha recentemente. A resposta foi registrada normalmente, mas a roleta só poderá ser usada novamente após ${formatCooldownDays(survey.duplicate_response_cooldown_days)}.`
-  }
-
-  return 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi registrada normalmente, mas a roleta não gira novamente.'
+  return 'Sua resposta foi registrada. A roleta estará disponível após o prazo de espera.'
 }
 
 async function countRecentRewardParticipants(input: {
@@ -429,6 +426,38 @@ async function countRecentRewardParticipants(input: {
   )
 
   return Number(result.rows[0]?.count ?? 0)
+}
+
+async function hasPermanentDuplicateResponse(input: {
+  surveyId: string
+  phone: string
+}) {
+  const result = await query<{ count: string }>(
+    `select cast(count(*) as text) as count
+     from survey_responses
+     where survey_id = $1
+       and participant_phone = $2`,
+    [input.surveyId, input.phone],
+  )
+
+  return Number(result.rows[0]?.count ?? 0) > 0
+}
+
+async function hasRecentSpinByPhone(input: {
+  surveyId: string
+  phone: string
+  cooldownDays: number
+}) {
+  const result = await query<{ count: string }>(
+    `select cast(count(*) as text) as count
+     from reward_spin_logs
+     where campaign_id in (select reward_campaign_id from surveys where id = $1)
+       and response_id in (select id from survey_responses where survey_id = $1 and participant_phone = $2)
+       and created_at > now() - make_interval(days => $3)`,
+    [input.surveyId, input.phone, input.cooldownDays],
+  )
+
+  return Number(result.rows[0]?.count ?? 0) > 0
 }
 
 function normalizeExistingItemSchedule(item: RewardDrawItem, currentSpin: number) {
@@ -573,9 +602,26 @@ async function getRewardSessionState(
       completedTaskIds.length > surveyResponse.reward_retry_count,
   )
 
-  const canSpinReward = latestSpin
-    ? latestSpin.outcome_type !== 'win' && retryUnlocked
-    : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
+  const wheelCooldownDays = survey.duplicate_response_cooldown_days
+  let isInCooldown = false
+
+  if (wheelCooldownDays > 0 && surveyResponse.participant_phone) {
+    const recentSpinResult = await client.query<{ count: string }>(
+      `select cast(count(*) as text) as count
+       from reward_spin_logs
+       where campaign_id = $1
+         and response_id in (select id from survey_responses where survey_id = $2 and participant_phone = $3)
+         and created_at > now() - make_interval(days => $4)`,
+      [survey.reward_campaign_id, survey.id, surveyResponse.participant_phone, wheelCooldownDays],
+    )
+    isInCooldown = Number(recentSpinResult.rows[0]?.count ?? 0) > 0
+  }
+
+  const canSpinReward = isInCooldown
+    ? false
+    : latestSpin
+      ? latestSpin.outcome_type !== 'win' && retryUnlocked
+      : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
 
   let rewardResult: RewardSessionResult | null = null
 
@@ -649,7 +695,9 @@ async function getRewardSessionState(
     responseId,
     participantName: surveyResponse.participant_name ?? '',
     participantPhone: surveyResponse.participant_phone ?? '',
-    submitMessage: buildRewardSubmitMessage(survey, surveyResponse.reward_eligible),
+    submitMessage: isInCooldown
+      ? `A roleta só poderá ser usada novamente após ${formatCooldownDays(wheelCooldownDays)}.`
+      : buildRewardSubmitMessage(survey, surveyResponse.reward_eligible),
     canSpinReward,
     completedTaskIds,
     rewardResult,
@@ -726,19 +774,17 @@ publicRouter.post('/surveys/:slug/eligibility', async (request, response) => {
     return
   }
 
-  const cooldownDays = survey.prevent_duplicate_responses ? survey.duplicate_response_cooldown_days : 0
-  const duplicateCount = await countRecentRewardParticipants({
-    surveyId: survey.id,
-    phone: payload.participant.phone,
-    email: payload.participant.email,
-    browserCookieId: payload.browserCookieId,
-    fingerprint: payload.fingerprint,
-    cooldownDays,
-  })
+  if (!survey.allow_multiple_responses) {
+    const hasDuplicate = await hasPermanentDuplicateResponse({
+      surveyId: survey.id,
+      phone: payload.participant.phone,
+    })
 
-  response.json({
-    eligible: duplicateCount === 0,
-  })
+    response.json({ eligible: !hasDuplicate })
+    return
+  }
+
+  response.json({ eligible: true })
 })
 
 publicRouter.post('/surveys/:slug/respond', async (request, response) => {
@@ -751,17 +797,21 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
   }
 
   const sourceIp = request.ip ? hashValue(request.ip) : null
-  const cooldownDays = survey.prevent_duplicate_responses ? survey.duplicate_response_cooldown_days : 0
-  const previousResponsesCount = await countRecentRewardParticipants({
-    surveyId: survey.id,
-    phone: payload.participant.phone,
-    email: payload.participant.email,
-    browserCookieId: payload.browserCookieId,
-    fingerprint: payload.fingerprint,
-    cooldownDays,
-  })
-  const rewardEligible = isRewardCampaignAvailable(survey) && previousResponsesCount === 0
+  const campaignAvailable = isRewardCampaignAvailable(survey)
 
+  if (!survey.allow_multiple_responses) {
+    const hasDuplicate = await hasPermanentDuplicateResponse({
+      surveyId: survey.id,
+      phone: payload.participant.phone,
+    })
+
+    if (hasDuplicate) {
+      response.status(409).json({ message: 'Esta pesquisa não permite múltiplas respostas com o mesmo WhatsApp.' })
+      return
+    }
+  }
+
+  const rewardEligible = campaignAvailable
   const responseId = makeId()
 
   await query(
@@ -802,7 +852,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     responseId,
     rewardEnabled: survey.reward_enabled,
     rewardEligible,
-    rewardMessage: buildRewardSubmitMessage(survey, rewardEligible, previousResponsesCount > 0),
+    rewardMessage: buildRewardSubmitMessage(survey, rewardEligible),
   })
 })
 
@@ -956,6 +1006,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
 
     const surveyResponseResult = await client.query<{
       id: string
+      participant_phone: string
       reward_eligible: boolean
       reward_spin_completed: boolean
       reward_retry_count: number
@@ -964,6 +1015,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     }>(
       `select
           id,
+          participant_phone,
           reward_eligible,
           reward_spin_completed,
           reward_retry_count,
@@ -1123,12 +1175,25 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
 
     if (currentAttempt === 1 && !surveyResponse.reward_eligible) {
       await client.query('commit')
-      const cooldownDays = survey.prevent_duplicate_responses ? survey.duplicate_response_cooldown_days : 0
-      const message = cooldownDays > 0
-        ? `Este cliente já participou desta campanha recentemente. A resposta foi salva, mas a roleta só poderá ser usada novamente após ${formatCooldownDays(cooldownDays)}.`
-        : 'Este cliente já participou desta campanha com o mesmo WhatsApp ou e-mail. A resposta foi salva, mas a roleta não pode ser usada novamente.'
-      response.status(409).json({ message })
+      response.status(409).json({ message: 'A roleta não está disponível para esta participação.' })
       return
+    }
+
+    const wheelCooldownDays = survey.duplicate_response_cooldown_days
+    if (wheelCooldownDays > 0 && surveyResponse.participant_phone) {
+      const hasRecentSpin = await hasRecentSpinByPhone({
+        surveyId: survey.id,
+        phone: surveyResponse.participant_phone,
+        cooldownDays: wheelCooldownDays,
+      })
+
+      if (hasRecentSpin) {
+        await client.query('commit')
+        response.status(409).json({
+          message: `A roleta só poderá ser usada novamente após ${formatCooldownDays(wheelCooldownDays)}.`,
+        })
+        return
+      }
     }
 
     if (

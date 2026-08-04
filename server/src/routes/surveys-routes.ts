@@ -441,6 +441,7 @@ surveysRouter.get('/:id', async (request: AuthenticatedRequest, response) => {
       }
     } | null
     prevent_duplicate_responses: boolean
+    allow_multiple_responses: boolean
     slug: string | null
     link_clicks: string
     qr_scans: string
@@ -560,9 +561,9 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
 
   await query(
     `insert into surveys (
-      id, owner_user_id, title, description, participation_mode, brand_name, logo_url, primary_color, banner_url, closing_message, reward_enabled, prevent_duplicate_responses, duplicate_response_cooldown_days
+      id, owner_user_id, title, description, participation_mode, brand_name, logo_url, primary_color, banner_url, closing_message, reward_enabled, prevent_duplicate_responses, duplicate_response_cooldown_days, allow_multiple_responses
       , builder_mode, flow_json
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       surveyId,
       request.auth!.userId,
@@ -577,6 +578,7 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
       payload.rewardEnabled,
       payload.preventDuplicateResponses,
       payload.duplicateResponseCooldownDays,
+      payload.allowMultipleResponses,
       payload.builderMode,
       JSON.stringify(payload.flowLayout ?? { version: 1, nodes: [] }),
     ],
@@ -652,8 +654,9 @@ surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
          reward_enabled = $10,
          prevent_duplicate_responses = $11,
          duplicate_response_cooldown_days = $12,
-         builder_mode = $13,
-         flow_json = $14,
+         allow_multiple_responses = $13,
+         builder_mode = $14,
+         flow_json = $15,
          updated_at = now()
      where id = $1`,
     [
@@ -669,6 +672,7 @@ surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
       payload.rewardEnabled,
       payload.preventDuplicateResponses,
       payload.duplicateResponseCooldownDays,
+      payload.allowMultipleResponses,
       payload.builderMode,
       JSON.stringify(payload.flowLayout ?? { version: 1, nodes: [] }),
     ],

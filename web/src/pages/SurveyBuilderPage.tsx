@@ -44,6 +44,7 @@ type BuilderState = {
   rewardEnabled: boolean
   preventDuplicateResponses: boolean
   duplicateResponseCooldownDays: number
+  allowMultipleResponses: boolean
   builderMode: SurveyBuilderMode
   flowLayout: SurveyFlowLayout
   questions: BuilderQuestion[]
@@ -100,6 +101,7 @@ function makeEmptyBuilderState(): BuilderState {
     rewardEnabled: false,
     preventDuplicateResponses: true,
     duplicateResponseCooldownDays: 15,
+    allowMultipleResponses: true,
     builderMode: 'visual',
     flowLayout: mergeFlowLayout(initialQuestions.map((question) => question.id), { version: 1, nodes: [] }),
     questions: initialQuestions,
@@ -176,6 +178,7 @@ function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
     rewardEnabled: survey.rewardEnabled,
     preventDuplicateResponses: survey.preventDuplicateResponses ?? true,
     duplicateResponseCooldownDays: survey.duplicateResponseCooldownDays ?? 15,
+    allowMultipleResponses: survey.allowMultipleResponses ?? true,
     builderMode: 'visual',
     flowLayout: mergeFlowLayout(
       questions.map((question) => question.id),
@@ -227,6 +230,7 @@ export function SurveyBuilderPage() {
           flow_json?: SurveyFlowLayout | null
           prevent_duplicate_responses: boolean
           duplicate_response_cooldown_days: number
+          allow_multiple_responses: boolean
           link_clicks: string
           qr_scans: string
           status: string
@@ -332,6 +336,7 @@ export function SurveyBuilderPage() {
         rewardEnabled: form.rewardEnabled,
         preventDuplicateResponses: form.preventDuplicateResponses,
         duplicateResponseCooldownDays: form.duplicateResponseCooldownDays,
+        allowMultipleResponses: form.allowMultipleResponses,
         builderMode: 'visual',
         flowLayout: normalizedFlowLayout,
         questions: orderedQuestions.map((question, index) => ({
@@ -1153,41 +1158,40 @@ export function SurveyBuilderPage() {
               <label className="admin-checkrow">
                 <input
                   type="checkbox"
-                  checked={form.preventDuplicateResponses}
+                  checked={form.allowMultipleResponses}
                   onChange={(event) => {
-                    const preventDuplicateResponses = event.target.checked
                     setForm((current) => ({
                       ...current,
-                      preventDuplicateResponses,
-                      duplicateResponseCooldownDays: preventDuplicateResponses && current.duplicateResponseCooldownDays < 1 ? 15 : current.duplicateResponseCooldownDays,
+                      allowMultipleResponses: event.target.checked,
                     }))
                   }}
                 />
                 <span>
-                  <span className="block font-semibold text-slate-950">Limitar giros da roleta</span>
-                  <span className="text-slate-500">A pessoa pode responder novamente, mas só pode girar a roleta uma vez dentro do prazo.</span>
+                  <span className="block font-semibold text-slate-950">Permitir múltiplas respostas</span>
+                  <span className="text-slate-500">A mesma pessoa pode responder à pesquisa mais de uma vez.</span>
                 </span>
               </label>
+            </div>
 
-              {form.preventDuplicateResponses ? (
-                <label className="mt-4 grid gap-2 text-sm">
-                  <span className="text-slate-600">Prazo para novo giro (dias)</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={365}
-                    className="admin-input w-32"
-                    value={form.duplicateResponseCooldownDays}
-                    onChange={(event) => {
-                      const value = Number.parseInt(event.target.value, 10)
-                      setForm((current) => ({
-                        ...current,
-                        duplicateResponseCooldownDays: Number.isNaN(value) ? current.duplicateResponseCooldownDays : Math.max(1, Math.min(365, value)),
-                      }))
-                    }}
-                  />
-                </label>
-              ) : null}
+            <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-4">
+              <label className="grid gap-2 text-sm">
+                <span className="font-semibold text-slate-950">Prazo para novo giro da roleta (dias)</span>
+                <span className="text-slate-500">A mesma pessoa só pode girar a roleta novamente após esse prazo.</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  className="admin-input w-32"
+                  value={form.duplicateResponseCooldownDays}
+                  onChange={(event) => {
+                    const value = Number.parseInt(event.target.value, 10)
+                    setForm((current) => ({
+                      ...current,
+                      duplicateResponseCooldownDays: Number.isNaN(value) ? current.duplicateResponseCooldownDays : Math.max(1, Math.min(365, value)),
+                    }))
+                  }}
+                />
+              </label>
             </div>
 
             <label className="grid gap-2 text-sm">

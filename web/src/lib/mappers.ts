@@ -114,6 +114,8 @@ export function mapApiSurvey(item: {
   preventDuplicateResponses?: boolean
   duplicate_response_cooldown_days?: number
   duplicateResponseCooldownDays?: number
+  allow_multiple_responses?: boolean
+  allowMultipleResponses?: boolean
   primary_color?: string
   primaryColor?: string
   questions?: Array<{
@@ -192,6 +194,7 @@ export function mapApiSurvey(item: {
     qrScans: Number(item.qr_scans ?? 0),
     preventDuplicateResponses: item.prevent_duplicate_responses ?? item.preventDuplicateResponses ?? false,
     duplicateResponseCooldownDays: item.duplicate_response_cooldown_days ?? item.duplicateResponseCooldownDays ?? 15,
+    allowMultipleResponses: item.allow_multiple_responses ?? item.allowMultipleResponses ?? true,
     rewardPreviewItems: (item.reward_items ?? []).map((rewardItem) => ({
       id: rewardItem.id,
       title: rewardItem.title,
