@@ -2085,7 +2085,7 @@ export function PublicSurveyPage() {
           {rewardResult?.won ? (
             <div className="flex flex-1 flex-col bg-slate-50 p-3 animate-fade-in sm:p-5">
               <div className="mx-auto flex h-full w-full max-w-[540px] flex-col">
-                <div className="flex flex-1 flex-col justify-between overflow-hidden text-center">
+                <div className="flex flex-1 flex-col overflow-hidden text-center">
                   <div className="flex flex-col items-center justify-center">
                     <div
                       className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-12 sm:w-12"
@@ -2109,7 +2109,7 @@ export function PublicSurveyPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-1.5 flex w-full flex-col gap-1.5 sm:gap-2">
+                  <div className="mt-3 flex w-full flex-col gap-1.5 sm:gap-2">
                     {rewardResult.couponCode ? (
                       <div className="w-full rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
                         <p className="text-center text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Protocolo / Cupom</p>
