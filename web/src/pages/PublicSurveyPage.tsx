@@ -1538,7 +1538,7 @@ export function PublicSurveyPage() {
       context.fillText('Você ganhou:', canvas.width / 2, currentY)
 
       currentY += 42
-      context.fillStyle = primaryHex
+      context.fillStyle = '#0f172a'
       context.font = '900 48px Arial'
       const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 880)
       for (const line of prizeLines.slice(0, 3)) {
@@ -1569,16 +1569,13 @@ export function PublicSurveyPage() {
         context.font = '900 34px Arial'
         context.fillText(rewardResult.couponCode, pagePadding + 68, codeBoxY + 82)
 
-        // Botão "Copiar" visual — branco com borda, sem cor forte
+        // Botão "Copiar" visual — cor primária, igual à tela
         const copyButtonX = pagePadding + contentWidth - 68 - 96
         const copyButtonY = codeBoxY + 60
-        context.strokeStyle = '#cbd5e1'
-        context.lineWidth = 2
-        context.fillStyle = '#ffffff'
+        context.fillStyle = primaryHex
         fillRoundedRect(context, copyButtonX, copyButtonY, 96, 40, 10)
-        context.stroke()
         context.textAlign = 'center'
-        context.fillStyle = '#334155'
+        context.fillStyle = '#ffffff'
         context.font = '700 15px Arial'
         context.fillText('Copiar', copyButtonX + 48, copyButtonY + 27)
 
@@ -2133,41 +2130,31 @@ export function PublicSurveyPage() {
                     />
 
                     {rewardResult?.won ? (
-                      <div className="absolute inset-0 z-[80] flex flex-col bg-gradient-to-b from-white via-white to-slate-50 animate-fade-in">
-                        <div className="mx-auto flex h-full w-full max-w-[540px] flex-col px-4 sm:px-8">
-                          <div className="flex flex-1 flex-col overflow-hidden">
-                            <div className="flex flex-1 flex-col items-center justify-center text-center">
+                      <div className="absolute inset-0 z-[80] flex flex-col bg-slate-50/95 p-3 animate-fade-in sm:p-5">
+                        <div className="mx-auto flex h-full w-full max-w-[540px] flex-col">
+                          <div className="flex flex-1 flex-col overflow-hidden rounded-[28px] bg-white shadow-[0_24px_80px_rgba(0,0,0,0.08)]">
+                            <div className="flex flex-1 flex-col overflow-y-auto px-5 py-6 text-center sm:px-8 sm:py-8">
                               <div
-                                className="flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)] sm:h-20 sm:w-20"
+                                className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)] sm:h-20 sm:w-20"
                                 style={{ color: survey?.primaryColor || '#0f172a' }}
                               >
                                 <Trophy className="h-8 w-8 sm:h-10 sm:w-10" strokeWidth={1.5} />
                               </div>
 
-                              <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 sm:mt-4 sm:text-xs">Prêmio confirmado</p>
-                              <p className="mt-1 text-lg font-semibold text-slate-900 sm:text-xl">
+                              <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 sm:mt-5 sm:text-xs">Prêmio confirmado</p>
+                              <p className="mt-1 text-lg font-semibold text-slate-900 sm:text-2xl">
                                 {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
                               </p>
 
-                              {rewardResult.itemImageUrl ? (
-                                <div className="mt-3 w-full max-w-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:mt-4 sm:max-w-[320px]">
-                                  <img
-                                    src={rewardResult.itemImageUrl}
-                                    alt={rewardResult.item || 'Prêmio'}
-                                    className="h-28 w-full object-cover sm:h-36"
-                                  />
-                                </div>
-                              ) : null}
-
-                              <div className="mt-3 sm:mt-4">
+                              <div className="mt-4 sm:mt-5">
                                 <p className="text-xs text-slate-500 sm:text-sm">Você ganhou:</p>
-                                <p className="mt-0.5 font-display text-2xl font-bold text-slate-950 sm:text-4xl">{rewardResult.item}</p>
+                                <p className="font-display text-2xl font-bold text-slate-950 sm:text-4xl">{rewardResult.item}</p>
                               </div>
 
-                              <p className="mt-2 max-w-xs text-xs leading-relaxed text-slate-600 sm:mt-3 sm:text-sm">{rewardInstructionText}</p>
+                              <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-600 sm:mt-3 sm:text-sm">{rewardInstructionText}</p>
 
                               {rewardResult.couponCode ? (
-                                <div className="mt-4 w-full rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm sm:p-4">
+                                <div className="mt-5 w-full rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm sm:mt-6 sm:p-4">
                                   <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Protocolo / Cupom</p>
                                   <div className="mt-2 flex items-center justify-between gap-3">
                                     <p className="flex-1 break-all text-left text-xl font-black tracking-widest text-slate-950 sm:text-2xl">{rewardResult.couponCode}</p>
@@ -2213,30 +2200,30 @@ export function PublicSurveyPage() {
                                 </div>
                               ) : null}
                             </div>
-                          </div>
 
-                          <div className="flex w-full flex-col gap-2 pb-4 pt-3 sm:gap-3 sm:pb-6 sm:pt-4">
-                            {rewardContactWhatsAppUrl ? (
-                              <a
-                                href={rewardContactWhatsAppUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:px-5 sm:py-3.5 sm:text-base"
-                                style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
+                            <div className="flex w-full flex-col gap-2 border-t border-slate-100 px-5 pb-5 pt-3 sm:gap-3 sm:px-8 sm:pb-6 sm:pt-4">
+                              {rewardContactWhatsAppUrl ? (
+                                <a
+                                  href={rewardContactWhatsAppUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:px-5 sm:py-3.5 sm:text-base"
+                                  style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
+                                >
+                                  <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+                                  Resgatar pelo WhatsApp
+                                </a>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => void handleDownloadRewardProof()}
+                                disabled={savingRewardProof}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:px-5 sm:py-3.5 sm:text-base"
                               >
-                                <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-                                Resgatar pelo WhatsApp
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => void handleDownloadRewardProof()}
-                              disabled={savingRewardProof}
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:px-5 sm:py-3.5 sm:text-base"
-                            >
-                              <Download className="h-4 w-4 sm:h-5 sm:w-5" />
-                              {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
-                            </button>
+                                <Download className="h-4 w-4 sm:h-5 sm:w-5" />
+                                {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
