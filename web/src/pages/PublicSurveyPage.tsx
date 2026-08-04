@@ -2081,192 +2081,219 @@ export function PublicSurveyPage() {
 
       {survey.rewardEnabled && wheelModalOpen ? (
         <div className="fixed inset-0 z-50 flex flex-col bg-white">
-          <div className="flex h-full flex-col overflow-hidden">
-            <div className="flex h-full w-full flex-col bg-white px-3 py-3 sm:px-5 sm:py-4">
-              <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-100 pb-3 sm:pb-4">
-                <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
-                  {canSpinReward
-                    ? 'Gire a roleta.'
-                    : wheelSpinning
-                      ? 'A roleta está girando.'
-                      : rewardResult?.won
-                        ? rewardInstructionText
-                        : 'Seu resultado já está disponível.'}
-                </p>
+          {/* Tela final: prêmio confirmado (página inteira, sem roleta) */}
+          {rewardResult?.won ? (
+            <div className="flex flex-1 flex-col bg-slate-50 p-3 animate-fade-in sm:p-5">
+              <div className="mx-auto flex h-full w-full max-w-[540px] flex-col">
+                <div className="flex flex-1 flex-col justify-between overflow-hidden text-center">
+                  <div className="flex flex-col items-center justify-center">
+                    <div
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-12 sm:w-12"
+                      style={{ color: survey?.primaryColor || '#0f172a' }}
+                    >
+                      <Trophy className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={1.5} />
+                    </div>
 
-                {canCloseWheelModal ? (
-                  <button
-                    type="button"
-                    onClick={() => setWheelModalOpen(false)}
-                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
-                  >
-                    <X className="h-4 w-4" />
-                    Fechar
-                  </button>
-                ) : null}
-              </div>
+                    <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-xs">Prêmio confirmado</p>
+                    <p className="mt-0.5 text-sm font-semibold text-slate-900 sm:text-lg">
+                      {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
+                    </p>
 
-              <div className="flex flex-1 flex-col justify-center py-4 sm:py-6">
-                <div className="mx-auto w-full max-w-[820px]">
-                  <div className="relative isolate flex min-h-[56svh] items-center justify-center rounded-[28px] bg-white px-1 py-3 sm:min-h-[60svh] sm:px-3 sm:py-5">
-                    <PrizeWheel
-                      segments={wheelSegments}
-                      rotation={wheelRotation}
-                      isSpinning={wheelSpinning}
-                      primaryColor={survey.primaryColor}
-                      activeSegmentId={activeWheelSegmentId}
-                      showCelebration={Boolean(rewardResult?.won)}
-                      celebrationKey={celebrationKey}
-                      disabled={spinMutation.isPending || !responseId || !canSpinReward}
-                      variant="fullscreen"
-                      spinLabel="Girar agora"
-                      onSpin={() => void spinMutation.mutateAsync()}
-                    />
+                    <div className="mt-1">
+                      <p className="text-[10px] text-slate-500 sm:text-xs">Você ganhou:</p>
+                      <p className="font-display text-base font-bold text-slate-950 sm:text-2xl">{rewardResult.item}</p>
+                    </div>
 
-                    {rewardResult?.won ? (
-                      <div className="absolute inset-0 z-[80] flex flex-col bg-slate-50 p-3 animate-fade-in sm:p-5">
-                        <div className="mx-auto flex h-full w-full max-w-[540px] flex-col">
-                          <div className="flex flex-1 flex-col justify-between overflow-hidden text-center">
-                            <div className="flex flex-col items-center justify-center">
-                              <div
-                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-12 sm:w-12"
-                                style={{ color: survey?.primaryColor || '#0f172a' }}
-                              >
-                                <Trophy className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={1.5} />
-                              </div>
+                    {rewardInstructionText ? (
+                      <p className="mx-auto mt-1 max-w-[260px] text-[10px] leading-snug text-slate-500 sm:text-xs">{rewardInstructionText}</p>
+                    ) : null}
+                  </div>
 
-                              <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-xs">Prêmio confirmado</p>
-                              <p className="mt-0.5 text-sm font-semibold text-slate-900 sm:text-lg">
-                                {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
-                              </p>
-
-                              <div className="mt-1">
-                                <p className="text-[10px] text-slate-500 sm:text-xs">Você ganhou:</p>
-                                <p className="font-display text-base font-bold text-slate-950 sm:text-2xl">{rewardResult.item}</p>
-                              </div>
-
-                              {rewardInstructionText ? (
-                                <p className="mx-auto mt-1 max-w-[260px] text-[10px] leading-snug text-slate-500 sm:text-xs">{rewardInstructionText}</p>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-1.5 flex w-full flex-col gap-1.5 sm:gap-2">
-                              {rewardResult.couponCode ? (
-                                <div className="w-full rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
-                                  <p className="text-center text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Protocolo / Cupom</p>
-                                  <div className="mt-1 flex items-center justify-between gap-2">
-                                    <p className="flex-1 break-all text-left text-base font-black tracking-widest text-slate-950 sm:text-lg">{rewardResult.couponCode}</p>
-                                    <button
-                                      type="button"
-                                      onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
-                                      className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95 sm:text-xs"
-                                      style={{ backgroundColor: survey?.primaryColor || '#0f172a' }}
-                                    >
-                                      Copiar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {rewardProofExpiresAt ? (
-                                <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
-                                  <div
-                                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full sm:h-8 sm:w-8"
-                                    style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
-                                  >
-                                    <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: survey?.primaryColor || '#0f172a' }} />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Válido até</p>
-                                    <p className="text-xs font-semibold text-slate-900 sm:text-sm">{formatDatePtBr(rewardProofExpiresAt)}</p>
-                                  </div>
-                                </div>
-                              ) : null}
-
-                              {rewardPickupAddress ? (
-                                <div className="flex w-full items-start gap-2 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
-                                  <div
-                                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full sm:h-8 sm:w-8"
-                                    style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
-                                  >
-                                    <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: survey?.primaryColor || '#0f172a' }} />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Retirada</p>
-                                    <p className="text-[10px] leading-snug text-slate-700 sm:text-xs">{rewardPickupAddress}</p>
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
-
-                          <div className="flex w-full flex-col gap-1.5 pt-2 sm:gap-2 sm:pt-3">
-                            {rewardContactWhatsAppUrl ? (
-                              <a
-                                href={rewardContactWhatsAppUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:text-sm"
-                                style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
-                              >
-                                <MessageCircle className="h-4 w-4" />
-                                Resgatar pelo WhatsApp
-                              </a>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => void handleDownloadRewardProof()}
-                              disabled={savingRewardProof}
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-900 bg-white px-4 py-2.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:text-sm"
-                            >
-                              <Download className="h-4 w-4" />
-                              {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
-                            </button>
-                          </div>
+                  <div className="mt-1.5 flex w-full flex-col gap-1.5 sm:gap-2">
+                    {rewardResult.couponCode ? (
+                      <div className="w-full rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
+                        <p className="text-center text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Protocolo / Cupom</p>
+                        <div className="mt-1 flex items-center justify-between gap-2">
+                          <p className="flex-1 break-all text-left text-base font-black tracking-widest text-slate-950 sm:text-lg">{rewardResult.couponCode}</p>
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
+                            className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95 sm:text-xs"
+                            style={{ backgroundColor: survey?.primaryColor || '#0f172a' }}
+                          >
+                            Copiar
+                          </button>
                         </div>
                       </div>
                     ) : null}
 
-                    {showRetryTaskOverlay && currentRetryTask ? (
-                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
-                        <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
-                        <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-sky-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(14,165,233,0.18)] sm:px-8 sm:py-9 animate-fade-in-scale">
-                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-[0_8px_24px_rgba(14,165,233,0.24)] sm:h-16 sm:w-16">
-                            <PartyPopper className="h-7 w-7 sm:h-8 sm:w-8" />
-                          </div>
-                          <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
-                          <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
-                            Você não ganhou neste giro.
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">Complete a tarefa abaixo para girar novamente.</p>
+                    {rewardProofExpiresAt ? (
+                      <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
+                        <div
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full sm:h-8 sm:w-8"
+                          style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
+                        >
+                          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Válido até</p>
+                          <p className="text-xs font-semibold text-slate-900 sm:text-sm">{formatDatePtBr(rewardProofExpiresAt)}</p>
+                        </div>
+                      </div>
+                    ) : null}
 
-                          {!currentRetryTaskReturned ? (
-                            <>
-                              <div className="mt-5">
-                                <RetryTaskInstructions
-                                  currentStep={currentRetryTaskProgress ? 2 : 1}
-                                />
-                              </div>
+                    {rewardPickupAddress ? (
+                      <div className="flex w-full items-start gap-2 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
+                        <div
+                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full sm:h-8 sm:w-8"
+                          style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
+                        >
+                          <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Retirada</p>
+                          <p className="text-[10px] leading-snug text-slate-700 sm:text-xs">{rewardPickupAddress}</p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
 
-                              <div
-                                className={`mt-5 rounded-[20px] border px-5 py-4 text-left transition ${
-                                  currentRetryTaskIsLoading
-                                    ? 'border-slate-200 bg-slate-50'
-                                    : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer hover:shadow-md`
-                                }`}
-                                role="button"
-                                tabIndex={currentRetryTaskIsLoading ? -1 : 0}
-                                onClick={() =>
-                                  handleRetryTaskCardClick({
-                                    task: currentRetryTask,
-                                    taskProgress: currentRetryTaskProgress ?? undefined,
-                                    canConfirm: currentRetryTaskCanConfirm,
-                                    isLoading: currentRetryTaskIsLoading,
-                                  })
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault()
+                <div className="flex w-full flex-col gap-1.5 pt-2 sm:gap-2 sm:pt-3">
+                  {rewardContactWhatsAppUrl ? (
+                    <a
+                      href={rewardContactWhatsAppUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:text-sm"
+                      style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Resgatar pelo WhatsApp
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleDownloadRewardProof()}
+                    disabled={savingRewardProof}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-900 bg-white px-4 py-2.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:text-sm"
+                  >
+                    <Download className="h-4 w-4" />
+                    {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : rewardResult && !rewardResult.won && !showRetryTaskOverlay && !wheelSpinning && !canSpinReward ? (
+            /* Tela final: obrigado por participar (página inteira, sem roleta) */
+            <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 p-3 animate-fade-in sm:p-5">
+              <div className="w-full max-w-[420px] text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.12)] sm:h-16 sm:w-16">
+                  <Frown className="h-7 w-7 sm:h-8 sm:w-8" />
+                </div>
+                <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Não foi dessa vez</p>
+                <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+                  Você não ganhou desta vez.
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {rewardResult.finalAttempt
+                    ? 'Suas tentativas desta experiência já foram usadas.'
+                    : 'Não desanime, continue participando das próximas campanhas.'}
+                </p>
+                <p className="mt-3 text-sm font-semibold text-slate-700">Obrigado por participar!</p>
+
+                {rewardResult.spinAttempt && rewardResult.maxAttempts ? (
+                  <div className="mt-5">
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                      <span>Progresso</span>
+                      <span>
+                        Tentativa {rewardResult.spinAttempt} de {rewardResult.maxAttempts}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-slate-400 transition-all duration-500"
+                        style={{
+                          width: `${Math.min(100, ((rewardResult.spinAttempt - 1) / (rewardResult.maxAttempts - 1 || 1)) * 100)}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            /* Roleta normal com header */
+            <div className="flex h-full flex-col overflow-hidden">
+              <div className="flex h-full w-full flex-col bg-white px-3 py-3 sm:px-5 sm:py-4">
+                <div className="flex flex-shrink-0 items-center justify-between gap-3 border-b border-slate-100 pb-3 sm:pb-4">
+                  <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
+                    {canSpinReward
+                      ? 'Gire a roleta.'
+                      : wheelSpinning
+                        ? 'A roleta está girando.'
+                        : 'Seu resultado já está disponível.'}
+                  </p>
+
+                  {canCloseWheelModal ? (
+                    <button
+                      type="button"
+                      onClick={() => setWheelModalOpen(false)}
+                      className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
+                    >
+                      <X className="h-4 w-4" />
+                      Fechar
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-1 flex-col justify-center py-4 sm:py-6">
+                  <div className="mx-auto w-full max-w-[820px]">
+                    <div className="relative isolate flex min-h-[56svh] items-center justify-center rounded-[28px] bg-white px-1 py-3 sm:min-h-[60svh] sm:px-3 sm:py-5">
+                      <PrizeWheel
+                        segments={wheelSegments}
+                        rotation={wheelRotation}
+                        isSpinning={wheelSpinning}
+                        primaryColor={survey.primaryColor}
+                        activeSegmentId={activeWheelSegmentId}
+                        showCelebration={false}
+                        celebrationKey={celebrationKey}
+                        disabled={spinMutation.isPending || !responseId || !canSpinReward}
+                        variant="fullscreen"
+                        spinLabel="Girar agora"
+                        onSpin={() => void spinMutation.mutateAsync()}
+                      />
+
+                      {showRetryTaskOverlay && currentRetryTask ? (
+                        <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
+                          <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
+                          <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-sky-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(14,165,233,0.18)] sm:px-8 sm:py-9 animate-fade-in-scale">
+                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-[0_8px_24px_rgba(14,165,233,0.24)] sm:h-16 sm:w-16">
+                              <PartyPopper className="h-7 w-7 sm:h-8 sm:w-8" />
+                            </div>
+                            <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
+                            <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+                              Você não ganhou neste giro.
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">Complete a tarefa abaixo para girar novamente.</p>
+
+                            {!currentRetryTaskReturned ? (
+                              <>
+                                <div className="mt-5">
+                                  <RetryTaskInstructions
+                                    currentStep={currentRetryTaskProgress ? 2 : 1}
+                                  />
+                                </div>
+
+                                <div
+                                  className={`mt-5 rounded-[20px] border px-5 py-4 text-left transition ${
+                                    currentRetryTaskIsLoading
+                                      ? 'border-slate-200 bg-slate-50'
+                                      : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer hover:shadow-md`
+                                  }`}
+                                  role="button"
+                                  tabIndex={currentRetryTaskIsLoading ? -1 : 0}
+                                  onClick={() =>
                                     handleRetryTaskCardClick({
                                       task: currentRetryTask,
                                       taskProgress: currentRetryTaskProgress ?? undefined,
@@ -2274,193 +2301,153 @@ export function PublicSurveyPage() {
                                       isLoading: currentRetryTaskIsLoading,
                                     })
                                   }
-                                }}
-                              >
-                                <div className="flex items-start gap-3">
-                                  <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
-                                    {(() => {
-                                      const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
-                                      return <Icon className="h-5 w-5" />
-                                    })()}
-                                  </div>
-                                  <div className="flex-1">
-                                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
-                                    <p className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{currentRetryTask.title}</p>
-                                    <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
-                                      {getRetryTaskTypeLabel(currentRetryTask.type)}
-                                    </p>
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                      event.preventDefault()
+                                      handleRetryTaskCardClick({
+                                        task: currentRetryTask,
+                                        taskProgress: currentRetryTaskProgress ?? undefined,
+                                        canConfirm: currentRetryTaskCanConfirm,
+                                        isLoading: currentRetryTaskIsLoading,
+                                      })
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
+                                      {(() => {
+                                        const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
+                                        return <Icon className="h-5 w-5" />
+                                      })()}
+                                    </div>
+                                    <div className="flex-1">
+                                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
+                                      <p className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{currentRetryTask.title}</p>
+                                      <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
+                                        {getRetryTaskTypeLabel(currentRetryTask.type)}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
 
-                              <div className="mt-4 flex items-center justify-center">
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                                  {currentRetryTaskStatusLabel}
-                                </span>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="mt-5 flex gap-3 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-left">
-                              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
-                              <div>
-                                <p className="text-sm font-semibold text-amber-900">Atenção</p>
-                                <p className="mt-1 text-xs leading-relaxed text-amber-800">
-                                  Se você ganhar o prêmio, será necessário apresentar comprovantes de que cumpriu a tarefa (print da tela, por exemplo) no momento da retirada.
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {currentRetryTaskReturned ? (
-                            <div className="mt-4">
-                              <div className="flex items-center justify-between text-xs text-slate-600">
-                                <span className="font-medium">Aguarde, a roleta já será liberada</span>
-                                <span className="font-mono font-semibold">{currentRetryTaskRemainingSeconds}s</span>
-                              </div>
-                              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full rounded-full bg-sky-500 transition-all duration-300"
-                                  style={{
-                                    width: `${Math.min(
-                                      100,
-                                      ((retryTaskNow - currentRetryTaskProgress.startedAt) / RETRY_TASK_MIN_WAIT_MS) * 100,
-                                    )}%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          ) : null}
-
-                          <div className="mt-5 flex items-center justify-center">
-                            {currentRetryTaskReturned ? (
-                              <button
-                                type="button"
-                                disabled={!currentRetryTaskCanConfirm || currentRetryTaskIsLoading}
-                                onClick={() => void retryTaskClickMutation.mutateAsync(currentRetryTask)}
-                                className="admin-button-primary w-full justify-center px-6 py-3 text-sm"
-                                style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
-                              >
-                                {currentRetryTaskIsLoading ? 'Liberando roleta...' : 'Girar roleta novamente'}
-                              </button>
+                                <div className="mt-4 flex items-center justify-center">
+                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                                    {currentRetryTaskStatusLabel}
+                                  </span>
+                                </div>
+                              </>
                             ) : (
-                              <button
-                                type="button"
-                                disabled={currentRetryTaskIsLoading || Boolean(currentRetryTaskProgress)}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  if (currentRetryTaskProgress) {
-                                    openRetryTaskLink(currentRetryTask)
-                                    return
-                                  }
-                                  startRetryTask(currentRetryTask)
-                                }}
-                                className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                              >
-                                <ExternalLink className="h-4 w-4" />
-                                {currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
-                              </button>
+                              <div className="mt-5 flex gap-3 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-left">
+                                <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                                <div>
+                                  <p className="text-sm font-semibold text-amber-900">Atenção</p>
+                                  <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                                    Se você ganhar o prêmio, será necessário apresentar comprovantes de que cumpriu a tarefa (print da tela, por exemplo) no momento da retirada.
+                                  </p>
+                                </div>
+                              </div>
                             )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
 
-                    {rewardResult && !rewardResult.won && !showRetryTaskOverlay && !wheelSpinning && !canSpinReward ? (
-                      <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
-                        <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
-                        <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-slate-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(15,23,42,0.14)] sm:px-8 sm:py-9 animate-fade-in-scale">
-                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.12)] sm:h-16 sm:w-16">
-                            <Frown className="h-7 w-7 sm:h-8 sm:w-8" />
-                          </div>
-                          <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-slate-500">Não foi dessa vez</p>
-                          <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
-                            Você não ganhou desta vez.
-                          </p>
-                          <p className="mt-1 text-sm text-slate-500">
-                            {rewardResult.finalAttempt
-                              ? 'Suas tentativas desta experiência já foram usadas.'
-                              : 'Não desanime, continue participando das próximas campanhas.'}
-                          </p>
-                          <p className="mt-3 text-sm font-semibold text-slate-700">Obrigado por participar!</p>
-
-                          {rewardResult.spinAttempt && rewardResult.maxAttempts ? (
-                            <div className="mt-5">
-                              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
-                                <span>Progresso</span>
-                                <span>
-                                  Tentativa {rewardResult.spinAttempt} de {rewardResult.maxAttempts}
-                                </span>
+                            {currentRetryTaskReturned ? (
+                              <div className="mt-4">
+                                <div className="flex items-center justify-between text-xs text-slate-600">
+                                  <span className="font-medium">Aguarde, a roleta já será liberada</span>
+                                  <span className="font-mono font-semibold">{currentRetryTaskRemainingSeconds}s</span>
+                                </div>
+                                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                                  <div
+                                    className="h-full rounded-full bg-sky-500 transition-all duration-300"
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        ((retryTaskNow - currentRetryTaskProgress.startedAt) / RETRY_TASK_MIN_WAIT_MS) * 100,
+                                      )}%`,
+                                    }}
+                                  />
+                                </div>
                               </div>
-                              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                                <div
-                                  className="h-full rounded-full bg-slate-400 transition-all duration-500"
-                                  style={{
-                                    width: `${Math.min(100, ((rewardResult.spinAttempt - 1) / (rewardResult.maxAttempts - 1 || 1)) * 100)}%`,
+                            ) : null}
+
+                            <div className="mt-5 flex items-center justify-center">
+                              {currentRetryTaskReturned ? (
+                                <button
+                                  type="button"
+                                  disabled={!currentRetryTaskCanConfirm || currentRetryTaskIsLoading}
+                                  onClick={() => void retryTaskClickMutation.mutateAsync(currentRetryTask)}
+                                  className="admin-button-primary w-full justify-center px-6 py-3 text-sm"
+                                  style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
+                                >
+                                  {currentRetryTaskIsLoading ? 'Liberando roleta...' : 'Girar roleta novamente'}
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled={currentRetryTaskIsLoading || Boolean(currentRetryTaskProgress)}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    if (currentRetryTaskProgress) {
+                                      openRetryTaskLink(currentRetryTask)
+                                      return
+                                    }
+                                    startRetryTask(currentRetryTask)
                                   }}
-                                />
-                              </div>
+                                  className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                  {currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
+                                </button>
+                              )}
                             </div>
-                          ) : null}
-
-                          <div className="mt-6 flex flex-col gap-3">
-                            <button
-                              type="button"
-                              onClick={() => setWheelModalOpen(false)}
-                              className="admin-button-primary w-full justify-center"
-                              style={{ backgroundColor: survey?.primaryColor }}
-                            >
-                              Entendi
-                            </button>
                           </div>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {!showRetryTaskOverlay && !rewardResult?.won && !wheelSpinning ? (
-                    <div className="mt-4 animate-fade-in-up">
-                      {rewardResult?.retryAvailable && canSpinReward ? (
-                        <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-5 py-5 text-center shadow-[0_12px_32px_rgba(16,185,129,0.12)]">
-                          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
-                            <Sparkles className="h-5 w-5" />
-                          </div>
-                          <p className="mt-2 text-base font-bold text-emerald-800">Sua próxima tentativa está liberada!</p>
-                          <p className="mt-1 text-sm text-emerald-700">Gire a roleta novamente para tentar ganhar.</p>
-                        </div>
-                      ) : rewardResult ? (
-                        <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-5 text-center shadow-[0_12px_32px_rgba(245,158,11,0.12)]">
-                          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
-                            <Star className="h-5 w-5" />
-                          </div>
-                          {rewardResult.landedLabel ? (
-                            <p className="mt-2 text-sm text-amber-800">
-                              A roleta parou em <span className="font-bold text-amber-900">{rewardResult.landedLabel}</span>
-                            </p>
-                          ) : null}
-                          <p className="mt-1 text-base font-bold text-amber-900">
-                            {rewardResult.message || 'Não foi dessa vez, mas não desanime!'}
-                          </p>
-                          {rewardResult.finalAttempt ? (
-                            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
-                              Suas tentativas desta experiência foram usadas
-                            </p>
-                          ) : rewardResult.maxAttempts ? (
-                            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
-                              Tentativa {rewardResult.spinAttempt} de {rewardResult.maxAttempts}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : !canSpinReward ? (
-                        <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-5 py-4 text-center">
-                          <p className="text-sm font-semibold text-slate-700">Aguardando resultado</p>
                         </div>
                       ) : null}
                     </div>
-                  ) : null}
+
+                    {!showRetryTaskOverlay && !rewardResult?.won && !wheelSpinning ? (
+                      <div className="mt-4 animate-fade-in-up">
+                        {rewardResult?.retryAvailable && canSpinReward ? (
+                          <div className="rounded-[20px] border border-emerald-200 bg-emerald-50 px-5 py-5 text-center shadow-[0_12px_32px_rgba(16,185,129,0.12)]">
+                            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                              <Sparkles className="h-5 w-5" />
+                            </div>
+                            <p className="mt-2 text-base font-bold text-emerald-800">Sua próxima tentativa está liberada!</p>
+                            <p className="mt-1 text-sm text-emerald-700">Gire a roleta novamente para tentar ganhar.</p>
+                          </div>
+                        ) : rewardResult ? (
+                          <div className="rounded-[20px] border border-amber-200 bg-amber-50 px-5 py-5 text-center shadow-[0_12px_32px_rgba(245,158,11,0.12)]">
+                            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                              <Star className="h-5 w-5" />
+                            </div>
+                            {rewardResult.landedLabel ? (
+                              <p className="mt-2 text-sm text-amber-800">
+                                A roleta parou em <span className="font-bold text-amber-900">{rewardResult.landedLabel}</span>
+                              </p>
+                            ) : null}
+                            <p className="mt-1 text-base font-bold text-amber-900">
+                              {rewardResult.message || 'Não foi dessa vez, mas não desanime!'}
+                            </p>
+                            {rewardResult.finalAttempt ? (
+                              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                                Suas tentativas desta experiência foram usadas
+                              </p>
+                            ) : rewardResult.maxAttempts ? (
+                              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
+                                Tentativa {rewardResult.spinAttempt} de {rewardResult.maxAttempts}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : !canSpinReward ? (
+                          <div className="rounded-[20px] border border-slate-200 bg-slate-50 px-5 py-4 text-center">
+                            <p className="text-sm font-semibold text-slate-700">Aguardando resultado</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       ) : null}
     </div>
