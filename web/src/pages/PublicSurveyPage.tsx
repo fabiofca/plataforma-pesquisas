@@ -2088,37 +2088,37 @@ export function PublicSurveyPage() {
                 <div className="flex flex-1 flex-col overflow-hidden text-center">
                   <div className="flex flex-col items-center justify-center">
                     <div
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-12 sm:w-12"
+                      className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-16 sm:w-16"
                       style={{ color: survey?.primaryColor || '#0f172a' }}
                     >
-                      <Trophy className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={1.5} />
+                      <Trophy className="h-7 w-7 sm:h-8 sm:w-8" strokeWidth={1.5} />
                     </div>
 
-                    <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-xs">Prêmio confirmado</p>
-                    <p className="mt-0.5 text-sm font-semibold text-slate-900 sm:text-lg">
+                    <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-sm">Prêmio confirmado</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-900 sm:text-2xl">
                       {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
                     </p>
 
-                    <div className="mt-1">
-                      <p className="text-[10px] text-slate-500 sm:text-xs">Você ganhou:</p>
-                      <p className="font-display text-base font-bold text-slate-950 sm:text-2xl">{rewardResult.item}</p>
+                    <div className="mt-2">
+                      <p className="text-xs text-slate-500 sm:text-sm">Você ganhou:</p>
+                      <p className="font-display text-2xl font-bold text-slate-950 sm:text-4xl">{rewardResult.item}</p>
                     </div>
 
                     {rewardInstructionText ? (
-                      <p className="mx-auto mt-1 max-w-[260px] text-[10px] leading-snug text-slate-500 sm:text-xs">{rewardInstructionText}</p>
+                      <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-500 sm:text-sm">{rewardInstructionText}</p>
                     ) : null}
                   </div>
 
-                  <div className="mt-3 flex w-full flex-col gap-1.5 sm:gap-2">
+                  <div className="mt-4 flex w-full flex-col gap-2 sm:gap-2.5">
                     {rewardResult.couponCode ? (
-                      <div className="w-full rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
-                        <p className="text-center text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500">Protocolo / Cupom</p>
-                        <div className="mt-1 flex items-center justify-between gap-2">
-                          <p className="flex-1 break-all text-left text-base font-black tracking-widest text-slate-950 sm:text-lg">{rewardResult.couponCode}</p>
+                      <div className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm">
+                        <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Protocolo / Cupom</p>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <p className="flex-1 break-all text-left text-lg font-black tracking-widest text-slate-950 sm:text-xl">{rewardResult.couponCode}</p>
                           <button
                             type="button"
                             onClick={() => void navigator.clipboard.writeText(rewardResult.couponCode ?? '')}
-                            className="flex-shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95 sm:text-xs"
+                            className="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95"
                             style={{ backgroundColor: survey?.primaryColor || '#0f172a' }}
                           >
                             Copiar
@@ -2128,44 +2128,44 @@ export function PublicSurveyPage() {
                     ) : null}
 
                     {rewardProofExpiresAt ? (
-                      <div className="flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
+                      <div className="flex w-full items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm">
                         <div
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full sm:h-8 sm:w-8"
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full sm:h-9 sm:w-9"
                           style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
                         >
-                          <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                          <Clock className="h-4 w-4 sm:h-[18px] sm:w-[18px]" style={{ color: survey?.primaryColor || '#0f172a' }} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Válido até</p>
-                          <p className="text-xs font-semibold text-slate-900 sm:text-sm">{formatDatePtBr(rewardProofExpiresAt)}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">Válido até</p>
+                          <p className="text-sm font-semibold text-slate-900 sm:text-base">{formatDatePtBr(rewardProofExpiresAt)}</p>
                         </div>
                       </div>
                     ) : null}
 
                     {rewardPickupAddress ? (
-                      <div className="flex w-full items-start gap-2 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-sm">
+                      <div className="flex w-full items-start gap-2.5 rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm">
                         <div
-                          className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full sm:h-8 sm:w-8"
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full sm:h-9 sm:w-9"
                           style={{ backgroundColor: `${survey?.primaryColor || '#0f172a'}15` }}
                         >
-                          <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: survey?.primaryColor || '#0f172a' }} />
+                          <MapPin className="h-4 w-4 sm:h-[18px] sm:w-[18px]" style={{ color: survey?.primaryColor || '#0f172a' }} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-500">Retirada</p>
-                          <p className="text-[10px] leading-snug text-slate-700 sm:text-xs">{rewardPickupAddress}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 sm:text-xs">Retirada</p>
+                          <p className="text-xs leading-relaxed text-slate-700 sm:text-sm">{rewardPickupAddress}</p>
                         </div>
                       </div>
                     ) : null}
                   </div>
                 </div>
 
-                <div className="flex w-full flex-col gap-1.5 pt-2 sm:gap-2 sm:pt-3">
+                <div className="flex w-full flex-col gap-2 pt-3 sm:gap-2.5 sm:pt-4">
                   {rewardContactWhatsAppUrl ? (
                     <a
                       href={rewardContactWhatsAppUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95 sm:text-sm"
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:opacity-90 active:scale-95"
                       style={{ backgroundColor: survey?.primaryColor || '#22c55e' }}
                     >
                       <MessageCircle className="h-4 w-4" />
@@ -2176,7 +2176,7 @@ export function PublicSurveyPage() {
                     type="button"
                     onClick={() => void handleDownloadRewardProof()}
                     disabled={savingRewardProof}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-900 bg-white px-4 py-2.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95 sm:text-sm"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-2 border-slate-900 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50 active:scale-95"
                   >
                     <Download className="h-4 w-4" />
                     {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
