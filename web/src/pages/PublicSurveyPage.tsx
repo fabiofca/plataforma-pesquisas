@@ -588,6 +588,7 @@ export function PublicSurveyPage() {
   const [retryTaskProgressMap, setRetryTaskProgressMap] = useState<RetryTaskProgressMap>({})
   const [activeRetryTaskId, setActiveRetryTaskId] = useState<string | null>(null)
   const [retryTaskNow, setRetryTaskNow] = useState(() => Date.now())
+  const [wheelTransitionReady, setWheelTransitionReady] = useState(false)
   const trackedVisitKeyRef = useRef('')
   const sessionHydratedRef = useRef(false)
   const rewardSessionRestoreKeyRef = useRef('')
@@ -614,6 +615,7 @@ export function PublicSurveyPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          allow_multiple_responses?: boolean
           reward_wheel_mode?: 'standard' | 'advanced' | null
           reward_final_spin_mode?: 'allow_no_prize' | 'guaranteed_prize' | null
           reward_pickup_address?: string | null
@@ -799,6 +801,23 @@ export function PublicSurveyPage() {
       setSessionStateReady(true)
     }
   }, [surveySessionStorageKey])
+
+  useEffect(() => {
+    if (!sessionStateReady) {
+      setWheelTransitionReady(false)
+      return
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setWheelTransitionReady(true)
+      })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [sessionStateReady])
 
   useEffect(() => {
     if (!sessionStateReady) {
@@ -2115,7 +2134,7 @@ export function PublicSurveyPage() {
                 </div>
               ) : null}
 
-              {previewMode ? (
+              {previewMode || survey.allowMultipleResponses ? (
                 <div className="mt-5 flex justify-center">
                   <button
                     type="button"
@@ -2315,6 +2334,7 @@ export function PublicSurveyPage() {
                         disabled={spinMutation.isPending || !responseId || !canSpinReward}
                         variant="fullscreen"
                         spinLabel="Girar agora"
+                        disableTransition={!wheelTransitionReady}
                         onSpin={() => void spinMutation.mutateAsync()}
                       />
 

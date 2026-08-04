@@ -17,6 +17,7 @@ type PrizeWheelProps = {
   disabled?: boolean
   variant?: 'default' | 'fullscreen'
   spinLabel?: string
+  disableTransition?: boolean
   onSpin: () => void
 }
 
@@ -190,6 +191,7 @@ export function PrizeWheel({
   disabled,
   variant = 'default',
   spinLabel,
+  disableTransition,
   onSpin,
 }: PrizeWheelProps) {
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -433,7 +435,7 @@ export function PrizeWheel({
         <div className="absolute inset-[1.6%] rounded-full border border-white/80 shadow-[inset_0_2px_6px_rgba(180,83,9,0.12)]" style={{ background: 'linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%)' }} />
         <div className="absolute inset-[2.6%] rounded-full border border-amber-300/70 bg-white shadow-[inset_0_0_14px_rgba(245,158,11,0.18)]" />
 
-        <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[4px] border-white/90 shadow-[0_18px_36px_rgba(15,23,42,0.14),inset_0_0_18px_rgba(0,0,0,0.06)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
+        <div className={"absolute inset-[5.1%] overflow-hidden rounded-full border-[4px] border-white/90 shadow-[0_18px_36px_rgba(15,23,42,0.14),inset_0_0_18px_rgba(0,0,0,0.06)] " + (disableTransition ? "" : "transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]")}
           style={{
             background: `
               conic-gradient(from 0deg, ${dividerOverlay}),
