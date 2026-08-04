@@ -1496,7 +1496,7 @@ export function PublicSurveyPage() {
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = rewardPickupAddress ? 1400 : 1200
+      canvas.height = rewardPickupAddress ? 1200 : 1000
       const context = canvas.getContext('2d')
   
       if (!context) {
@@ -1564,18 +1564,6 @@ export function PublicSurveyPage() {
         currentY += 72
       }
   
-      // Instrução
-      if (rewardInstructionText) {
-        currentY += 12
-        context.fillStyle = '#64748b'
-        context.font = '400 20px Arial'
-        const instructionLines = wrapCanvasText(context, rewardInstructionText, 720)
-        for (const line of instructionLines.slice(0, 3)) {
-          context.fillText(line, canvas.width / 2, currentY)
-          currentY += 30
-        }
-      }
-  
       currentY += 20
   
       // Cards de informação (estilo igual à tela: branco, borda, sombra)
@@ -1611,18 +1599,6 @@ export function PublicSurveyPage() {
         context.fillStyle = '#0f172a'
         context.font = '900 40px Arial'
         context.fillText(rewardResult.couponCode, cardX + 32, currentY + 96)
-  
-        // Botão Copiar
-        const copyBtnW = 140
-        const copyBtnH = 48
-        const copyBtnX = cardX + cardW - copyBtnW - 32
-        const copyBtnY = currentY + 64
-        context.fillStyle = primaryHex
-        fillRoundedRect(context, copyBtnX, copyBtnY, copyBtnW, copyBtnH, 10)
-        context.textAlign = 'center'
-        context.fillStyle = '#ffffff'
-        context.font = '700 18px Arial'
-        context.fillText('Copiar', copyBtnX + copyBtnW / 2, copyBtnY + 30)
   
         currentY += codeBoxH + 20
       }
@@ -1720,35 +1696,6 @@ export function PublicSurveyPage() {
   
         currentY += addressBoxH + 20
       }
-  
-      // Botão Salvar comprovante (estilo da tela)
-      const btnH = 64
-      const btnY = currentY + 16
-      context.shadowColor = 'rgba(0,0,0,0.08)'
-      context.shadowBlur = 12
-      context.shadowOffsetY = 4
-      context.fillStyle = '#ffffff'
-      fillRoundedRect(context, cardX, btnY, cardW, btnH, 16)
-      context.shadowColor = 'transparent'
-      context.shadowBlur = 0
-      context.shadowOffsetY = 0
-  
-      context.strokeStyle = '#0f172a'
-      context.lineWidth = 3
-      strokeRoundedRect(context, cardX, btnY, cardW, btnH, 16)
-  
-      // Ícone de download
-      context.fillStyle = '#0f172a'
-      context.font = '700 24px Arial'
-      context.textAlign = 'center'
-      context.textBaseline = 'middle'
-      context.fillText('⬇', canvas.width / 2 - 120, btnY + btnH / 2 + 1)
-      context.textBaseline = 'alphabetic'
-  
-      context.fillStyle = '#0f172a'
-      context.font = '700 22px Arial'
-      context.textAlign = 'center'
-      context.fillText('Salvar comprovante', canvas.width / 2 + 20, btnY + btnH / 2 + 1)
   
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
