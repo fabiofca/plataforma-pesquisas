@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Download,
   FileImage,
   Palette,
   Share2,
   Sparkles,
   Trash2,
+  Upload,
 } from 'lucide-react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
@@ -15,6 +17,31 @@ import { SurveyVisualFlowEditor } from '@/components/surveys/SurveyVisualFlowEdi
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
+
+function downloadJsonFile(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function readJsonFile(file: File): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        resolve(JSON.parse(reader.result as string))
+      } catch {
+        reject(new Error('Arquivo JSON inválido.'))
+      }
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'))
+    reader.readAsText(file)
+  })
+}
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
 import { FLOW_ON_ANSWER } from '@/lib/survey-flow'
@@ -411,6 +438,48 @@ export function SurveyBuilderPage() {
     },
   })
 
+  const [importingSurvey, setImportingSurvey] = useState(false)
+  const importFileRef = useRef<HTMLInputElement | null>(null)
+
+  async function handleExportSurvey() {
+    if (!params.id) return
+    try {
+      const result = await apiRequest<{ version: number; kind: string; data: unknown }>(`/surveys/${params.id}/export`)
+      const fileName = `pesquisa-${Date.now()}.json`
+      downloadJsonFile(result, fileName)
+      setFeedback('Pesquisa exportada com sucesso.')
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível exportar a pesquisa.')
+    }
+  }
+
+  async function handleImportSurvey(file: File) {
+    if (importingSurvey) return
+    setImportingSurvey(true)
+    try {
+      const parsed = await readJsonFile(file) as { data?: Record<string, unknown> }
+      if (!parsed.data || typeof parsed.data !== 'object') {
+        throw new Error('Arquivo de importação inválido.')
+      }
+      const payload = parsed.data
+      payload.slug = `imported-${Date.now()}`
+      const result = await apiRequest<{ id: string }>('/surveys', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      await queryClient.invalidateQueries({ queryKey: ['surveys'] })
+      setFeedback('Pesquisa importada com sucesso! Redirecionando...')
+      navigate(`/surveys/${result.id}/builder`)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível importar a pesquisa.')
+    } finally {
+      setImportingSurvey(false)
+      if (importFileRef.current) {
+        importFileRef.current.value = ''
+      }
+    }
+  }
+
   const unpublishMutation = useMutation({
     mutationFn: async () => {
       if (!params.id) {
@@ -754,6 +823,31 @@ export function SurveyBuilderPage() {
           Testar pesquisa
         </Link>
       ) : null}
+      {params.id ? (
+        <button type="button" onClick={() => void handleExportSurvey()} className="admin-button">
+          <Download className="h-4 w-4" />
+          Exportar
+        </button>
+      ) : null}
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void handleImportSurvey(file)
+        }}
+      />
+      <button
+        type="button"
+        disabled={importingSurvey}
+        onClick={() => importFileRef.current?.click()}
+        className="admin-button"
+      >
+        <Upload className="h-4 w-4" />
+        {importingSurvey ? 'Importando...' : 'Importar'}
+      </button>
       <button
         type="button"
         onClick={() =>

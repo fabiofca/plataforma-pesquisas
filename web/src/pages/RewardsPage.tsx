@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Gift, ImagePlus, Plus, Target, Trash2, X } from 'lucide-react'
+import { Gift, ImagePlus, Plus, Target, Trash2, X, Download, Upload } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
@@ -9,6 +9,31 @@ import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
+
+function downloadJsonFile(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function readJsonFile(file: File): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        resolve(JSON.parse(reader.result as string))
+      } catch {
+        reject(new Error('Arquivo JSON inválido.'))
+      }
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'))
+    reader.readAsText(file)
+  })
+}
 
 type RewardFrequencyMode = 'frequent' | 'balanced' | 'rare' | 'custom'
 type RewardOutcomeRole = 'prize' | 'no_prize' | 'showcase'
@@ -558,6 +583,43 @@ export function RewardsPage() {
   }
 
   const testResponseCount = rewardsQuery.data?.testResponseCount ?? 0
+  const [importingReward, setImportingReward] = useState(false)
+  const rewardImportRef = useRef<HTMLInputElement | null>(null)
+
+  async function handleExportReward() {
+    if (!id) return
+    try {
+      const result = await apiRequest<{ version: number; kind: string; data: unknown }>(`/surveys/${id}/rewards/export`)
+      downloadJsonFile(result, `roleta-${Date.now()}.json`)
+      setFeedback('Configuração da roleta exportada com sucesso.')
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível exportar a roleta.')
+    }
+  }
+
+  async function handleImportReward(file: File) {
+    if (!id || importingReward) return
+    setImportingReward(true)
+    try {
+      const parsed = await readJsonFile(file) as { data?: { campaign?: Record<string, unknown>; items?: unknown[] } }
+      if (!parsed.data?.campaign) {
+        throw new Error('Arquivo de importação inválido.')
+      }
+      const result = await apiRequest<{ ok: boolean; itemsImported: number }>(`/surveys/${id}/rewards/import`, {
+        method: 'POST',
+        body: JSON.stringify(parsed.data),
+      })
+      await queryClient.invalidateQueries({ queryKey: ['rewards', id] })
+      setFeedback(`Roleta importada com sucesso! ${result.itemsImported} item(ns) importado(s).`)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível importar a roleta.')
+    } finally {
+      setImportingReward(false)
+      if (rewardImportRef.current) {
+        rewardImportRef.current.value = ''
+      }
+    }
+  }
 
   function handleOpenCreateRewardModal() {
     const limit = campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards
@@ -969,7 +1031,32 @@ export function RewardsPage() {
           title="Parâmetros da campanha"
           description="Ative, pause ou encerre a roleta e defina uma validade opcional."
         >
-          <div className="mb-4 flex justify-end">
+          <div className="mb-4 flex flex-wrap justify-end gap-3">
+            <input
+              ref={rewardImportRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) void handleImportReward(file)
+              }}
+            />
+            {rewardsQuery.data?.campaign ? (
+              <button type="button" onClick={() => void handleExportReward()} className="admin-button">
+                <Download className="h-4 w-4" />
+                Exportar roleta
+              </button>
+            ) : null}
+            <button
+              type="button"
+              disabled={importingReward}
+              onClick={() => rewardImportRef.current?.click()}
+              className="admin-button"
+            >
+              <Upload className="h-4 w-4" />
+              {importingReward ? 'Importando...' : 'Importar roleta'}
+            </button>
             <button
               type="button"
               onClick={() => handleSaveCampaign()}

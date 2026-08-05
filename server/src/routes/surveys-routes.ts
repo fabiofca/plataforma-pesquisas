@@ -7,7 +7,7 @@ import { Router, type Request } from 'express'
 import { z } from 'zod'
 
 import { env } from '../config/env.js'
-import { query } from '../db/pool.js'
+import { query, pool } from '../db/pool.js'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
 import { ensureFeatureAccess, hasFeatureAccess } from '../services/feature-access.js'
 import { ensureSurveyAccess } from '../services/survey-access.js'
@@ -710,6 +710,135 @@ surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
   }
 
   response.json({ ok: true })
+})
+
+surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const surveyResult = await query<{
+    title: string
+    description: string | null
+    participation_mode: string
+    brand_name: string
+    logo_url: string | null
+    primary_color: string
+    banner_url: string | null
+    closing_message: string | null
+    reward_enabled: boolean
+    prevent_duplicate_responses: boolean
+    duplicate_response_cooldown_days: number
+    allow_multiple_responses: boolean
+    builder_mode: 'classic' | 'visual'
+    flow_json: Record<string, unknown> | null
+    slug: string | null
+  }>(
+    `select surveys.title, surveys.description, surveys.participation_mode, surveys.brand_name,
+            surveys.logo_url, surveys.primary_color, surveys.banner_url, surveys.closing_message,
+            surveys.reward_enabled, surveys.prevent_duplicate_responses, surveys.duplicate_response_cooldown_days,
+            surveys.allow_multiple_responses, surveys.builder_mode, surveys.flow_json,
+            survey_slugs.slug
+     from surveys
+     left join survey_slugs on survey_slugs.survey_id = surveys.id and survey_slugs.is_active = true
+     where surveys.id = $1
+     limit 1`,
+    [surveyId],
+  )
+
+  const survey = surveyResult.rows[0]
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa não encontrada.' })
+    return
+  }
+
+  const questionsResult = await query<{
+    id: string
+    title: string
+    description: string | null
+    type: string
+    is_required: boolean
+    position: number
+    settings_json: {
+      flowRules?: Array<{ value: string; nextQuestionId: string }>
+    }
+  }>(
+    `select id, title, description, type, is_required, position, settings_json
+     from survey_questions
+     where survey_id = $1
+     order by position asc`,
+    [surveyId],
+  )
+
+  const questionIds = questionsResult.rows.map((q) => q.id)
+  const optionsResult = await query<{
+    question_id: string
+    label: string
+    position: number
+  }>(
+    `select question_id, label, position
+     from question_options
+     where question_id = any($1::uuid[])
+     order by position asc`,
+    [questionIds],
+  )
+
+  const idMap = new Map<string, string>()
+  for (const q of questionsResult.rows) {
+    idMap.set(q.id, q.id)
+  }
+
+  const exportedQuestions = questionsResult.rows.map((q, index) => {
+    const qOptions = optionsResult.rows
+      .filter((o) => o.question_id === q.id)
+      .map((o) => o.label)
+
+    const flowRules = (q.settings_json?.flowRules ?? []).map((rule) => ({
+      value: rule.value,
+      nextQuestionId: rule.nextQuestionId === '__end__' ? '__end__' : (idMap.get(rule.nextQuestionId) ?? rule.nextQuestionId),
+    }))
+
+    return {
+      id: q.id,
+      title: q.title,
+      description: q.description ?? '',
+      type: q.type,
+      isRequired: q.is_required,
+      position: q.position,
+      options: qOptions,
+      flowRules,
+    }
+  })
+
+  const flowLayout = survey.flow_json ?? { version: 1, nodes: [] }
+
+  response.json({
+    version: 1,
+    kind: 'survey',
+    data: {
+      title: survey.title,
+      description: survey.description ?? undefined,
+      participationMode: survey.participation_mode,
+      slug: survey.slug ?? `imported-${Date.now()}`,
+      brandName: survey.brand_name,
+      logoUrl: survey.logo_url ?? '',
+      primaryColor: survey.primary_color,
+      bannerUrl: survey.banner_url ?? '',
+      closingMessage: survey.closing_message ?? undefined,
+      rewardEnabled: survey.reward_enabled,
+      preventDuplicateResponses: survey.prevent_duplicate_responses,
+      duplicateResponseCooldownDays: survey.duplicate_response_cooldown_days,
+      allowMultipleResponses: survey.allow_multiple_responses,
+      builderMode: survey.builder_mode,
+      flowLayout,
+      questions: exportedQuestions,
+    },
+  })
 })
 
 surveysRouter.post('/:id/publish', async (request: AuthenticatedRequest, response) => {

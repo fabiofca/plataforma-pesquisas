@@ -795,3 +795,248 @@ rewardsRouter.delete('/surveys/:id/rewards/test-responses', async (request: Auth
     client.release()
   }
 })
+
+rewardsRouter.get('/surveys/:id/rewards/export', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const campaignResult = await query<{
+    status: 'active' | 'paused' | 'ended'
+    wheel_mode: 'standard' | 'advanced'
+    final_spin_mode: 'allow_no_prize' | 'guaranteed_prize'
+    expires_at: string | null
+    redemption_expiration_days: number
+    pickup_address: string | null
+    contact_whatsapp: string | null
+    redemption_method: 'address_only' | 'address_and_whatsapp'
+    retry_unlock_enabled: boolean
+    retry_unlock_tasks_json: Array<{ id: string; type: string; title: string; url: string }> | null
+    test_phones: string[] | null
+  }>(
+    `select status, wheel_mode, final_spin_mode, cast(expires_at as text) as expires_at,
+            redemption_expiration_days, pickup_address, contact_whatsapp, redemption_method,
+            retry_unlock_enabled, retry_unlock_tasks_json, test_phones
+     from reward_campaigns
+     where survey_id = $1`,
+    [surveyId],
+  )
+
+  const campaign = campaignResult.rows[0]
+
+  if (!campaign) {
+    response.status(404).json({ message: 'Nenhuma campanha de recompensa encontrada.' })
+    return
+  }
+
+  const items = await query<{
+    title: string
+    wheel_label: string | null
+    description: string | null
+    image_url: string | null
+    outcome_role: 'prize' | 'no_prize' | 'showcase'
+    show_on_wheel: boolean
+    sort_order: number
+    quantity_total: number
+    is_active: boolean
+    frequency_mode: 'frequent' | 'balanced' | 'rare' | 'custom'
+    frequency_target: number
+  }>(
+    `select title, wheel_label, description, image_url, outcome_role, show_on_wheel,
+            sort_order, quantity_total, is_active, frequency_mode, frequency_target
+     from reward_items
+     where campaign_id = (
+       select id from reward_campaigns where survey_id = $1
+     )
+     order by sort_order asc`,
+    [surveyId],
+  )
+
+  response.json({
+    version: 1,
+    kind: 'reward_campaign',
+    data: {
+      campaign: {
+        status: campaign.status,
+        wheelMode: campaign.wheel_mode,
+        finalSpinMode: campaign.final_spin_mode,
+        expiresAt: campaign.expires_at ?? '',
+        redemptionExpirationDays: campaign.redemption_expiration_days,
+        pickupAddress: campaign.pickup_address ?? '',
+        contactWhatsApp: campaign.contact_whatsapp ?? '',
+        redemptionMethod: campaign.redemption_method,
+        retryUnlockEnabled: campaign.retry_unlock_enabled ?? false,
+        retryUnlockTasks: campaign.retry_unlock_tasks_json ?? [],
+        testPhones: campaign.test_phones ?? [],
+      },
+      items: items.rows.map((item) => ({
+        title: item.title,
+        wheelLabel: item.wheel_label ?? item.title,
+        description: item.description ?? '',
+        imageUrl: item.image_url ?? '',
+        outcomeRole: item.outcome_role,
+        showOnWheel: item.show_on_wheel,
+        sortOrder: item.sort_order,
+        quantityTotal: item.quantity_total,
+        isActive: item.is_active,
+        frequencyMode: item.frequency_mode,
+        customFrequencyTarget: item.frequency_target,
+      })),
+    },
+  })
+})
+
+rewardsRouter.post('/surveys/:id/rewards/import', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const body = request.body as {
+    campaign?: {
+      status?: 'active' | 'paused' | 'ended'
+      wheelMode?: 'standard' | 'advanced'
+      finalSpinMode?: 'allow_no_prize' | 'guaranteed_prize'
+      expiresAt?: string
+      redemptionExpirationDays?: number
+      pickupAddress?: string
+      contactWhatsApp?: string
+      redemptionMethod?: 'address_only' | 'address_and_whatsapp'
+      retryUnlockEnabled?: boolean
+      retryUnlockTasks?: Array<{ id: string; type: string; title: string; url: string }>
+      testPhones?: string[]
+    }
+    items?: Array<{
+      title: string
+      wheelLabel?: string
+      description?: string
+      imageUrl?: string
+      outcomeRole?: 'prize' | 'no_prize' | 'showcase'
+      showOnWheel?: boolean
+      sortOrder?: number
+      quantityTotal?: number
+      isActive?: boolean
+      frequencyMode?: 'frequent' | 'balanced' | 'rare' | 'custom'
+      customFrequencyTarget?: number
+    }>
+  }
+
+  const campaignConfig = body.campaign ?? {}
+  const itemsList = body.items ?? []
+
+  const status = campaignConfig.status ?? 'active'
+  const wheelMode = campaignConfig.wheelMode ?? 'standard'
+  const finalSpinMode = campaignConfig.finalSpinMode ?? 'allow_no_prize'
+  const expiresAt = campaignConfig.expiresAt || null
+  const redemptionExpirationDays = campaignConfig.redemptionExpirationDays ?? 15
+  const pickupAddress = campaignConfig.pickupAddress?.trim() || null
+  const contactWhatsApp = campaignConfig.contactWhatsApp?.trim() || null
+  const redemptionMethod = campaignConfig.redemptionMethod ?? 'address_and_whatsapp'
+  const retryUnlockEnabled = campaignConfig.retryUnlockEnabled ?? false
+  const retryUnlockTasks = retryUnlockEnabled ? (campaignConfig.retryUnlockTasks ?? []) : []
+  const testPhones = campaignConfig.testPhones ?? []
+  const isActive = status === 'active'
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+
+    const existingResult = await client.query<{ id: string }>(
+      'select id from reward_campaigns where survey_id = $1',
+      [surveyId],
+    )
+
+    let campaignId: string
+
+    if (existingResult.rows[0]) {
+      campaignId = existingResult.rows[0].id
+      await client.query(
+        `update reward_campaigns
+         set status = $2, is_active = $3, wheel_mode = $4, final_spin_mode = $5,
+             expires_at = $6, redemption_expiration_days = $7, pickup_address = $8,
+             contact_whatsapp = $9, redemption_method = $10, retry_unlock_enabled = $11,
+             retry_unlock_tasks_json = $12::jsonb, test_phones = $13, updated_at = now()
+         where survey_id = $1`,
+        [
+          surveyId, status, isActive, wheelMode, finalSpinMode, expiresAt,
+          redemptionExpirationDays, pickupAddress, contactWhatsApp, redemptionMethod,
+          retryUnlockEnabled, JSON.stringify(retryUnlockTasks), testPhones,
+        ],
+      )
+
+      await client.query('delete from reward_items where campaign_id = $1', [campaignId])
+    } else {
+      campaignId = makeId()
+      await client.query(
+        `insert into reward_campaigns (
+          id, survey_id, status, is_active, require_identification, distribution_mode,
+          wheel_mode, final_spin_mode, expires_at, redemption_expiration_days,
+          pickup_address, contact_whatsapp, redemption_method, retry_unlock_enabled,
+          retry_unlock_tasks_json, test_phones
+        ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
+        [
+          campaignId, surveyId, status, isActive, wheelMode, finalSpinMode, expiresAt,
+          redemptionExpirationDays, pickupAddress, contactWhatsApp, redemptionMethod,
+          retryUnlockEnabled, JSON.stringify(retryUnlockTasks), testPhones,
+        ],
+      )
+    }
+
+    const spinCountResult = await client.query<{ spin_count: number }>(
+      'select spin_count from reward_campaigns where id = $1',
+      [campaignId],
+    )
+    const currentSpinCount = Number(spinCountResult.rows[0]?.spin_count ?? 0)
+
+    for (const [index, item] of itemsList.entries()) {
+      const isPrizeItem = (item.outcomeRole ?? 'prize') === 'prize'
+      const frequencyMode = isPrizeItem ? (item.frequencyMode ?? 'balanced') : 'balanced'
+      const frequencyTarget = isPrizeItem
+        ? getFrequencyTarget(frequencyMode, item.customFrequencyTarget)
+        : 60
+
+      await client.query(
+        `insert into reward_items (
+          id, campaign_id, title, wheel_label, description, image_url, outcome_role,
+          show_on_wheel, sort_order, quantity_total, quantity_awarded, is_active,
+          frequency_mode, frequency_target, next_release_spin, last_awarded_spin,
+          min_gap_spins, odds_weight, is_visual_only, grants_extra_spin
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, $11, $12, $13, $14, 0, $15, 1, $16, false)`,
+        [
+          makeId(),
+          campaignId,
+          item.title.trim(),
+          (item.wheelLabel?.trim() || item.title.trim()),
+          item.description?.trim() || null,
+          item.imageUrl?.trim() || null,
+          item.outcomeRole ?? 'prize',
+          item.showOnWheel ?? true,
+          item.sortOrder ?? (index + 1),
+          item.quantityTotal ?? 1,
+          item.isActive ?? true,
+          frequencyMode,
+          frequencyTarget,
+          isPrizeItem ? createNextReleaseSpin(currentSpinCount, frequencyTarget) : 0,
+          isPrizeItem ? calculateMinimumGapSpins(frequencyTarget) : 0,
+          (item.outcomeRole ?? 'prize') === 'showcase',
+        ],
+      )
+    }
+
+    await client.query('commit')
+    response.json({ ok: true, itemsImported: itemsList.length })
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+})
