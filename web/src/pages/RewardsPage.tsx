@@ -229,6 +229,7 @@ export function RewardsPage() {
     redemptionMethod: 'address_and_whatsapp' as RewardRedemptionMethod,
     retryUnlockEnabled: false,
     retryUnlockTasks: [] as RewardRetryTask[],
+    testPhones: [] as string[],
   })
   const [itemsForm, setItemsForm] = useState<RewardFormItem[]>([])
   const [feedback, setFeedback] = useState('')
@@ -257,6 +258,7 @@ export function RewardsPage() {
           redemption_method?: RewardRedemptionMethod | null
           retry_unlock_enabled?: boolean
           retry_unlock_tasks_json?: RewardRetryTask[]
+          test_phones?: string[]
           spin_count?: number
         } | null
         items: Array<{
@@ -279,6 +281,7 @@ export function RewardsPage() {
           deliveredCount: number
           cancelledCount: number
         }
+        testResponseCount?: number
         wins: Array<{
           id: string
           awardedAt: string
@@ -326,6 +329,7 @@ export function RewardsPage() {
         redemptionMethod: rewardsQuery.data.campaign.redemption_method ?? 'address_and_whatsapp',
         retryUnlockEnabled: rewardsQuery.data.campaign.retry_unlock_enabled ?? false,
         retryUnlockTasks: rewardsQuery.data.campaign.retry_unlock_tasks_json ?? [],
+        testPhones: rewardsQuery.data.campaign.test_phones ?? [],
       })
     } else {
       setCampaignForm({
@@ -339,6 +343,7 @@ export function RewardsPage() {
         redemptionMethod: 'address_and_whatsapp',
         retryUnlockEnabled: false,
         retryUnlockTasks: [],
+        testPhones: [],
       })
     }
 
@@ -390,10 +395,10 @@ export function RewardsPage() {
   }, [])
 
   const saveCampaignMutation = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (payload?: typeof campaignForm) =>
       apiRequest<{ ok: boolean }>(`/surveys/${id}/rewards`, {
         method: 'POST',
-        body: JSON.stringify(campaignForm),
+        body: JSON.stringify(payload ?? campaignForm),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['rewards', id] })
@@ -419,7 +424,13 @@ export function RewardsPage() {
 
       await apiRequest<{ ok: boolean }>(`/surveys/${id}/rewards`, {
         method: 'POST',
-        body: JSON.stringify(campaignForm),
+        body: JSON.stringify({
+          ...campaignForm,
+          testPhones: testPhonesText
+            .split(/[,\n]/)
+            .map((p) => p.replace(/\D/g, '').trim())
+            .filter(Boolean),
+        }),
       })
 
       for (const item of filledItems) {
@@ -515,19 +526,38 @@ export function RewardsPage() {
     },
   })
 
-  const resetWinMutation = useMutation({
-    mutationFn: async (winId: string) =>
-      apiRequest<{ ok: boolean }>(`/rewards/wins/${winId}`, {
+  const [testPhonesText, setTestPhonesText] = useState('')
+
+  useEffect(() => {
+    if (rewardsQuery.data?.campaign) {
+      setTestPhonesText((rewardsQuery.data.campaign.test_phones ?? []).join('\n'))
+    }
+  }, [rewardsQuery.data?.campaign?.test_phones])
+
+  const cleanupTestResponsesMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest<{ ok: boolean; deletedCount: number }>(`/surveys/${id}/rewards/test-responses`, {
         method: 'DELETE',
       }),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['rewards', id] })
-      setFeedback('Participação resetada. O usuário poderá girar a roleta novamente.')
+      setFeedback(`${result.deletedCount} resposta(s) de teste removida(s) com sucesso.`)
     },
     onError: (error) => {
-      setFeedback(error instanceof Error ? error.message : 'Não foi possível resetar a participação.')
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível limpar as respostas de teste.')
     },
   })
+
+  function handleSaveCampaign() {
+    const phones = testPhonesText
+      .split(/[,\n]/)
+      .map((p) => p.replace(/\D/g, '').trim())
+      .filter(Boolean)
+    const payload = { ...campaignForm, testPhones: phones }
+    void saveCampaignMutation.mutateAsync(payload)
+  }
+
+  const testResponseCount = rewardsQuery.data?.testResponseCount ?? 0
 
   function handleOpenCreateRewardModal() {
     const limit = campaignForm.wheelMode === 'advanced' ? maxAdvancedWheelItems : maxRealRewards
@@ -942,7 +972,7 @@ export function RewardsPage() {
           <div className="mb-4 flex justify-end">
             <button
               type="button"
-              onClick={() => void saveCampaignMutation.mutateAsync()}
+              onClick={() => handleSaveCampaign()}
               disabled={saveCampaignMutation.isPending}
               className="admin-button-primary"
             >
@@ -1321,6 +1351,47 @@ export function RewardsPage() {
                   ) : null}
                 </div>
               ) : null}
+            </div>
+
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Modo teste</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
+            <div className="admin-subcard grid gap-3 text-sm text-slate-700">
+              <label className="grid gap-2">
+                <span className="text-slate-600">Telefones de teste (um por linha)</span>
+                <textarea
+                  className="admin-input min-h-[80px] resize-y font-mono text-sm"
+                  placeholder="Ex:&#10;5521999998888&#10;5511977776666"
+                  value={testPhonesText}
+                  onChange={(event) => setTestPhonesText(event.target.value)}
+                />
+              </label>
+              <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
+                Os telefones cadastrados aqui podem responder a pesquisa e girar a roleta <strong>quantas vezes quiserem</strong>,
+                sem as restrições normais. Ideal para seus próprios testes em produção.
+              </div>
+              {rewardsQuery.data?.campaign && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-slate-600">
+                    Respostas de teste acumuladas: <strong className="text-slate-950">{testResponseCount}</strong>
+                  </p>
+                  <button
+                    type="button"
+                    disabled={cleanupTestResponsesMutation.isPending || testResponseCount === 0}
+                    onClick={() => {
+                      if (confirm(`Tem certeza que deseja remover todas as ${testResponseCount} resposta(s) de teste?\n\nPrêmios ganhos serão devolvidos ao estoque.`)) {
+                        void cleanupTestResponsesMutation.mutateAsync()
+                      }
+                    }}
+                    className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {cleanupTestResponsesMutation.isPending ? 'Limpendo...' : 'Limpar respostas de teste'}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
@@ -1778,18 +1849,6 @@ export function RewardsPage() {
                           >
                             Cancelar
                           </button>
-                          <button
-                            type="button"
-                            disabled={resetWinMutation.isPending}
-                            onClick={() => {
-                              if (confirm(`Tem certeza que deseja resetar a participação de ${win.name || 'este usuário'}?\n\nO prêmio será removido e o usuário poderá girar a roleta novamente.`)) {
-                                void resetWinMutation.mutateAsync(win.id)
-                              }
-                            }}
-                            className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-                          >
-                            Resetar
-                          </button>
                         </div>
                       </div>
 
@@ -1860,18 +1919,6 @@ export function RewardsPage() {
                             className="admin-button-danger min-h-[44px] disabled:opacity-60"
                           >
                             Cancelar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={resetWinMutation.isPending}
-                            onClick={() => {
-                              if (confirm(`Tem certeza que deseja resetar a participação de ${win.name || 'este usuário'}?\n\nO prêmio será removido e o usuário poderá girar a roleta novamente.`)) {
-                                void resetWinMutation.mutateAsync(win.id)
-                              }
-                            }}
-                            className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-                          >
-                            Resetar
                           </button>
                         </div>
                       </div>

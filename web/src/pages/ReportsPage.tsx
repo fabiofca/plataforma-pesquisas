@@ -521,15 +521,30 @@ export function ReportsPage() {
     },
   })
 
-  const resetWinMutation = useMutation({
-    mutationFn: async (winId: string) =>
-      apiRequest<{ ok: boolean }>(`/rewards/wins/${winId}`, {
+  const testResponsesQuery = useQuery({
+    queryKey: ['reports-test-responses', id],
+    queryFn: async () => {
+      const response = await apiRequest<{ testResponseCount: number }>(`/surveys/${id}/rewards`)
+      return { testResponseCount: response.testResponseCount ?? 0 }
+    },
+    enabled: Boolean(id),
+    retry: 0,
+  })
+
+  const cleanupTestResponsesMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest<{ ok: boolean; deletedCount: number }>(`/surveys/${id}/rewards/test-responses`, {
         method: 'DELETE',
       }),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['reports-rewards', id] })
+      await queryClient.invalidateQueries({ queryKey: ['reports-test-responses', id] })
+      await queryClient.invalidateQueries({ queryKey: ['reports-summary', id] })
+      setExportFeedback(`${result.deletedCount} resposta(s) de teste removida(s) com sucesso.`)
     },
   })
+
+  const testResponseCount = testResponsesQuery.data?.testResponseCount ?? 0
 
   const periodData =
     summaryQuery.data?.period.map((item) => ({
@@ -1167,6 +1182,26 @@ export function ReportsPage() {
                 <strong>{rewardsQuery.data.pickupAddress || 'Não informado'}</strong>.
               </div>
 
+              {testResponseCount > 0 && (
+                <div className="admin-alert flex flex-wrap items-center justify-between gap-3 border-amber-200 bg-amber-50 text-amber-900">
+                  <span>
+                    Há <strong>{testResponseCount}</strong> resposta(s) de teste nesta pesquisa.
+                  </span>
+                  <button
+                    type="button"
+                    disabled={cleanupTestResponsesMutation.isPending}
+                    onClick={() => {
+                      if (confirm(`Tem certeza que deseja remover todas as ${testResponseCount} resposta(s) de teste?\n\nPrêmios ganhos serão devolvidos ao estoque.`)) {
+                        void cleanupTestResponsesMutation.mutateAsync()
+                      }
+                    }}
+                    className="admin-button whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {cleanupTestResponsesMutation.isPending ? 'Limpando...' : 'Limpar respostas de teste'}
+                  </button>
+                </div>
+              )}
+
               {rewardsQuery.data.winnersPagination.totalItems ? (
                 <div className="admin-table-shell">
                   <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_220px] gap-3 xl:grid">
@@ -1248,18 +1283,6 @@ export function ReportsPage() {
                               >
                                 Cancelar
                               </button>
-                              <button
-                                type="button"
-                                disabled={resetWinMutation.isPending}
-                                onClick={() => {
-                                  if (confirm(`Tem certeza que deseja resetar a participação de ${winner.name || 'este usuário'}?\n\nO prêmio será removido e o usuário poderá girar a roleta novamente.`)) {
-                                    void resetWinMutation.mutateAsync(winner.id)
-                                  }
-                                }}
-                                className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-                              >
-                                Resetar
-                              </button>
                             </div>
                           </div>
 
@@ -1331,18 +1354,6 @@ export function ReportsPage() {
                                 className="admin-button-danger disabled:opacity-60"
                               >
                                 Cancelar
-                              </button>
-                              <button
-                                type="button"
-                                disabled={resetWinMutation.isPending}
-                                onClick={() => {
-                                  if (confirm(`Tem certeza que deseja resetar a participação de ${winner.name || 'este usuário'}?\n\nO prêmio será removido e o usuário poderá girar a roleta novamente.`)) {
-                                    void resetWinMutation.mutateAsync(winner.id)
-                                  }
-                                }}
-                                className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
-                              >
-                                Resetar
                               </button>
                             </div>
                           </div>

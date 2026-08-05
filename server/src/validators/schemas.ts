@@ -208,6 +208,7 @@ export const rewardCampaignSchema = z.object({
   redemptionMethod: z.enum(['address_only', 'address_and_whatsapp']).default('address_and_whatsapp'),
   retryUnlockEnabled: z.boolean().default(false),
   retryUnlockTasks: z.array(rewardRetryTaskSchema).max(2, 'Cadastre no máximo 2 tarefas para liberar mais uma chance.').default([]),
+  testPhones: z.array(z.string().regex(/^\d+$/, 'Use apenas números.')).max(20, 'No máximo 20 telefones de teste.').default([]),
 }).superRefine((value, context) => {
   if (!value.pickupAddress?.trim()) {
     context.addIssue({

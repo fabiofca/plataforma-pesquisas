@@ -55,6 +55,7 @@ type PublicSurveyRecord = {
         url: string
       }>
     | null
+  test_phones: string[] | null
 }
 
 type RewardRetryTask = {
@@ -114,6 +115,15 @@ function normalizeRewardRetryTasks(value: PublicSurveyRecord['reward_retry_unloc
       )
     })
     .slice(0, 5)
+}
+
+function isTestPhone(phone: string | undefined | null, testPhones: string[] | null | undefined): boolean {
+  if (!phone || !testPhones || testPhones.length === 0) {
+    return false
+  }
+
+  const normalizedPhone = phone.replace(/\D/g, '')
+  return testPhones.some((testPhone) => testPhone.replace(/\D/g, '') === normalizedPhone)
 }
 
 async function loadRewardPreviewItems(input: {
@@ -190,7 +200,8 @@ async function getSurveyBySlug(slug: string) {
         reward_campaigns.redemption_method as reward_redemption_method,
         reward_campaigns.redemption_expiration_days as reward_redemption_expiration_days,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
-        reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
+        reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json,
+        reward_campaigns.test_phones as test_phones
      from surveys
      left join reward_campaigns on reward_campaigns.survey_id = surveys.id
      join survey_slugs on survey_slugs.survey_id = surveys.id
@@ -282,7 +293,8 @@ async function getSurveyPreviewById(surveyId: string) {
         reward_campaigns.redemption_method as reward_redemption_method,
         reward_campaigns.redemption_expiration_days as reward_redemption_expiration_days,
         reward_campaigns.retry_unlock_enabled as reward_retry_unlock_enabled,
-        reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json
+        reward_campaigns.retry_unlock_tasks_json as reward_retry_unlock_tasks_json,
+        reward_campaigns.test_phones as test_phones
      from surveys
      left join reward_campaigns on reward_campaigns.survey_id = surveys.id
      where surveys.id = $1`,
@@ -530,6 +542,7 @@ async function getRewardSessionState(
     reward_retry_count: number
     reward_retry_unlock_pending: boolean
     reward_retry_unlocked_at: string | null
+    is_test_response: boolean
   }>(
     `select
         id,
@@ -539,7 +552,8 @@ async function getRewardSessionState(
         reward_spin_completed,
         reward_retry_count,
         reward_retry_unlock_pending,
-        cast(reward_retry_unlocked_at as text) as reward_retry_unlocked_at
+        cast(reward_retry_unlocked_at as text) as reward_retry_unlocked_at,
+        is_test_response
      from survey_responses
      where id = $1 and survey_id = $2
      limit 1`,
@@ -617,11 +631,13 @@ async function getRewardSessionState(
     isInCooldown = Number(recentSpinResult.rows[0]?.count ?? 0) > 0
   }
 
-  const canSpinReward = isInCooldown
-    ? false
-    : latestSpin
-      ? latestSpin.outcome_type !== 'win' && retryUnlocked
-      : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
+  const canSpinReward = surveyResponse.is_test_response
+    ? true
+    : isInCooldown
+      ? false
+      : latestSpin
+        ? latestSpin.outcome_type !== 'win' && retryUnlocked
+        : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
 
   let rewardResult: RewardSessionResult | null = null
 
@@ -701,6 +717,7 @@ async function getRewardSessionState(
     canSpinReward,
     completedTaskIds,
     rewardResult,
+    isTestResponse: surveyResponse.is_test_response ?? false,
   }
 }
 
@@ -798,8 +815,9 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
 
   const sourceIp = request.ip ? hashValue(request.ip) : null
   const campaignAvailable = isRewardCampaignAvailable(survey)
+  const testPhone = isTestPhone(payload.participant.phone, survey.test_phones)
 
-  if (!survey.allow_multiple_responses) {
+  if (!survey.allow_multiple_responses && !testPhone) {
     const hasDuplicate = await hasPermanentDuplicateResponse({
       surveyId: survey.id,
       phone: payload.participant.phone,
@@ -811,14 +829,14 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     }
   }
 
-  const rewardEligible = campaignAvailable
+  const rewardEligible = campaignAvailable || testPhone
   const responseId = makeId()
 
   await query(
     `insert into survey_responses (
       id, survey_id, participant_name, participant_email, participant_phone, participant_birth_day, participant_birth_month,
-      source_ip_hash, browser_fingerprint, browser_cookie_id, reward_eligible
-    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      source_ip_hash, browser_fingerprint, browser_cookie_id, reward_eligible, is_test_response
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
     [
       responseId,
       survey.id,
@@ -831,6 +849,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
       payload.fingerprint ?? null,
       payload.browserCookieId ?? null,
       rewardEligible,
+      testPhone,
     ],
   )
 
@@ -1012,6 +1031,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       reward_retry_count: number
       reward_retry_unlock_pending: boolean
       reward_retry_unlocked_at: string | null
+      is_test_response: boolean
     }>(
       `select
           id,
@@ -1020,7 +1040,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           reward_spin_completed,
           reward_retry_count,
           reward_retry_unlock_pending,
-          cast(reward_retry_unlocked_at as text) as reward_retry_unlocked_at
+          cast(reward_retry_unlocked_at as text) as reward_retry_unlocked_at,
+          is_test_response
        from survey_responses
        where id = $1 and survey_id = $2
        limit 1
@@ -1167,20 +1188,20 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       }
     }
 
-    if (currentAttempt === 1 && surveyResponse.reward_spin_completed) {
+    if (currentAttempt === 1 && surveyResponse.reward_spin_completed && !surveyResponse.is_test_response) {
       await client.query('commit')
       response.status(409).json({ message: 'Esta participação já utilizou a roleta.' })
       return
     }
 
-    if (currentAttempt === 1 && !surveyResponse.reward_eligible) {
+    if (currentAttempt === 1 && !surveyResponse.reward_eligible && !surveyResponse.is_test_response) {
       await client.query('commit')
       response.status(409).json({ message: 'A roleta não está disponível para esta participação.' })
       return
     }
 
     const wheelCooldownDays = survey.duplicate_response_cooldown_days
-    if (wheelCooldownDays > 0 && surveyResponse.participant_phone) {
+    if (wheelCooldownDays > 0 && surveyResponse.participant_phone && !surveyResponse.is_test_response) {
       const hasRecentSpin = await hasRecentSpinByPhone({
         surveyId: survey.id,
         phone: surveyResponse.participant_phone,

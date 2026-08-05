@@ -4,7 +4,7 @@ import path from 'node:path'
 import multer, { type FileFilterCallback } from 'multer'
 import { Router, type Request } from 'express'
 
-import { query } from '../db/pool.js'
+import { query, pool } from '../db/pool.js'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
 import { MAX_REAL_REWARDS, createNextReleaseSpin, getFrequencyTarget, calculateMinimumGapSpins } from '../services/reward-draw.js'
 import { ensureSurveyAccess } from '../services/survey-access.js'
@@ -132,6 +132,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
         }>
       | null
     spin_count: number
+    test_phones: string[] | null
   }>(
     `select
         id,
@@ -145,7 +146,8 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
         redemption_method,
         retry_unlock_enabled,
         retry_unlock_tasks_json,
-        spin_count
+        spin_count,
+        test_phones
      from reward_campaigns
      where survey_id = $1`,
     [surveyId],
@@ -202,7 +204,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
     [campaign.id],
   )
 
-  const [redemptionSummary, wins] = await Promise.all([
+  const [redemptionSummary, wins, testResponseCount] = await Promise.all([
     query<{
       pending_count: string
       delivered_count: string
@@ -247,12 +249,17 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
        limit 50`,
       [campaign.id],
     ),
+    query<{ count: string }>(
+      `select cast(count(*) as text) as count from survey_responses where survey_id = $1 and is_test_response = true`,
+      [surveyId],
+    ),
   ])
 
   response.json({
     campaign: {
       ...campaign,
       retry_unlock_tasks_json: campaign.retry_unlock_tasks_json ?? [],
+      test_phones: campaign.test_phones ?? [],
     },
     items: items.rows.map((item) => ({
       ...item,
@@ -263,6 +270,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
       deliveredCount: Number(redemptionSummary.rows[0]?.delivered_count ?? 0),
       cancelledCount: Number(redemptionSummary.rows[0]?.cancelled_count ?? 0),
     },
+    testResponseCount: Number(testResponseCount.rows[0]?.count ?? 0),
     wins: wins.rows.map((win) => ({
       id: win.id,
       awardedAt: win.awarded_at,
@@ -307,6 +315,7 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
            redemption_method = $10,
            retry_unlock_enabled = $11,
            retry_unlock_tasks_json = $12::jsonb,
+           test_phones = $13,
            updated_at = now()
        where survey_id = $1`,
       [
@@ -322,14 +331,15 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         payload.redemptionMethod,
         payload.retryUnlockEnabled,
         JSON.stringify(payload.retryUnlockEnabled ? payload.retryUnlockTasks : []),
+        payload.testPhones,
       ],
     )
   } else {
     await query(
       `insert into reward_campaigns (
         id, survey_id, status, is_active, require_identification, distribution_mode, expires_at, pickup_address,
-        wheel_mode, final_spin_mode, redemption_expiration_days, contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json
-       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)`,
+        wheel_mode, final_spin_mode, redemption_expiration_days, contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json, test_phones
+       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
       [
         makeId(),
         surveyId,
@@ -344,6 +354,7 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         payload.redemptionMethod,
         payload.retryUnlockEnabled,
         JSON.stringify(payload.retryUnlockEnabled ? payload.retryUnlockTasks : []),
+        payload.testPhones,
       ],
     )
   }
@@ -712,4 +723,75 @@ rewardsRouter.delete('/rewards/wins/:id', async (request: AuthenticatedRequest, 
   )
 
   response.json({ ok: true })
+})
+
+rewardsRouter.delete('/surveys/:id/rewards/test-responses', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+
+    const testResponsesResult = await client.query<{ id: string }>(
+      `select id from survey_responses where survey_id = $1 and is_test_response = true`,
+      [surveyId],
+    )
+
+    const testResponseIds = testResponsesResult.rows.map((row: { id: string }) => row.id)
+    const deletedCount = testResponseIds.length
+
+    if (deletedCount === 0) {
+      await client.query('commit')
+      response.json({ ok: true, deletedCount: 0 })
+      return
+    }
+
+    await client.query(
+      `delete from reward_wins where response_id = any($1::uuid[])`,
+      [testResponseIds],
+    )
+
+    await client.query(
+      `delete from reward_spin_logs where response_id = any($1::uuid[])`,
+      [testResponseIds],
+    )
+
+    await client.query(
+      `delete from response_answers where response_id = any($1::uuid[])`,
+      [testResponseIds],
+    )
+
+    await client.query(
+      `delete from survey_responses where id = any($1::uuid[])`,
+      [testResponseIds],
+    )
+
+    await client.query(
+      `update reward_items
+       set quantity_awarded = (
+         select count(*)::integer
+         from reward_wins
+         where reward_wins.reward_item_id = reward_items.id
+       )
+       where campaign_id in (
+         select id from reward_campaigns where survey_id = $1
+       )`,
+      [surveyId],
+    )
+
+    await client.query('commit')
+    response.json({ ok: true, deletedCount })
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
 })
