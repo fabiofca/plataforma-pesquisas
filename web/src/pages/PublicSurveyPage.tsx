@@ -1328,6 +1328,10 @@ export function PublicSurveyPage() {
     },
     onError: (error) => {
       setWheelSpinning(false)
+      const isConflictError = error instanceof ApiError && error.status === 409
+      if (isConflictError) {
+        setCanSpinReward(false)
+      }
       setRewardResult({
         won: false,
         message: error instanceof Error ? error.message : 'Não foi possível girar a roleta agora.',
