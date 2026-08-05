@@ -642,7 +642,7 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
     redemption_notes: string | null
   }>(
     `update reward_wins
-     set redemption_status = $2,
+     set redemption_status = $2::varchar,
          delivered_at = case
            when $2 = 'delivered' then coalesce(delivered_at, now())
            else null
@@ -667,4 +667,49 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
       redemptionNotes: result.rows[0]?.redemption_notes,
     },
   })
+})
+
+rewardsRouter.delete('/rewards/wins/:id', async (request: AuthenticatedRequest, response) => {
+  const winId = String(request.params.id)
+  const winAccess = await query<{ survey_id: string; response_id: string; campaign_id: string }>(
+    `select reward_campaigns.survey_id, reward_wins.response_id, reward_wins.campaign_id
+     from reward_wins
+     join reward_campaigns on reward_campaigns.id = reward_wins.campaign_id
+     where reward_wins.id = $1
+     limit 1`,
+    [winId],
+  )
+
+  const winRow = winAccess.rows[0]
+
+  if (!winRow) {
+    response.status(404).json({ message: 'Premiação não encontrada.' })
+    return
+  }
+
+  const access = await ensureSurveyAccess(winRow.survey_id, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  await query('delete from reward_wins where id = $1', [winId])
+
+  await query(
+    `delete from reward_spin_logs where response_id = $1`,
+    [winRow.response_id],
+  )
+
+  await query(
+    `update survey_responses
+     set reward_spin_completed = false,
+         reward_eligible = true,
+         reward_retry_count = 0,
+         reward_retry_unlock_pending = false
+     where id = $1`,
+    [winRow.response_id],
+  )
+
+  response.json({ ok: true })
 })
