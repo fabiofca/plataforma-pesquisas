@@ -521,6 +521,16 @@ export function ReportsPage() {
     },
   })
 
+  const resetWinMutation = useMutation({
+    mutationFn: async (winId: string) =>
+      apiRequest<{ ok: boolean }>(`/rewards/wins/${winId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['reports-rewards', id] })
+    },
+  })
+
   const periodData =
     summaryQuery.data?.period.map((item) => ({
       label: item.day.slice(5).replace('-', '/'),
@@ -1238,6 +1248,18 @@ export function ReportsPage() {
                               >
                                 Cancelar
                               </button>
+                              <button
+                                type="button"
+                                disabled={resetWinMutation.isPending}
+                                onClick={() => {
+                                  if (confirm(`Tem certeza que deseja resetar a participação de ${winner.name || 'este usuário'}?\n\nO prêmio será removido e o usuário poderá girar a roleta novamente.`)) {
+                                    void resetWinMutation.mutateAsync(winner.id)
+                                  }
+                                }}
+                                className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                Resetar
+                              </button>
                             </div>
                           </div>
 
@@ -1309,6 +1331,18 @@ export function ReportsPage() {
                                 className="admin-button-danger disabled:opacity-60"
                               >
                                 Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                disabled={resetWinMutation.isPending}
+                                onClick={() => {
+                                  if (confirm(`Tem certeza que deseja resetar a participação de ${winner.name || 'este usuário'}?\n\nO prêmio será removido e o usuário poderá girar a roleta novamente.`)) {
+                                    void resetWinMutation.mutateAsync(winner.id)
+                                  }
+                                }}
+                                className="min-h-[44px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
+                              >
+                                Resetar
                               </button>
                             </div>
                           </div>
