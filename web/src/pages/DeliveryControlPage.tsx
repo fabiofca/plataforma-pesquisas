@@ -109,6 +109,7 @@ export function DeliveryControlPage() {
   const defaultStartDate = formatDateInput(getDateDaysAgo(29))
   const [startDate, setStartDate] = useState(defaultStartDate)
   const [endDate, setEndDate] = useState(defaultEndDate)
+  const [useFullPeriod, setUseFullPeriod] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<WinnerStatusFilter>('all')
@@ -121,9 +122,11 @@ export function DeliveryControlPage() {
   const [deliveryModalWinId, setDeliveryModalWinId] = useState('')
   const [deliveryModalReceivedBy, setDeliveryModalReceivedBy] = useState('')
 
-  useEffect(() => { setPage(1) }, [searchQuery, statusFilter, sortField, sortDirection, pageSize, startDate, endDate])
+  useEffect(() => { setPage(1) }, [searchQuery, statusFilter, sortField, sortDirection, pageSize, startDate, endDate, useFullPeriod])
 
-  const isInvalidRange = !startDate || !endDate || startDate > endDate
+  const effectiveStartDate = useFullPeriod ? '2020-01-01' : startDate
+  const effectiveEndDate = useFullPeriod ? defaultEndDate : endDate
+  const isInvalidRange = !useFullPeriod && (!startDate || !endDate || startDate > endDate)
 
   // Parse search: if it's a short number (4+ digits), treat as protocol suffix
   const parsedSearch = useMemo(() => {
@@ -133,9 +136,9 @@ export function DeliveryControlPage() {
   }, [searchQuery])
 
   const rewardsQuery = useQuery({
-    queryKey: ['delivery-control', id, startDate, endDate, parsedSearch, statusFilter, sortField, sortDirection, page, pageSize],
+    queryKey: ['delivery-control', id, effectiveStartDate, effectiveEndDate, parsedSearch, statusFilter, sortField, sortDirection, page, pageSize],
     queryFn: async () => {
-      const params = buildReportParams({ startDate, endDate }, {
+      const params = buildReportParams({ startDate: effectiveStartDate, endDate: effectiveEndDate }, {
         name: parsedSearch.name || undefined,
         phone: parsedSearch.phone || undefined,
         prize: parsedSearch.prize || undefined,
@@ -187,14 +190,27 @@ export function DeliveryControlPage() {
             <div className="space-y-4">
               {/* Date range */}
               <div className="flex flex-wrap items-end gap-3">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">De</span>
-                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="admin-input" />
+                <label className="flex cursor-pointer items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={useFullPeriod}
+                    onChange={(e) => setUseFullPeriod(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  <span className="font-medium text-slate-700">Período da campanha</span>
                 </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Até</span>
-                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="admin-input" />
-                </label>
+                {!useFullPeriod && (
+                  <>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="text-slate-600">De</span>
+                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="admin-input" />
+                    </label>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="text-slate-600">Até</span>
+                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="admin-input" />
+                    </label>
+                  </>
+                )}
               </div>
 
               {/* Unified search + filters */}
