@@ -899,7 +899,7 @@ export function PublicSurveyPage() {
         setWheelModalOpen(
           Boolean(
             survey.rewardEnabled &&
-              (session.canSpinReward || session.rewardResult || (!session.canSpinReward && session.submitMessage)),
+              session.canSpinReward,
           ),
         )
         setRetryTaskProgressMap((current) => {
@@ -1187,7 +1187,7 @@ export function PublicSurveyPage() {
             : 'Sua resposta foi registrada com sucesso.'),
       )
       setSubmitted(true)
-      setWheelModalOpen(result.rewardEnabled)
+      setWheelModalOpen(result.rewardEnabled && result.rewardEligible)
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Não foi possível registrar sua resposta agora.'
@@ -2105,7 +2105,7 @@ export function PublicSurveyPage() {
               {survey.rewardEnabled ? (
                 <div className="mt-7 overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50 p-5 text-center shadow-[0_12px_32px_rgba(245,158,11,0.12)] sm:p-6">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-amber-500 shadow-sm">
-                    <Gift className="h-6 w-6" />
+                    {canSpinReward ? <Gift className="h-6 w-6" /> : rewardResult?.won ? <Trophy className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
                   </div>
                   <p className="mt-3 text-base font-semibold text-slate-900">
                     {canSpinReward
@@ -2113,8 +2113,8 @@ export function PublicSurveyPage() {
                       : rewardResult?.won
                         ? 'Você ganhou um prêmio!'
                         : rewardResult
-                          ? 'Seu resultado está disponível.'
-                          : 'A roleta está disponível.'}
+                          ? 'Você já participou desta campanha.'
+                          : 'A roleta não está disponível no momento.'}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
                     {canSpinReward
@@ -2122,19 +2122,21 @@ export function PublicSurveyPage() {
                       : rewardResult?.won
                         ? 'Toque abaixo para ver os detalhes do prêmio.'
                         : rewardResult
-                          ? 'Toque abaixo para ver o resultado do seu giro.'
-                          : 'Toque abaixo para abrir a roleta.'}
+                          ? 'Obrigado por participar! Seu giro já foi registrado nesta campanha.'
+                          : submitMessage || 'Sua resposta foi registrada com sucesso.'}
                   </p>
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={() => setWheelModalOpen(true)}
-                      className="admin-button-primary w-full justify-center px-6"
-                      style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
-                    >
-                      {canSpinReward ? 'Girar roleta' : rewardResult?.won ? 'Ver meu prêmio' : 'Ver roleta'}
-                    </button>
-                  </div>
+                  {(canSpinReward || rewardResult) ? (
+                    <div className="mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setWheelModalOpen(true)}
+                        className="admin-button-primary w-full justify-center px-6"
+                        style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
+                      >
+                        {canSpinReward ? 'Girar roleta' : rewardResult?.won ? 'Ver meu prêmio' : 'Ver resultado'}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
