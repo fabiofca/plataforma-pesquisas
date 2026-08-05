@@ -500,8 +500,9 @@ function buildAdvancedNoPrizeOutcome(
   const selectedItem = selectAdvancedNoPrizeItem(items)
 
   if (selectedItem) {
+    const isVisibleOnWheel = selectedItem.show_on_wheel !== false
     return {
-      rewardItemId: selectedItem.id,
+      rewardItemId: isVisibleOnWheel ? selectedItem.id : null,
       wheelLabel: selectedItem.wheel_label ?? selectedItem.title,
     }
   }

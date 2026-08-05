@@ -876,7 +876,8 @@ export function PublicSurveyPage() {
           ? wheelSegments.find((segment) => segment.id === session.rewardResult?.landedSegmentId)
           : session.rewardResult?.landedLabel
             ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
-            : null
+            : wheelSegments.find((segment) => segment.kind === 'neutral')
+            ?? null
 
         setParticipantName((current) => current || session.participantName || '')
         setParticipantPhone((current) => current || session.participantPhone || '')
@@ -1225,17 +1226,14 @@ export function PublicSurveyPage() {
           previewIsFinalAttempt && realRewardSegments.length > 0
             ? guaranteedPrize || Math.random() < 0.45
             : realRewardSegments.length > 0 && Math.random() < 0.2
-        // Perdeu: prefere cair em segmentos neutros (sem premio). Se nao houver,
-        // usa vitrine como fallback visual, nunca como premio real.
-        const losingPool =
-          neutralSegments.length > 0
-            ? neutralSegments
-            : showcaseSegments.length > 0
-              ? showcaseSegments
-              : wheelSegments
+        // Perdeu: sempre cai em segmentos neutros (sem premio). Vitrine nunca
+        // pode ser resultado visual de perda — itens de vitrine sao apenas decorativos.
+        const losingPool = neutralSegments.length > 0 ? neutralSegments : wheelSegments.filter((s) => s.kind !== 'showcase')
         const selectedSegment = shouldWin
           ? pickRandomItem(realRewardSegments)
-          : pickRandomItem(losingPool)
+          : losingPool.length > 0
+            ? pickRandomItem(losingPool)
+            : { id: `neutral-fallback-${Date.now()}`, label: neutralWheelLabels[0] ?? 'Não foi dessa vez', kind: 'neutral' as const }
 
         return {
           won: shouldWin,
@@ -1299,11 +1297,16 @@ export function PublicSurveyPage() {
       })
     },
     onSuccess: (result) => {
-      const rewardIndex = result.landedSegmentId
-        ? Math.max(wheelSegments.findIndex((segment) => segment.id === result.landedSegmentId), 0)
-        : result.landedLabel
-          ? Math.max(wheelSegments.findIndex((segment) => segment.label === result.landedLabel), 0)
-          : 0
+      const segmentIndexById = result.landedSegmentId
+        ? wheelSegments.findIndex((segment) => segment.id === result.landedSegmentId)
+        : -1
+      const segmentIndexByLabel =
+        segmentIndexById === -1 && result.landedLabel
+          ? wheelSegments.findIndex((segment) => segment.label === result.landedLabel)
+          : -1
+      const resolvedIndex = segmentIndexById >= 0 ? segmentIndexById : segmentIndexByLabel >= 0 ? segmentIndexByLabel : -1
+      const fallbackNeutralIndex = wheelSegments.findIndex((segment) => segment.kind === 'neutral')
+      const rewardIndex = resolvedIndex >= 0 ? resolvedIndex : fallbackNeutralIndex >= 0 ? fallbackNeutralIndex : 0
       const selectedSegment = wheelSegments[rewardIndex]
       const nextRotation = getSegmentTargetRotation(wheelRotation, wheelSegments.length, rewardIndex)
 
