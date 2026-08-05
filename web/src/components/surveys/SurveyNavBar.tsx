@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  ClipboardCheck,
   Gift,
   Link2,
   ListChecks,
@@ -8,7 +9,7 @@ import {
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 
-type SurveyTabId = 'summary' | 'questions' | 'share' | 'results' | 'flow' | 'prizes'
+type SurveyTabId = 'summary' | 'questions' | 'share' | 'results' | 'flow' | 'prizes' | 'delivery'
 
 type NavTab = {
   id: SurveyTabId
@@ -42,6 +43,7 @@ export function SurveyNavBar({
     { id: 'results', label: 'Resultados', icon: BarChart3, href: `${basePath}/relatorios` },
     { id: 'flow', label: 'Fluxo', icon: Workflow, href: `${basePath}/editar` },
     { id: 'prizes', label: 'Prêmios', icon: Gift, href: `${basePath}/premios` },
+    { id: 'delivery', label: 'Controle de entrega', icon: ClipboardCheck, href: `${basePath}/entregas` },
   ]
 
   function isTabActive(tab: NavTab) {
@@ -52,6 +54,7 @@ export function SurveyNavBar({
     if (tab.id === 'results' && location.pathname.endsWith('/relatorios')) return true
     if (tab.id === 'flow' && location.pathname.endsWith('/editar')) return true
     if (tab.id === 'prizes' && location.pathname.endsWith('/premios')) return true
+    if (tab.id === 'delivery' && location.pathname.endsWith('/entregas')) return true
 
     if (location.pathname === basePath || location.pathname === `${basePath}/`) {
       const hash = location.hash

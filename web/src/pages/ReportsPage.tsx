@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChartColumnBig, Download, Trophy, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ChartColumnBig, Download, Users } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useParams } from 'react-router-dom'
 
@@ -109,22 +109,6 @@ type RewardsResponse = {
     remainingStock: number
     winsInRange: number
   }>
-  winners: Array<{
-    id: string
-    awardedAt: string
-    expiresAt: string
-    isExpired: boolean
-    deliveredAt?: string | null
-    name?: string | null
-    phone?: string | null
-    email?: string | null
-    itemTitle: string
-    couponCode: string
-    redemptionStatus: 'pending' | 'delivered' | 'cancelled'
-    redemptionNotes?: string | null
-    receivedBy?: string | null
-  }>
-  winnersPagination: PaginationMeta
   noPrizeBreakdown: Array<{
     label: string
     count: number
@@ -134,10 +118,6 @@ type RewardsResponse = {
     endDate: string
   }
 }
-
-type WinnerSortField = 'awardedAt' | 'name' | 'itemTitle'
-type WinnerSortDirection = 'asc' | 'desc'
-type WinnerStatusFilter = 'all' | 'pending' | 'delivered' | 'cancelled'
 
 type InsightCategory = 'responses' | 'access' | 'contacts' | 'rewards' | 'wheel'
 
@@ -356,7 +336,6 @@ function TextSamplesList({ samples, questionId }: { samples: string[]; questionI
 export function ReportsPage() {
   const { id } = useParams()
   const user = useAuthStore((state) => state.user)
-  const queryClient = useQueryClient()
 
   const surveyTitleQuery = useQuery({
     queryKey: ['survey-title', id],
@@ -375,15 +354,6 @@ export function ReportsPage() {
   const [exportFeedback, setExportFeedback] = useState('')
   const [respondentsPage, setRespondentsPage] = useState(1)
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
-  const [winnerNameFilter, setWinnerNameFilter] = useState('')
-  const [winnerPhoneFilter, setWinnerPhoneFilter] = useState('')
-  const [winnerPrizeFilter, setWinnerPrizeFilter] = useState('')
-  const [winnerCouponFilter, setWinnerCouponFilter] = useState('')
-  const [winnerStatusFilter, setWinnerStatusFilter] = useState<WinnerStatusFilter>('all')
-  const [winnerSortField, setWinnerSortField] = useState<WinnerSortField>('awardedAt')
-  const [winnerSortDirection, setWinnerSortDirection] = useState<WinnerSortDirection>('desc')
-  const [winnersPage, setWinnersPage] = useState(1)
-  const [winnersPageSize, setWinnersPageSize] = useState(20)
   const canExportCsv = hasFeatureAccess(user, 'reports_export_csv')
   const canExportPdf = hasFeatureAccess(user, 'reports_export_pdf')
 
@@ -420,25 +390,11 @@ export function ReportsPage() {
   useEffect(() => {
     setExportFeedback('')
     setRespondentsPage(1)
-    setWinnersPage(1)
   }, [activeRange.endDate, activeRange.startDate, preset])
 
   useEffect(() => {
     setRespondentsPage(1)
   }, [respondentsPageSize])
-
-  useEffect(() => {
-    setWinnersPage(1)
-  }, [
-    winnerCouponFilter,
-    winnerNameFilter,
-    winnerPhoneFilter,
-    winnerPrizeFilter,
-    winnerStatusFilter,
-    winnerSortDirection,
-    winnerSortField,
-    winnersPageSize,
-  ])
 
   const summaryQuery = useQuery({
     queryKey: ['reports-summary', id, activeRange.startDate, activeRange.endDate],
@@ -480,79 +436,14 @@ export function ReportsPage() {
       id,
       activeRange.startDate,
       activeRange.endDate,
-      winnerNameFilter,
-      winnerPhoneFilter,
-      winnerPrizeFilter,
-      winnerCouponFilter,
-      winnerStatusFilter,
-      winnerSortField,
-      winnerSortDirection,
-      winnersPage,
-      winnersPageSize,
     ],
     queryFn: async () => {
-      const params = buildReportParams(activeRange, {
-        name: winnerNameFilter.trim(),
-        phone: winnerPhoneFilter.trim(),
-        prize: winnerPrizeFilter.trim(),
-        coupon: winnerCouponFilter.trim(),
-        status: winnerStatusFilter,
-        sortField: winnerSortField,
-        sortDirection: winnerSortDirection,
-        page: winnersPage,
-        pageSize: winnersPageSize,
-      })
-
+      const params = buildReportParams(activeRange)
       return apiRequest<RewardsResponse>(`/surveys/${id}/reports/rewards?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
     retry: 0,
   })
-
-  const updateRedemptionMutation = useMutation({
-    mutationFn: async (payload: { winId: string; status: 'pending' | 'delivered' | 'cancelled'; receivedBy?: string }) =>
-      apiRequest<{ ok: boolean }>(`/rewards/wins/${payload.winId}/redemption`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: payload.status,
-          redemptionNotes: '',
-          receivedBy: payload.receivedBy ?? '',
-        }),
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['reports-rewards', id] })
-    },
-  })
-
-  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false)
-  const [deliveryModalWinId, setDeliveryModalWinId] = useState('')
-  const [deliveryModalReceivedBy, setDeliveryModalReceivedBy] = useState('')
-
-  const testResponsesQuery = useQuery({
-    queryKey: ['reports-test-responses', id],
-    queryFn: async () => {
-      const response = await apiRequest<{ testResponseCount: number }>(`/surveys/${id}/rewards`)
-      return { testResponseCount: response.testResponseCount ?? 0 }
-    },
-    enabled: Boolean(id),
-    retry: 0,
-  })
-
-  const cleanupTestResponsesMutation = useMutation({
-    mutationFn: async () =>
-      apiRequest<{ ok: boolean; deletedCount: number }>(`/surveys/${id}/rewards/test-responses`, {
-        method: 'DELETE',
-      }),
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: ['reports-rewards', id] })
-      await queryClient.invalidateQueries({ queryKey: ['reports-test-responses', id] })
-      await queryClient.invalidateQueries({ queryKey: ['reports-summary', id] })
-      setExportFeedback(`${result.deletedCount} resposta(s) de teste removida(s) com sucesso.`)
-    },
-  })
-
-  const testResponseCount = testResponsesQuery.data?.testResponseCount ?? 0
-  const requireReceiverIdentity = rewardsQuery.data?.requireReceiverIdentity ?? false
 
   const periodData =
     summaryQuery.data?.period.map((item) => ({
@@ -584,7 +475,6 @@ export function ReportsPage() {
   const hasAnyError =
     summaryQuery.isError || questionsQuery.isError || respondentsQuery.isError || rewardsQuery.isError
   const hasReportData = Boolean(summaryQuery.data)
-  const totalWinnersInRange = Number(rewardsQuery.data?.summary.total_wins ?? 0)
 
   async function handleExport(format: 'csv' | 'pdf') {
     if (!id || isInvalidCustomRange || !hasReportData) {
@@ -843,7 +733,7 @@ export function ReportsPage() {
 
                   <div className="flex items-center gap-3">
                     <div className="admin-icon-chip border-emerald-100 bg-emerald-50 text-emerald-700">
-                      <Trophy className="h-4 w-4" />
+                      <ChartColumnBig className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 md:hidden">Prêmios</p>
@@ -1075,347 +965,6 @@ export function ReportsPage() {
 
       <div className="mt-6">
         <SectionCard
-          eyebrow="Ganhadores"
-          title="Quem ganhou e o que ganhou"
-          description="Registro operacional da campanha com nome, WhatsApp, email, prêmio e protocolo entregue."
-        >
-          {rewardsQuery.isPending ? (
-            <div className="admin-empty-state py-16">Carregando ganhadores...</div>
-          ) : rewardsQuery.data ? (
-            <div className="space-y-3">
-              <div className="report-filter-panel grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_180px_220px_180px_auto]">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Nome</span>
-                  <input
-                    value={winnerNameFilter}
-                    onChange={(event) => setWinnerNameFilter(event.target.value)}
-                    placeholder="Ex: Maria"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">WhatsApp</span>
-                  <input
-                    value={winnerPhoneFilter}
-                    onChange={(event) => setWinnerPhoneFilter(event.target.value)}
-                    placeholder="Ex: 2199"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Prêmio</span>
-                  <input
-                    value={winnerPrizeFilter}
-                    onChange={(event) => setWinnerPrizeFilter(event.target.value)}
-                    placeholder="Ex: Vale-compras"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Protocolo</span>
-                  <input
-                    value={winnerCouponFilter}
-                    onChange={(event) => setWinnerCouponFilter(event.target.value)}
-                    placeholder="Ex: 202607281234567"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Status</span>
-                  <select
-                    value={winnerStatusFilter}
-                    onChange={(event) => setWinnerStatusFilter(event.target.value as WinnerStatusFilter)}
-                    className="admin-select"
-                  >
-                    <option value="all">Todos</option>
-                    <option value="pending">Pendentes</option>
-                    <option value="delivered">Entregues</option>
-                    <option value="cancelled">Cancelados</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Ordenar por</span>
-                  <select
-                    value={winnerSortField}
-                    onChange={(event) => setWinnerSortField(event.target.value as WinnerSortField)}
-                    className="admin-select"
-                  >
-                    <option value="awardedAt">Data da premiação</option>
-                    <option value="name">Nome</option>
-                    <option value="itemTitle">Prêmio</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Direção</span>
-                  <select
-                    value={winnerSortDirection}
-                    onChange={(event) => setWinnerSortDirection(event.target.value as WinnerSortDirection)}
-                    className="admin-select"
-                  >
-                    <option value="desc">Decrescente</option>
-                    <option value="asc">Crescente</option>
-                  </select>
-                </label>
-
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWinnerNameFilter('')
-                      setWinnerPhoneFilter('')
-                      setWinnerPrizeFilter('')
-                      setWinnerCouponFilter('')
-                      setWinnerStatusFilter('all')
-                      setWinnerSortField('awardedAt')
-                      setWinnerSortDirection('desc')
-                      setWinnersPageSize(20)
-                    }}
-                    className="admin-button w-full"
-                  >
-                    Limpar filtros
-                  </button>
-                </div>
-              </div>
-
-              <div className="report-summary-strip">
-                Exibindo <strong>{rewardsQuery.data.winnersPagination.totalItems}</strong> ganhador(es) filtrado(s) no período.
-                {' '}Pendentes: <strong>{rewardsQuery.data.summary.pending_redemptions}</strong>. Entregues:{' '}
-                <strong>{rewardsQuery.data.summary.delivered_redemptions}</strong>. Local de retirada:{' '}
-                <strong>{rewardsQuery.data.pickupAddress || 'Não informado'}</strong>.
-              </div>
-
-              {testResponseCount > 0 && (
-                <div className="admin-alert flex flex-wrap items-center justify-between gap-3 border-amber-200 bg-amber-50 text-amber-900">
-                  <span>
-                    Há <strong>{testResponseCount}</strong> resposta(s) de teste nesta pesquisa.
-                  </span>
-                  <button
-                    type="button"
-                    disabled={cleanupTestResponsesMutation.isPending}
-                    onClick={() => {
-                      if (confirm(`Tem certeza que deseja remover todas as ${testResponseCount} resposta(s) de teste?\n\nPrêmios ganhos serão devolvidos ao estoque.`)) {
-                        void cleanupTestResponsesMutation.mutateAsync()
-                      }
-                    }}
-                    className="admin-button whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {cleanupTestResponsesMutation.isPending ? 'Limpando...' : 'Limpar respostas de teste'}
-                  </button>
-                </div>
-              )}
-
-              {rewardsQuery.data.winnersPagination.totalItems ? (
-                <div className="admin-table-shell">
-                  <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_160px_220px] gap-3 xl:grid">
-                    <div>Ganhador</div>
-                    <div>WhatsApp</div>
-                    <div>E-mail</div>
-                    <div>Prêmio</div>
-                    <div>Protocolo</div>
-                    <div>Status</div>
-                    <div>Retirado em</div>
-                    <div>Recebido por</div>
-                    <div>Ações</div>
-                  </div>
-
-                  <div className="divide-y divide-slate-200">
-                    {rewardsQuery.data.winners.map((winner) => {
-                      const isUpdating =
-                        updateRedemptionMutation.isPending &&
-                        updateRedemptionMutation.variables?.winId === winner.id
-
-                      const statusLabel =
-                        winner.redemptionStatus === 'delivered'
-                          ? 'Entregue'
-                          : winner.redemptionStatus === 'cancelled'
-                            ? 'Cancelado'
-                            : 'Pendente'
-
-                      const statusClass =
-                        winner.redemptionStatus === 'delivered'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                          : winner.redemptionStatus === 'cancelled'
-                            ? 'border-rose-200 bg-rose-50 text-rose-700'
-                            : 'bg-white'
-                      const expirationLabel = winner.isExpired ? 'Expirado' : 'No prazo'
-                      const expirationClass = winner.isExpired
-                        ? 'border-rose-200 bg-rose-50 text-rose-700'
-                        : 'border-sky-200 bg-sky-50 text-sky-700'
-
-                      return (
-                        <article key={winner.id} className="report-table-row">
-                          <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_160px_220px]">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
-                              <p className="truncate text-xs text-slate-500">{formatDateTimeLabel(winner.awardedAt)}</p>
-                              <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <span className={`admin-badge ${expirationClass}`}>{expirationLabel}</span>
-                                <span className="text-xs text-slate-500">Válido até {formatDateLabel(winner.expiresAt)}</span>
-                              </div>
-                            </div>
-                            <div className="min-w-0 text-sm text-slate-700">{winner.phone || '-'}</div>
-                            <div className="min-w-0 truncate text-sm text-slate-700">{winner.email || '-'}</div>
-                            <div className="min-w-0 truncate text-sm text-slate-700">{winner.itemTitle}</div>
-                            <div className="min-w-0 truncate text-sm font-medium text-slate-900">{winner.couponCode}</div>
-                            <div>
-                              <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
-                            </div>
-                            <div className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</div>
-                            <div className="min-w-0 truncate text-sm text-slate-700">{winner.receivedBy || '-'}</div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'pending' })}
-                                className="admin-button disabled:opacity-60"
-                              >
-                                Pendente
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => {
-                                  if (requireReceiverIdentity) {
-                                    setDeliveryModalWinId(winner.id)
-                                    setDeliveryModalReceivedBy('')
-                                    setDeliveryModalOpen(true)
-                                  } else {
-                                    void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })
-                                  }
-                                }}
-                                className="admin-button-primary disabled:opacity-60"
-                              >
-                                Entregue
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'cancelled' })}
-                                className="admin-button-danger disabled:opacity-60"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid gap-2 xl:hidden">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Ganhador</p>
-                                <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <span className={`admin-badge ${expirationClass}`}>{expirationLabel}</span>
-                                  <span className="text-xs text-slate-500">Válido até {formatDateLabel(winner.expiresAt)}</span>
-                                </div>
-                              </div>
-                              <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
-                            </div>
-
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p>
-                                <p className="text-sm text-slate-700">{winner.phone || '-'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">E-mail</p>
-                                <p className="truncate text-sm text-slate-700">{winner.email || '-'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p>
-                                <p className="truncate text-sm text-slate-700">{winner.itemTitle}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p>
-                                <p className="text-sm font-medium text-slate-900">{winner.couponCode}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Premiação</p>
-                                <p className="text-sm text-slate-500">{formatDateTimeLabel(winner.awardedAt)}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Validade</p>
-                                <p className="text-sm text-slate-700">{formatDateLabel(winner.expiresAt)}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
-                                <p className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Recebido por</p>
-                                <p className="text-sm text-slate-700">{winner.receivedBy || '-'}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'pending' })}
-                                className="admin-button disabled:opacity-60"
-                              >
-                                Pendente
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => {
-                                  if (requireReceiverIdentity) {
-                                    setDeliveryModalWinId(winner.id)
-                                    setDeliveryModalReceivedBy('')
-                                    setDeliveryModalOpen(true)
-                                  } else {
-                                    void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })
-                                  }
-                                }}
-                                className="admin-button-primary disabled:opacity-60"
-                              >
-                                Entregue
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'cancelled' })}
-                                className="admin-button-danger disabled:opacity-60"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      )
-                    })}
-                  </div>
-
-                  <PaginationControls
-                    pagination={rewardsQuery.data.winnersPagination}
-                    onPageChange={setWinnersPage}
-                    onPageSizeChange={setWinnersPageSize}
-                  />
-                </div>
-              ) : (
-                <div className="admin-empty-state py-16">
-                  {totalWinnersInRange
-                    ? 'Nenhum ganhador encontrado com os filtros informados.'
-                    : 'Nenhum ganhador registrado para o período selecionado.'}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="admin-empty-state py-16">
-              Nenhum ganhador registrado para o período selecionado.
-            </div>
-          )}
-        </SectionCard>
-      </div>
-
-      <div className="mt-6">
-        <SectionCard
           eyebrow="Perguntas"
           title="Desempenho por pergunta"
           description="Veja distribuição, taxa de conclusão, médias e uma leitura mais rica de NPS e campos abertos."
@@ -1514,52 +1063,6 @@ export function ReportsPage() {
         </SectionCard>
       </div>
 
-      {deliveryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-900">Confirmar entrega</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Informe o nome ou documento de quem está retirando o prêmio.
-            </p>
-            <label className="mt-4 grid gap-2 text-sm">
-              <span className="text-slate-600">Recebido por</span>
-              <input
-                className="admin-input"
-                value={deliveryModalReceivedBy}
-                onChange={(event) => setDeliveryModalReceivedBy(event.target.value)}
-                placeholder="Ex: João da Silva ou CPF 123.456.789-00"
-                autoFocus
-                required
-              />
-            </label>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setDeliveryModalOpen(false)}
-                className="admin-button"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={updateRedemptionMutation.isPending || !deliveryModalReceivedBy.trim()}
-                onClick={() => {
-                  void updateRedemptionMutation
-                    .mutateAsync({
-                      winId: deliveryModalWinId,
-                      status: 'delivered',
-                      receivedBy: deliveryModalReceivedBy.trim(),
-                    })
-                    .then(() => setDeliveryModalOpen(false))
-                }}
-                className="admin-button-primary disabled:opacity-60"
-              >
-                {updateRedemptionMutation.isPending ? 'Confirmando...' : 'Confirmar entrega'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       </div>
     </AppShell>
   )

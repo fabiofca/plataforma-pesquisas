@@ -46,6 +46,11 @@ const RewardsPage = lazy(async () => {
   return { default: module.RewardsPage }
 })
 
+const DeliveryControlPage = lazy(async () => {
+  const module = await import('@/pages/DeliveryControlPage')
+  return { default: module.DeliveryControlPage }
+})
+
 const SettingsPage = lazy(async () => {
   const module = await import('@/pages/SettingsPage')
   return { default: module.SettingsPage }
@@ -294,6 +299,14 @@ export default function App() {
             element={
               <UserRoute>
                 <RewardsPage />
+              </UserRoute>
+            }
+          />
+          <Route
+            path="/app/pesquisas/:id/entregas"
+            element={
+              <UserRoute>
+                <DeliveryControlPage />
               </UserRoute>
             }
           />
