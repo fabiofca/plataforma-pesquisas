@@ -8,6 +8,7 @@ import { query, pool } from '../db/pool.js'
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js'
 import { MAX_REAL_REWARDS, createNextReleaseSpin, getFrequencyTarget, calculateMinimumGapSpins } from '../services/reward-draw.js'
 import { ensureSurveyAccess } from '../services/survey-access.js'
+import { createAuditLog } from '../services/audit-log.js'
 import { makeId } from '../utils/security.js'
 import { rewardCampaignSchema, rewardItemPatchSchema, rewardItemSchema, rewardWinRedemptionSchema } from '../validators/schemas.js'
 
@@ -133,6 +134,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
       | null
     spin_count: number
     test_phones: string[] | null
+    require_receiver_identity: boolean
   }>(
     `select
         id,
@@ -147,7 +149,8 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
         retry_unlock_enabled,
         retry_unlock_tasks_json,
         spin_count,
-        test_phones
+        test_phones,
+        require_receiver_identity
      from reward_campaigns
      where survey_id = $1`,
     [surveyId],
@@ -316,6 +319,7 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
            retry_unlock_enabled = $11,
            retry_unlock_tasks_json = $12::jsonb,
            test_phones = $13,
+           require_receiver_identity = $14,
            updated_at = now()
        where survey_id = $1`,
       [
@@ -332,14 +336,15 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         payload.retryUnlockEnabled,
         JSON.stringify(payload.retryUnlockEnabled ? payload.retryUnlockTasks : []),
         payload.testPhones,
+        payload.requireReceiverIdentity,
       ],
     )
   } else {
     await query(
       `insert into reward_campaigns (
         id, survey_id, status, is_active, require_identification, distribution_mode, expires_at, pickup_address,
-        wheel_mode, final_spin_mode, redemption_expiration_days, contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json, test_phones
-       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14)`,
+        wheel_mode, final_spin_mode, redemption_expiration_days, contact_whatsapp, redemption_method, retry_unlock_enabled, retry_unlock_tasks_json, test_phones, require_receiver_identity
+       ) values ($1, $2, $3, $4, true, 'simple', $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15)`,
       [
         makeId(),
         surveyId,
@@ -355,6 +360,7 @@ rewardsRouter.post('/surveys/:id/rewards', async (request: AuthenticatedRequest,
         payload.retryUnlockEnabled,
         JSON.stringify(payload.retryUnlockEnabled ? payload.retryUnlockTasks : []),
         payload.testPhones,
+        payload.requireReceiverIdentity,
       ],
     )
   }
@@ -621,8 +627,8 @@ rewardsRouter.delete('/rewards/items/:id', async (request: AuthenticatedRequest,
 
 rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: AuthenticatedRequest, response) => {
   const winId = String(request.params.id)
-  const winAccess = await query<{ survey_id: string }>(
-    `select reward_campaigns.survey_id
+  const winAccess = await query<{ survey_id: string; campaign_id: string; current_status: string }>(
+    `select reward_campaigns.survey_id, reward_wins.campaign_id, reward_wins.redemption_status as current_status
      from reward_wins
      join reward_campaigns on reward_campaigns.id = reward_wins.campaign_id
      where reward_wins.id = $1
@@ -630,7 +636,8 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
     [winId],
   )
 
-  const surveyId = winAccess.rows[0]?.survey_id
+  const winRow = winAccess.rows[0]
+  const surveyId = winRow?.survey_id
 
   if (!surveyId) {
     response.status(404).json({ message: 'Premiação não encontrada.' })
@@ -651,6 +658,7 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
     redemption_status: 'pending' | 'delivered' | 'cancelled'
     delivered_at: string | null
     redemption_notes: string | null
+    received_by: string | null
   }>(
     `update reward_wins
      set redemption_status = $2::varchar,
@@ -659,15 +667,31 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
            else null
          end,
          redemption_notes = $3,
+         received_by = $4,
          redemption_updated_at = now()
      where id = $1
      returning
        id,
        redemption_status,
        cast(delivered_at as text) as delivered_at,
-       redemption_notes`,
-    [winId, payload.status, payload.redemptionNotes?.trim() || null],
+       redemption_notes,
+       received_by`,
+    [winId, payload.status, payload.redemptionNotes?.trim() || null, payload.receivedBy?.trim() || null],
   )
+
+  await createAuditLog({
+    actorUserId: request.auth!.userId,
+    surveyId,
+    action: `redemption_status_changed:${winRow.current_status}->${payload.status}`,
+    entityType: 'reward_win',
+    entityId: winId,
+    meta: {
+      previousStatus: winRow.current_status,
+      newStatus: payload.status,
+      receivedBy: payload.receivedBy?.trim() || null,
+      campaignId: winRow.campaign_id,
+    },
+  })
 
   response.json({
     ok: true,
@@ -676,6 +700,7 @@ rewardsRouter.patch('/rewards/wins/:id/redemption', async (request: Authenticate
       redemptionStatus: result.rows[0]?.redemption_status,
       deliveredAt: result.rows[0]?.delivered_at,
       redemptionNotes: result.rows[0]?.redemption_notes,
+      receivedBy: result.rows[0]?.received_by,
     },
   })
 })

@@ -100,6 +100,7 @@ type RewardsResponse = {
     cancelled_redemptions: string
   }
   pickupAddress?: string | null
+  requireReceiverIdentity?: boolean
   stock: Array<{
     id: string
     title: string
@@ -121,6 +122,7 @@ type RewardsResponse = {
     couponCode: string
     redemptionStatus: 'pending' | 'delivered' | 'cancelled'
     redemptionNotes?: string | null
+    receivedBy?: string | null
   }>
   winnersPagination: PaginationMeta
   noPrizeBreakdown: Array<{
@@ -508,18 +510,23 @@ export function ReportsPage() {
   })
 
   const updateRedemptionMutation = useMutation({
-    mutationFn: async (payload: { winId: string; status: 'pending' | 'delivered' | 'cancelled' }) =>
+    mutationFn: async (payload: { winId: string; status: 'pending' | 'delivered' | 'cancelled'; receivedBy?: string }) =>
       apiRequest<{ ok: boolean }>(`/rewards/wins/${payload.winId}/redemption`, {
         method: 'PATCH',
         body: JSON.stringify({
           status: payload.status,
           redemptionNotes: '',
+          receivedBy: payload.receivedBy ?? '',
         }),
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['reports-rewards', id] })
     },
   })
+
+  const [deliveryModalOpen, setDeliveryModalOpen] = useState(false)
+  const [deliveryModalWinId, setDeliveryModalWinId] = useState('')
+  const [deliveryModalReceivedBy, setDeliveryModalReceivedBy] = useState('')
 
   const testResponsesQuery = useQuery({
     queryKey: ['reports-test-responses', id],
@@ -545,6 +552,7 @@ export function ReportsPage() {
   })
 
   const testResponseCount = testResponsesQuery.data?.testResponseCount ?? 0
+  const requireReceiverIdentity = rewardsQuery.data?.requireReceiverIdentity ?? false
 
   const periodData =
     summaryQuery.data?.period.map((item) => ({
@@ -1204,7 +1212,7 @@ export function ReportsPage() {
 
               {rewardsQuery.data.winnersPagination.totalItems ? (
                 <div className="admin-table-shell">
-                  <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_220px] gap-3 xl:grid">
+                  <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_160px_220px] gap-3 xl:grid">
                     <div>Ganhador</div>
                     <div>WhatsApp</div>
                     <div>E-mail</div>
@@ -1212,6 +1220,7 @@ export function ReportsPage() {
                     <div>Protocolo</div>
                     <div>Status</div>
                     <div>Retirado em</div>
+                    <div>Recebido por</div>
                     <div>Ações</div>
                   </div>
 
@@ -1241,7 +1250,7 @@ export function ReportsPage() {
 
                       return (
                         <article key={winner.id} className="report-table-row">
-                          <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_220px]">
+                          <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_160px_220px]">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
                               <p className="truncate text-xs text-slate-500">{formatDateTimeLabel(winner.awardedAt)}</p>
@@ -1258,6 +1267,7 @@ export function ReportsPage() {
                               <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
                             </div>
                             <div className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</div>
+                            <div className="min-w-0 truncate text-sm text-slate-700">{winner.receivedBy || '-'}</div>
                             <div className="flex flex-wrap gap-2">
                               <button
                                 type="button"
@@ -1270,7 +1280,15 @@ export function ReportsPage() {
                               <button
                                 type="button"
                                 disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })}
+                                onClick={() => {
+                                  if (requireReceiverIdentity) {
+                                    setDeliveryModalWinId(winner.id)
+                                    setDeliveryModalReceivedBy('')
+                                    setDeliveryModalOpen(true)
+                                  } else {
+                                    void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })
+                                  }
+                                }}
                                 className="admin-button-primary disabled:opacity-60"
                               >
                                 Entregue
@@ -1328,6 +1346,10 @@ export function ReportsPage() {
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
                                 <p className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</p>
                               </div>
+                              <div>
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Recebido por</p>
+                                <p className="text-sm text-slate-700">{winner.receivedBy || '-'}</p>
+                              </div>
                             </div>
 
                             <div className="flex flex-wrap gap-2">
@@ -1342,7 +1364,15 @@ export function ReportsPage() {
                               <button
                                 type="button"
                                 disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })}
+                                onClick={() => {
+                                  if (requireReceiverIdentity) {
+                                    setDeliveryModalWinId(winner.id)
+                                    setDeliveryModalReceivedBy('')
+                                    setDeliveryModalOpen(true)
+                                  } else {
+                                    void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })
+                                  }
+                                }}
                                 className="admin-button-primary disabled:opacity-60"
                               >
                                 Entregue
@@ -1483,6 +1513,53 @@ export function ReportsPage() {
           )}
         </SectionCard>
       </div>
+
+      {deliveryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-900">Confirmar entrega</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Informe o nome ou documento de quem está retirando o prêmio.
+            </p>
+            <label className="mt-4 grid gap-2 text-sm">
+              <span className="text-slate-600">Recebido por</span>
+              <input
+                className="admin-input"
+                value={deliveryModalReceivedBy}
+                onChange={(event) => setDeliveryModalReceivedBy(event.target.value)}
+                placeholder="Ex: João da Silva ou CPF 123.456.789-00"
+                autoFocus
+                required
+              />
+            </label>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setDeliveryModalOpen(false)}
+                className="admin-button"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={updateRedemptionMutation.isPending || !deliveryModalReceivedBy.trim()}
+                onClick={() => {
+                  void updateRedemptionMutation
+                    .mutateAsync({
+                      winId: deliveryModalWinId,
+                      status: 'delivered',
+                      receivedBy: deliveryModalReceivedBy.trim(),
+                    })
+                    .then(() => setDeliveryModalOpen(false))
+                }}
+                className="admin-button-primary disabled:opacity-60"
+              >
+                {updateRedemptionMutation.isPending ? 'Confirmando...' : 'Confirmar entrega'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </AppShell>
   )

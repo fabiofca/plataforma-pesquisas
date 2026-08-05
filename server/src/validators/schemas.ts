@@ -209,6 +209,7 @@ export const rewardCampaignSchema = z.object({
   retryUnlockEnabled: z.boolean().default(false),
   retryUnlockTasks: z.array(rewardRetryTaskSchema).max(2, 'Cadastre no máximo 2 tarefas para liberar mais uma chance.').default([]),
   testPhones: z.array(z.string().regex(/^\d+$/, 'Use apenas números.')).max(20, 'No máximo 20 telefones de teste.').default([]),
+  requireReceiverIdentity: z.boolean().default(false),
 }).superRefine((value, context) => {
   if (!value.pickupAddress?.trim()) {
     context.addIssue({
@@ -289,6 +290,7 @@ export const rewardItemPatchSchema = rewardItemBaseSchema.partial().superRefine(
 export const rewardWinRedemptionSchema = z.object({
   status: z.enum(['pending', 'delivered', 'cancelled']),
   redemptionNotes: z.string().max(500).optional().or(z.literal('')),
+  receivedBy: z.string().max(150).optional().or(z.literal('')),
 })
 
 export const systemSettingSchema = z.array(

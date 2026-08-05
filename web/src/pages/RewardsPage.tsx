@@ -255,6 +255,7 @@ export function RewardsPage() {
     retryUnlockEnabled: false,
     retryUnlockTasks: [] as RewardRetryTask[],
     testPhones: [] as string[],
+    requireReceiverIdentity: false,
   })
   const [itemsForm, setItemsForm] = useState<RewardFormItem[]>([])
   const [feedback, setFeedback] = useState('')
@@ -284,6 +285,7 @@ export function RewardsPage() {
           retry_unlock_enabled?: boolean
           retry_unlock_tasks_json?: RewardRetryTask[]
           test_phones?: string[]
+          require_receiver_identity?: boolean
           spin_count?: number
         } | null
         items: Array<{
@@ -355,6 +357,7 @@ export function RewardsPage() {
         retryUnlockEnabled: rewardsQuery.data.campaign.retry_unlock_enabled ?? false,
         retryUnlockTasks: rewardsQuery.data.campaign.retry_unlock_tasks_json ?? [],
         testPhones: rewardsQuery.data.campaign.test_phones ?? [],
+        requireReceiverIdentity: rewardsQuery.data.campaign.require_receiver_identity ?? false,
       })
     } else {
       setCampaignForm({
@@ -369,6 +372,7 @@ export function RewardsPage() {
         retryUnlockEnabled: false,
         retryUnlockTasks: [],
         testPhones: [],
+        requireReceiverIdentity: false,
       })
     }
 
@@ -1438,6 +1442,31 @@ export function RewardsPage() {
                   ) : null}
                 </div>
               ) : null}
+            </div>
+
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Controle de entrega</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
+            <div className="admin-subcard grid gap-3 text-sm text-slate-700">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={campaignForm.requireReceiverIdentity}
+                  onChange={(event) =>
+                    setCampaignForm((current) => ({ ...current, requireReceiverIdentity: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                />
+                <div className="grid gap-0.5">
+                  <span className="font-medium text-slate-800">Exibir identificação de quem recebeu</span>
+                  <span className="text-xs text-slate-500">
+                    Ao ativar, o colaborador precisará informar o nome ou documento de quem retirou o prêmio ao confirmar a entrega.
+                  </span>
+                </div>
+              </label>
             </div>
 
             <div className="flex items-center gap-3 py-1">

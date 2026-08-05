@@ -121,6 +121,7 @@ type RewardWinnerItem = {
   couponCode: string
   redemptionStatus: 'pending' | 'delivered' | 'cancelled'
   redemptionNotes: string | null
+  receivedBy: string | null
 }
 
 type NoPrizeItem = {
@@ -871,18 +872,20 @@ async function getRewardReportData(
 ): Promise<{
   summary: RewardSummaryItem
   pickupAddress: string | null
+  requireReceiverIdentity: boolean
   stock: RewardStockItem[]
   winners: RewardWinnerItem[]
   winnersPagination: PaginationMeta
   noPrizeBreakdown: NoPrizeItem[]
   range: ReportRange
 }> {
-  const campaignResult = await query<{ id: string; pickup_address: string | null }>(
-    'select id, pickup_address from reward_campaigns where survey_id = $1 limit 1',
+  const campaignResult = await query<{ id: string; pickup_address: string | null; require_receiver_identity: boolean }>(
+    'select id, pickup_address, require_receiver_identity from reward_campaigns where survey_id = $1 limit 1',
     [surveyId],
   )
   const campaignId = campaignResult.rows[0]?.id
   const pickupAddress = campaignResult.rows[0]?.pickup_address ?? null
+  const requireReceiverIdentity = campaignResult.rows[0]?.require_receiver_identity ?? false
 
   if (!campaignId) {
     return {
@@ -895,6 +898,7 @@ async function getRewardReportData(
         cancelled_redemptions: '0',
       },
       pickupAddress,
+      requireReceiverIdentity,
       stock: [],
       winners: [],
       winnersPagination: {
@@ -1041,6 +1045,7 @@ async function getRewardReportData(
       coupon_code: string
       redemption_status: 'pending' | 'delivered' | 'cancelled'
       redemption_notes: string | null
+      received_by: string | null
     }>(
       `select
           reward_wins.id,
@@ -1053,7 +1058,8 @@ async function getRewardReportData(
           reward_items.title as item_title,
           reward_wins.coupon_code,
           reward_wins.redemption_status,
-          reward_wins.redemption_notes
+          reward_wins.redemption_notes,
+          reward_wins.received_by
        from reward_wins
        join reward_items on reward_items.id = reward_wins.reward_item_id
        join survey_responses on survey_responses.id = reward_wins.response_id
@@ -1084,6 +1090,7 @@ async function getRewardReportData(
       cancelled_redemptions: '0',
     },
     pickupAddress,
+    requireReceiverIdentity,
     stock: stockResult.rows.map((item) => ({
       id: item.id,
       title: item.title,
@@ -1111,6 +1118,7 @@ async function getRewardReportData(
         couponCode: row.coupon_code,
         redemptionStatus: row.redemption_status,
         redemptionNotes: row.redemption_notes,
+        receivedBy: row.received_by,
       }
     }),
     winnersPagination: options?.includeAllWinners
