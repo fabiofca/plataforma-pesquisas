@@ -2156,6 +2156,16 @@ export function PublicSurveyPage() {
           {rewardResult?.won ? (
             <div className="flex flex-1 flex-col bg-slate-50 p-3 animate-fade-in sm:p-5">
               <div className="mx-auto flex h-full w-full max-w-[540px] flex-col">
+                <div className="mb-3 flex items-center justify-end sm:mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setWheelModalOpen(false)}
+                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <X className="h-4 w-4" />
+                    Fechar
+                  </button>
+                </div>
                 <div className="flex flex-1 flex-col overflow-hidden text-center">
                   <div className="flex flex-col items-center justify-center">
                     <div
@@ -2258,6 +2268,16 @@ export function PublicSurveyPage() {
           ) : rewardResult && !rewardResult.won && !showRetryTaskOverlay && !wheelSpinning && !canSpinReward ? (
             /* Tela final: obrigado por participar (página inteira, sem roleta) */
             <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 p-3 animate-fade-in sm:p-5">
+              <div className="absolute right-3 top-3 sm:right-5 sm:top-5">
+                <button
+                  type="button"
+                  onClick={() => setWheelModalOpen(false)}
+                  className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
+                >
+                  <X className="h-4 w-4" />
+                  Fechar
+                </button>
+              </div>
               <div className="w-full max-w-[420px] text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.12)] sm:h-16 sm:w-16">
                   <Frown className="h-7 w-7 sm:h-8 sm:w-8" />
