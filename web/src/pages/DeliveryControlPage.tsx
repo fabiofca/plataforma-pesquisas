@@ -112,6 +112,7 @@ export function DeliveryControlPage() {
   const [useFullPeriod, setUseFullPeriod] = useState(false)
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<WinnerStatusFilter>('all')
   const [sortField, setSortField] = useState<WinnerSortField>('awardedAt')
   const [sortDirection, setSortDirection] = useState<WinnerSortDirection>('desc')
@@ -122,7 +123,13 @@ export function DeliveryControlPage() {
   const [deliveryModalWinId, setDeliveryModalWinId] = useState('')
   const [deliveryModalReceivedBy, setDeliveryModalReceivedBy] = useState('')
 
-  useEffect(() => { setPage(1) }, [searchQuery, statusFilter, sortField, sortDirection, pageSize, startDate, endDate, useFullPeriod])
+  useEffect(() => { setPage(1) }, [debouncedSearch, statusFilter, sortField, sortDirection, pageSize, startDate, endDate, useFullPeriod])
+
+  // Debounce search to avoid losing input focus on every keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   const effectiveStartDate = useFullPeriod ? '2020-01-01' : startDate
   const effectiveEndDate = useFullPeriod ? defaultEndDate : endDate
@@ -130,10 +137,10 @@ export function DeliveryControlPage() {
 
   // Parse search: if it's a short number (4+ digits), treat as protocol suffix
   const parsedSearch = useMemo(() => {
-    const trimmed = searchQuery.trim()
+    const trimmed = debouncedSearch.trim()
     if (/^\d{4,}$/.test(trimmed)) return { coupon: trimmed, name: '', phone: '', prize: '' }
     return { coupon: '', name: trimmed, phone: trimmed, prize: trimmed }
-  }, [searchQuery])
+  }, [debouncedSearch])
 
   const rewardsQuery = useQuery({
     queryKey: ['delivery-control', id, effectiveStartDate, effectiveEndDate, parsedSearch, statusFilter, sortField, sortDirection, page, pageSize],
@@ -295,7 +302,7 @@ export function DeliveryControlPage() {
                             <div className="min-w-0 text-sm text-slate-700">{winner.phone || '-'}</div>
                             <div className="min-w-0 truncate text-sm text-slate-700">{winner.email || '-'}</div>
                             <div className="min-w-0 truncate text-sm text-slate-700">{winner.itemTitle}</div>
-                            <div className="min-w-0 truncate text-sm font-medium text-slate-900">{winner.couponCode}</div>
+                            <div className="min-w-0 text-sm font-medium text-slate-900 break-all">{winner.couponCode}</div>
                             <div><span className={`admin-badge ${statusClass}`}>{statusLabel}</span></div>
                             <div className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</div>
                             <div className="min-w-0 truncate text-sm text-slate-700">{winner.receivedBy || '-'}</div>
@@ -330,7 +337,7 @@ export function DeliveryControlPage() {
                             <div className="grid gap-2 sm:grid-cols-2">
                               <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p><p className="text-sm text-slate-700">{winner.phone || '-'}</p></div>
                               <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p><p className="truncate text-sm text-slate-700">{winner.itemTitle}</p></div>
-                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p><p className="text-sm font-medium text-slate-900">{winner.couponCode}</p></div>
+                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p><p className="text-sm font-medium text-slate-900 break-all">{winner.couponCode}</p></div>
                               <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p><p className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</p></div>
                               <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Recebido por</p><p className="text-sm text-slate-700">{winner.receivedBy || '-'}</p></div>
                             </div>
