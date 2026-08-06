@@ -54,8 +54,8 @@ export const surveyQuestionSchema = z.object({
       }),
     )
     .optional(),
-  businessMetric: z.enum(['missing_product', 'attendant_name', 'attendant_rating']).optional(),
-  linkedQuestionId: z.string().optional(),
+  businessMetric: z.enum(['missing_product', 'attendant_name', 'attendant_rating']).nullish(),
+  linkedQuestionId: z.string().nullish(),
 })
 
 const surveyFlowNodeSchema = z.object({
