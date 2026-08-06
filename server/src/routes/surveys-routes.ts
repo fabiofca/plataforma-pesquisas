@@ -945,7 +945,7 @@ const attendantUpdateSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-surveysRouter.get('/surveys/:id/attendants', async (request: AuthenticatedRequest, response) => {
+surveysRouter.get('/:id/attendants', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
@@ -977,7 +977,7 @@ surveysRouter.get('/surveys/:id/attendants', async (request: AuthenticatedReques
   )
 })
 
-surveysRouter.post('/surveys/:id/attendants', async (request: AuthenticatedRequest, response) => {
+surveysRouter.post('/:id/attendants', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
@@ -1028,7 +1028,7 @@ surveysRouter.post('/surveys/:id/attendants', async (request: AuthenticatedReque
   }
 })
 
-surveysRouter.put('/surveys/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
+surveysRouter.put('/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
@@ -1108,7 +1108,7 @@ surveysRouter.put('/surveys/:id/attendants/:attendantId', async (request: Authen
   }
 })
 
-surveysRouter.delete('/surveys/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
+surveysRouter.delete('/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
