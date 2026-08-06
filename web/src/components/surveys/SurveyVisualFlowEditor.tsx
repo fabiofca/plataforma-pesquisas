@@ -180,6 +180,35 @@ export function SurveyVisualFlowEditor({
     [flowLayout, questions],
   )
 
+  // Auto-scroll canvas to center the selected question when it changes
+  useEffect(() => {
+    if (!selectedQuestionId || !canvasRef.current) return
+
+    const canvas = canvasRef.current
+    const selectedNode = nodes.find((node) => node.id === selectedQuestionId)
+    if (!selectedNode) return
+
+    const canvasWidth = canvas.clientWidth
+    const canvasHeight = canvas.clientHeight
+    const nodeCenterX = selectedNode.position.x + NODE_WIDTH / 2
+    const nodeCenterY = selectedNode.position.y + selectedNode.height / 2
+
+    // Only scroll if the node is outside the visible area
+    const isVisible =
+      nodeCenterX >= canvas.scrollLeft &&
+      nodeCenterX <= canvas.scrollLeft + canvasWidth &&
+      nodeCenterY >= canvas.scrollTop &&
+      nodeCenterY <= canvas.scrollTop + canvasHeight
+
+    if (!isVisible) {
+      canvas.scrollTo({
+        left: Math.max(0, nodeCenterX - canvasWidth / 2),
+        top: Math.max(0, nodeCenterY - canvasHeight / 2),
+        behavior: 'smooth',
+      })
+    }
+  }, [selectedQuestionId, nodes])
+
   function getCanvasPoint(clientX: number, clientY: number) {
     const canvas = canvasRef.current
 
