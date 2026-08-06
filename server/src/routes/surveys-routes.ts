@@ -112,6 +112,8 @@ async function loadSurveyQuestions(surveyId: string) {
         value: string
         nextQuestionId: string
       }>
+      businessMetric?: string | null
+      linkedQuestionId?: string | null
     }
   }>(
     `select id, title, description, type, is_required, position, settings_json
@@ -138,6 +140,8 @@ async function loadSurveyQuestions(surveyId: string) {
   return questionsResult.rows.map((question) => ({
     ...question,
     options: optionsResult.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
+    businessMetric: question.settings_json?.businessMetric ?? null,
+    linkedQuestionId: question.settings_json?.linkedQuestionId ?? null,
   }))
 }
 
@@ -252,6 +256,8 @@ type SurveyQuestionPayload = z.infer<typeof surveySchema>['questions'][number]
 function buildQuestionSettings(question: SurveyQuestionPayload) {
   return {
     flowRules: question.flowRules ?? [],
+    businessMetric: question.businessMetric ?? null,
+    linkedQuestionId: question.linkedQuestionId ?? null,
   }
 }
 
@@ -766,6 +772,8 @@ surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response)
     position: number
     settings_json: {
       flowRules?: Array<{ value: string; nextQuestionId: string }>
+      businessMetric?: string | null
+      linkedQuestionId?: string | null
     }
   }>(
     `select id, title, description, type, is_required, position, settings_json
@@ -812,6 +820,8 @@ surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response)
       position: q.position,
       options: qOptions,
       flowRules,
+      businessMetric: q.settings_json?.businessMetric ?? null,
+      linkedQuestionId: q.settings_json?.linkedQuestionId ?? null,
     }
   })
 

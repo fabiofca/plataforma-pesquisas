@@ -1784,3 +1784,251 @@ reportsRouter.get('/reports/nps-overview', async (request: AuthenticatedRequest,
     summary: await getNpsOverviewData(request.auth!.userId, request.auth!.roleCode),
   })
 })
+
+// --- Business Metrics Reports ---
+
+type MissingProductItem = {
+  product: string
+  count: number
+  percentage: number
+}
+
+type MissingProductsResponse = {
+  questionId: string
+  questionTitle: string
+  totalResponses: number
+  items: MissingProductItem[]
+}
+
+async function getMissingProductsReportData(
+  surveyId: string,
+  range: ReportRange,
+): Promise<MissingProductsResponse[]> {
+  // Find questions marked as missing_product
+  const metricQuestions = await query<{
+    id: string
+    title: string
+    settings_json: { businessMetric?: string }
+  }>(
+    `select id, title, settings_json
+     from survey_questions
+     where survey_id = $1
+       and settings_json->>'businessMetric' = 'missing_product'
+     order by position asc`,
+    [surveyId],
+  )
+
+  if (!metricQuestions.rows.length) {
+    return []
+  }
+
+  const totalResponsesResult = await query<{ total: string }>(
+    `select cast(count(*) as text) as total
+     from survey_responses
+     where survey_id = $1
+       and submitted_at >= $2::date
+       and submitted_at < ($3::date + interval '1 day')`,
+    [surveyId, range.startDate, range.endDate],
+  )
+  const totalResponses = Number(totalResponsesResult.rows[0]?.total ?? 0)
+
+  const results: MissingProductsResponse[] = []
+
+  for (const q of metricQuestions.rows) {
+    const answers = await query<{ answer_text: string | null; answer_json: unknown }>(
+      `select ra.answer_text, ra.answer_json
+       from response_answers ra
+       join survey_responses sr on sr.id = ra.response_id
+       where ra.question_id = $1
+         and sr.survey_id = $2
+         and sr.submitted_at >= $3::date
+         and sr.submitted_at < ($4::date + interval '1 day')`,
+      [q.id, surveyId, range.startDate, range.endDate],
+    )
+
+    const counts = new Map<string, number>()
+    let totalAnswers = 0
+
+    for (const row of answers.rows) {
+      const text = parseStoredAnswerValue(row.answer_text, row.answer_json)
+      if (typeof text === 'string' && text.trim()) {
+        const normalized = text.trim().toLowerCase()
+        counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+        totalAnswers++
+      }
+    }
+
+    const items = Array.from(counts.entries())
+      .map(([product, count]) => ({
+        product,
+        count,
+        percentage: totalAnswers ? roundNumber((count / totalAnswers) * 100, 2) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    results.push({
+      questionId: q.id,
+      questionTitle: q.title,
+      totalResponses,
+      items,
+    })
+  }
+
+  return results
+}
+
+type AttendantPerformanceItem = {
+  name: string
+  averageRating: number
+  ratingCount: number
+  minRating: number
+  maxRating: number
+}
+
+type AttendantPerformanceResponse = {
+  nameQuestionId: string
+  nameQuestionTitle: string
+  ratingQuestionId: string
+  ratingQuestionTitle: string
+  totalEvaluations: number
+  attendants: AttendantPerformanceItem[]
+}
+
+async function getAttendantPerformanceReportData(
+  surveyId: string,
+  range: ReportRange,
+): Promise<AttendantPerformanceResponse[]> {
+  // Find questions marked as attendant_name
+  const nameQuestions = await query<{
+    id: string
+    title: string
+    settings_json: { businessMetric?: string; linkedQuestionId?: string }
+  }>(
+    `select id, title, settings_json
+     from survey_questions
+     where survey_id = $1
+       and settings_json->>'businessMetric' = 'attendant_name'
+     order by position asc`,
+    [surveyId],
+  )
+
+  if (!nameQuestions.rows.length) {
+    return []
+  }
+
+  const results: AttendantPerformanceResponse[] = []
+
+  for (const nq of nameQuestions.rows) {
+    const linkedQuestionId = nq.settings_json?.linkedQuestionId
+    if (!linkedQuestionId) continue
+
+    // Verify linked question exists and is a rating type
+    const ratingQuestion = await query<{
+      id: string
+      title: string
+      type: string
+    }>(
+      `select id, title, type
+       from survey_questions
+       where id = $1 and survey_id = $2`,
+      [linkedQuestionId, surveyId],
+    )
+
+    if (!ratingQuestion.rows.length) continue
+    const rq = ratingQuestion.rows[0]
+
+    // Get paired answers: name + rating from same response
+    const pairedAnswers = await query<{
+      response_id: string
+      name_text: string | null
+      name_json: unknown
+      rating_text: string | null
+      rating_json: unknown
+    }>(
+      `select
+         ra_name.response_id,
+         ra_name.answer_text as name_text,
+         ra_name.answer_json as name_json,
+         ra_rating.answer_text as rating_text,
+         ra_rating.answer_json as rating_json
+       from response_answers ra_name
+       join response_answers ra_rating
+         on ra_rating.response_id = ra_name.response_id
+         and ra_rating.question_id = $2
+       join survey_responses sr on sr.id = ra_name.response_id
+       where ra_name.question_id = $1
+         and sr.survey_id = $3
+         and sr.submitted_at >= $4::date
+         and sr.submitted_at < ($5::date + interval '1 day')`,
+      [nq.id, linkedQuestionId, surveyId, range.startDate, range.endDate],
+    )
+
+    const attendantMap = new Map<
+      string,
+      { ratings: number[]; count: number }
+    >()
+
+    for (const row of pairedAnswers.rows) {
+      const name = parseStoredAnswerValue(row.name_text, row.name_json)
+      const rating = parseStoredAnswerValue(row.rating_text, row.rating_json)
+
+      if (typeof name !== 'string' || !name.trim()) continue
+      const numericRating = extractNumericValue(rating)
+      if (numericRating === null) continue
+
+      const normalizedName = name.trim()
+      const existing = attendantMap.get(normalizedName) ?? { ratings: [], count: 0 }
+      existing.ratings.push(numericRating)
+      existing.count++
+      attendantMap.set(normalizedName, existing)
+    }
+
+    const attendants = Array.from(attendantMap.entries())
+      .map(([name, data]) => {
+        const avg = data.ratings.reduce((s, v) => s + v, 0) / data.ratings.length
+        return {
+          name,
+          averageRating: roundNumber(avg, 2),
+          ratingCount: data.count,
+          minRating: Math.min(...data.ratings),
+          maxRating: Math.max(...data.ratings),
+        }
+      })
+      .sort((a, b) => b.averageRating - a.averageRating || b.ratingCount - a.ratingCount)
+
+    results.push({
+      nameQuestionId: nq.id,
+      nameQuestionTitle: nq.title,
+      ratingQuestionId: rq.id,
+      ratingQuestionTitle: rq.title,
+      totalEvaluations: attendants.reduce((sum, a) => sum + a.ratingCount, 0),
+      attendants,
+    })
+  }
+
+  return results
+}
+
+reportsRouter.get('/surveys/:id/reports/missing-products', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  response.json(await getMissingProductsReportData(surveyId, getReportRange(request)))
+})
+
+reportsRouter.get('/surveys/:id/reports/attendant-performance', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  response.json(await getAttendantPerformanceReportData(surveyId, getReportRange(request)))
+})

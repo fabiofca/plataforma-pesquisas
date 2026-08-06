@@ -6,7 +6,7 @@ import {
   getNodePosition,
   sortIdsByFlowLayout,
 } from '@/lib/survey-visual-flow'
-import type { QuestionType, SurveyFlowLayout, SurveyQuestionFlowRule } from '@/types/domain'
+import type { BusinessMetric, QuestionType, SurveyFlowLayout, SurveyQuestionFlowRule } from '@/types/domain'
 
 type VisualQuestion = {
   id: string
@@ -16,6 +16,8 @@ type VisualQuestion = {
   required: boolean
   options: string[]
   flowRules: SurveyQuestionFlowRule[]
+  businessMetric?: BusinessMetric | null
+  linkedQuestionId?: string | null
 }
 
 const questionTypes: Array<{ value: QuestionType; label: string }> = [
@@ -808,6 +810,54 @@ export function SurveyVisualFlowEditor({
                 />
                 Obrigatória
               </label>
+            </div>
+
+            {/* Business metric dropdown */}
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="grid gap-2 text-sm">
+                <span className="text-slate-600">Métrica de negócio</span>
+                <select
+                  className="admin-select"
+                  value={selectedQuestion.businessMetric ?? ''}
+                  onChange={(event) =>
+                    onUpdateQuestion(selectedQuestion.id, (current) => ({
+                      ...current,
+                      businessMetric: (event.target.value as BusinessMetric) || null,
+                      linkedQuestionId: event.target.value === 'attendant_name' ? current.linkedQuestionId : null,
+                    }))
+                  }
+                >
+                  <option value="">Nenhuma</option>
+                  <option value="missing_product">Produto em falta</option>
+                  <option value="attendant_name">Nome do atendente</option>
+                  <option value="attendant_rating">Nota do atendente</option>
+                </select>
+              </label>
+
+              {selectedQuestion.businessMetric === 'attendant_name' ? (
+                <label className="grid gap-2 text-sm">
+                  <span className="text-slate-600">Pergunta de nota vinculada</span>
+                  <select
+                    className="admin-select"
+                    value={selectedQuestion.linkedQuestionId ?? ''}
+                    onChange={(event) =>
+                      onUpdateQuestion(selectedQuestion.id, (current) => ({
+                        ...current,
+                        linkedQuestionId: event.target.value || null,
+                      }))
+                    }
+                  >
+                    <option value="">Selecione...</option>
+                    {questions
+                      .filter((q) => q.id !== selectedQuestion.id && (q.type === 'rating_1_5' || q.type === 'nps'))
+                      .map((q) => (
+                        <option key={q.id} value={q.id}>
+                          {q.title || 'Pergunta sem título'}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ) : null}
             </div>
 
             {selectedQuestion.type === 'single_choice' || selectedQuestion.type === 'multiple_choice' ? (

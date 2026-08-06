@@ -119,7 +119,33 @@ type RewardsResponse = {
   }
 }
 
-type InsightCategory = 'responses' | 'access' | 'contacts' | 'rewards' | 'wheel'
+type MissingProductsResponse = Array<{
+  questionId: string
+  questionTitle: string
+  totalResponses: number
+  items: Array<{
+    product: string
+    count: number
+    percentage: number
+  }>
+}>
+
+type AttendantPerformanceResponse = Array<{
+  nameQuestionId: string
+  nameQuestionTitle: string
+  ratingQuestionId: string
+  ratingQuestionTitle: string
+  totalEvaluations: number
+  attendants: Array<{
+    name: string
+    averageRating: number
+    ratingCount: number
+    minRating: number
+    maxRating: number
+  }>
+}>
+
+type InsightCategory = 'responses' | 'access' | 'contacts' | 'rewards' | 'wheel' | 'business'
 
 type InsightItem = {
   category: InsightCategory
@@ -133,6 +159,7 @@ const insightCategoryStyles: Record<InsightCategory, { bar: string; label: strin
   contacts: { bar: 'bg-violet-500', label: 'Contatos' },
   rewards: { bar: 'bg-emerald-500', label: 'Prêmios' },
   wheel: { bar: 'bg-amber-500', label: 'Roleta' },
+  business: { bar: 'bg-indigo-500', label: 'Negócio' },
 }
 
 function formatPeriodDate(value: string) {
@@ -440,6 +467,26 @@ export function ReportsPage() {
     queryFn: async () => {
       const params = buildReportParams(activeRange)
       return apiRequest<RewardsResponse>(`/surveys/${id}/reports/rewards?${params.toString()}`)
+    },
+    enabled: Boolean(id) && !isInvalidCustomRange,
+    retry: 0,
+  })
+
+  const missingProductsQuery = useQuery({
+    queryKey: ['reports-missing-products', id, activeRange.startDate, activeRange.endDate],
+    queryFn: async () => {
+      const params = buildReportParams(activeRange)
+      return apiRequest<MissingProductsResponse>(`/surveys/${id}/reports/missing-products?${params.toString()}`)
+    },
+    enabled: Boolean(id) && !isInvalidCustomRange,
+    retry: 0,
+  })
+
+  const attendantPerformanceQuery = useQuery({
+    queryKey: ['reports-attendant-performance', id, activeRange.startDate, activeRange.endDate],
+    queryFn: async () => {
+      const params = buildReportParams(activeRange)
+      return apiRequest<AttendantPerformanceResponse>(`/surveys/${id}/reports/attendant-performance?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
     retry: 0,
@@ -1062,6 +1109,106 @@ export function ReportsPage() {
           )}
         </SectionCard>
       </div>
+
+      {/* Missing Products Report */}
+      {missingProductsQuery.data && missingProductsQuery.data.length > 0 ? (
+        <div className="mt-6">
+          {missingProductsQuery.data.map((report) => (
+            <SectionCard
+              key={report.questionId}
+              eyebrow="Métrica de negócio"
+              title={`Produtos em falta — ${report.questionTitle}`}
+              description={`${report.items.length} produto(s) mencionado(s) por clientes.`}
+            >
+              {report.items.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        <th className="pb-2 pr-4">Produto</th>
+                        <th className="pb-2 pr-4 text-right">Menções</th>
+                        <th className="pb-2 text-right">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.items.map((item, index) => (
+                        <tr key={`${report.questionId}-${index}`} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2.5 pr-4 font-medium text-slate-900">{item.product}</td>
+                          <td className="py-2.5 pr-4 text-right text-slate-700">{item.count}</td>
+                          <td className="py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className="h-full rounded-full bg-indigo-500"
+                                  style={{ width: `${Math.max(item.percentage, item.count > 0 ? 3 : 0)}%` }}
+                                />
+                              </div>
+                              <span className="shrink-0 text-slate-500">{item.percentage}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="admin-empty-state py-8">Nenhum produto mencionado no período.</div>
+              )}
+            </SectionCard>
+          ))}
+        </div>
+      ) : null}
+
+      {/* Attendant Performance Report */}
+      {attendantPerformanceQuery.data && attendantPerformanceQuery.data.length > 0 ? (
+        <div className="mt-6">
+          {attendantPerformanceQuery.data.map((report) => (
+            <SectionCard
+              key={report.nameQuestionId}
+              eyebrow="Métrica de negócio"
+              title={`Desempenho dos atendentes — ${report.nameQuestionTitle}`}
+              description={`${report.totalEvaluations} avaliação(ões) cruzadas com a pergunta de nota.`}
+            >
+              {report.attendants.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        <th className="pb-2 pr-4">#</th>
+                        <th className="pb-2 pr-4">Atendente</th>
+                        <th className="pb-2 pr-4 text-right">Nota média</th>
+                        <th className="pb-2 pr-4 text-right">Avaliações</th>
+                        <th className="pb-2 text-right">Faixa</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.attendants.map((attendant, index) => (
+                        <tr key={`${report.nameQuestionId}-${index}`} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2.5 pr-4 text-slate-500">{index + 1}º</td>
+                          <td className="py-2.5 pr-4 font-medium text-slate-900">{attendant.name}</td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              attendant.averageRating >= 4 ? 'bg-emerald-100 text-emerald-700' :
+                              attendant.averageRating >= 3 ? 'bg-amber-100 text-amber-700' :
+                              'bg-rose-100 text-rose-700'
+                            }`}>
+                              {attendant.averageRating.toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="py-2.5 pr-4 text-right text-slate-700">{attendant.ratingCount}</td>
+                          <td className="py-2.5 text-right text-slate-500">{attendant.minRating}–{attendant.maxRating}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="admin-empty-state py-8">Nenhum atendente avaliado no período.</div>
+              )}
+            </SectionCard>
+          ))}
+        </div>
+      ) : null}
 
       </div>
     </AppShell>

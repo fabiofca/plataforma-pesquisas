@@ -1,4 +1,4 @@
-import type { SurveyItem, SurveyQuestion, UserListItem } from '@/types/domain'
+import type { BusinessMetric, SurveyItem, SurveyQuestion, UserListItem } from '@/types/domain'
 
 function mapRoleLabel(roleCode: string) {
   return roleCode === 'master' ? 'Usuário master' : 'Usuário comum'
@@ -71,6 +71,8 @@ export function mapApiQuestion(item: {
       value: string
       nextQuestionId: string
     }>
+    businessMetric?: string | null
+    linkedQuestionId?: string | null
   }
 }): SurveyQuestion {
   return {
@@ -81,6 +83,8 @@ export function mapApiQuestion(item: {
     required: item.is_required ?? item.required ?? false,
     options: item.options ?? [],
     flowRules: item.settings_json?.flowRules ?? [],
+    businessMetric: (item.settings_json?.businessMetric as BusinessMetric) ?? null,
+    linkedQuestionId: item.settings_json?.linkedQuestionId ?? null,
   }
 }
 
@@ -131,6 +135,8 @@ export function mapApiSurvey(item: {
           value: string
           nextQuestionId: string
         }>
+        businessMetric?: string | null
+        linkedQuestionId?: string | null
       }
   }>
   brand_name?: string

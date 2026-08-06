@@ -71,6 +71,8 @@ export interface DashboardMetric {
   change: string
 }
 
+export type BusinessMetric = 'missing_product' | 'attendant_name' | 'attendant_rating'
+
 export interface SurveyQuestion {
   id: string
   title: string
@@ -79,6 +81,8 @@ export interface SurveyQuestion {
   description?: string
   options?: string[]
   flowRules?: SurveyQuestionFlowRule[]
+  businessMetric?: BusinessMetric | null
+  linkedQuestionId?: string | null
 }
 
 export interface SurveyItem {

@@ -46,7 +46,7 @@ import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
 import { FLOW_ON_ANSWER } from '@/lib/survey-flow'
 import { mergeFlowLayout, sortIdsByFlowLayout } from '@/lib/survey-visual-flow'
-import type { QuestionType, SurveyBuilderMode, SurveyFlowLayout, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
+import type { BusinessMetric, QuestionType, SurveyBuilderMode, SurveyFlowLayout, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
 type BuilderQuestion = {
   id: string
@@ -56,6 +56,8 @@ type BuilderQuestion = {
   required: boolean
   options: string[]
   flowRules: SurveyQuestionFlowRule[]
+  businessMetric?: BusinessMetric | null
+  linkedQuestionId?: string | null
 }
 
 type BuilderState = {
@@ -189,6 +191,8 @@ function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
         required: question.required,
         options: question.options?.length ? question.options : [],
         flowRules: question.flowRules ?? [],
+        businessMetric: question.businessMetric ?? null,
+        linkedQuestionId: question.linkedQuestionId ?? null,
       }))
     : [makeQuestion()]
 
@@ -384,6 +388,8 @@ export function SurveyBuilderPage() {
                 rule.nextQuestionId.trim() &&
                 (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice' || question.type === 'multiple_choice'),
             ),
+          businessMetric: question.businessMetric ?? null,
+          linkedQuestionId: question.linkedQuestionId ?? null,
         })),
       }
 
