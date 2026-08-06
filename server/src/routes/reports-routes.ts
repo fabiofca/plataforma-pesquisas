@@ -1394,15 +1394,15 @@ function buildCsvReportContent(input: {
   if (input.respondents.length) {
     lines.push([])
     lines.push(['Participantes'])
-    lines.push(['Data', 'Nome', 'WhatsApp', 'E-mail', 'Aniversário'])
+    lines.push(['Data', 'Nome', 'WhatsApp', 'Aniversário', 'E-mail'])
 
     for (const respondent of input.respondents) {
       lines.push([
         respondent.submittedAt,
         respondent.name ?? '',
         respondent.phone ?? '',
-        respondent.email ?? '',
         respondent.birthdayLabel ?? '',
+        respondent.email ?? '',
       ])
     }
   }
@@ -1593,8 +1593,8 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
         .text(`Data: ${respondent.submittedAt}`)
         .text(`Nome: ${respondent.name ?? '-'}`)
         .text(`WhatsApp: ${respondent.phone ?? '-'}`)
-        .text(`E-mail: ${respondent.email ?? '-'}`)
         .text(`Aniversário: ${respondent.birthdayLabel ?? '-'}`)
+        .text(`E-mail: ${respondent.email ?? '-'}`)
       document.moveDown(0.6)
     })
   }
@@ -1852,15 +1852,15 @@ function buildParticipantsCsvContent(input: {
     ['Período', `${input.range.startDate} até ${input.range.endDate}`],
     ['Total de participantes', String(input.respondents.length)],
     [],
-    ['Nome', 'WhatsApp', 'E-mail', 'Aniversário', 'Data de participação'],
+    ['Nome', 'WhatsApp', 'Aniversário', 'E-mail', 'Data de participação'],
   ]
 
   for (const respondent of input.respondents) {
     lines.push([
       respondent.name ?? '',
       respondent.phone ?? '',
-      respondent.email ?? '',
       respondent.birthdayLabel ?? '',
+      respondent.email ?? '',
       respondent.submittedAt,
     ])
   }
@@ -1921,8 +1921,8 @@ function buildParticipantsTxtContent(input: {
     const r = input.respondents[i]
     lines.push(`  ${i + 1}. Nome: ${r.name ?? 'Não informado'}`)
     lines.push(`     WhatsApp: ${r.phone ?? 'Não informado'}`)
-    lines.push(`     E-mail: ${r.email ?? 'Não informado'}`)
     lines.push(`     Aniversário: ${r.birthdayLabel ?? 'Não informado'}`)
+    lines.push(`     E-mail: ${r.email ?? 'Não informado'}`)
     lines.push(`     Data de participação: ${r.submittedAt}`)
     lines.push('')
   }
@@ -1943,13 +1943,13 @@ function buildParticipantsPdfDocument(document: PDFKit.PDFDocument, input: {
   document.moveDown()
 
   // Table header
-  const colX = { name: 40, phone: 200, email: 310, birthday: 430, date: 490 }
+  const colX = { name: 40, phone: 180, birthday: 290, email: 350, date: 490 }
   ensurePdfSpace(document, 40)
   document.fontSize(9).fillColor('#64748b').font('Helvetica-Bold')
-  document.text('Nome', colX.name, undefined, { width: 150 })
+  document.text('Nome', colX.name, undefined, { width: 130 })
   document.text('WhatsApp', colX.phone, undefined, { width: 100 })
-  document.text('E-mail', colX.email, undefined, { width: 110 })
   document.text('Aniv.', colX.birthday, undefined, { width: 50 })
+  document.text('E-mail', colX.email, undefined, { width: 130 })
   document.text('Data', colX.date, undefined, { width: 100 })
   document.moveDown(0.3)
 
@@ -1964,10 +1964,10 @@ function buildParticipantsPdfDocument(document: PDFKit.PDFDocument, input: {
     ensurePdfSpace(document, 36)
     const startY = document.y
     document.fontSize(8).fillColor('#111827')
-    document.text(r.name ?? 'Não informado', colX.name, startY, { width: 150, lineBreak: false })
+    document.text(r.name ?? 'Não informado', colX.name, startY, { width: 130, lineBreak: false })
     document.text(r.phone ?? '-', colX.phone, startY, { width: 100, lineBreak: false })
-    document.text(r.email ?? '-', colX.email, startY, { width: 110, lineBreak: false })
     document.text(r.birthdayLabel ?? '-', colX.birthday, startY, { width: 50, lineBreak: false })
+    document.text(r.email ?? '-', colX.email, startY, { width: 130, lineBreak: false })
     document.text(r.submittedAt, colX.date, startY, { width: 100 })
     document.moveDown(0.2)
   }

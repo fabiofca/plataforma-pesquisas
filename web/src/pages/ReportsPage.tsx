@@ -1010,26 +1010,26 @@ export function ReportsPage() {
               ) : null}
 
               <div className="admin-table-shell">
-                <div className="report-table-head hidden grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px_220px] gap-3 lg:grid">
+                <div className="report-table-head hidden grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_120px_minmax(0,1fr)_220px] gap-3 lg:grid">
                   <div>Participante</div>
                   <div>WhatsApp</div>
-                  <div>E-mail</div>
                   <div>Aniversário</div>
+                  <div>E-mail</div>
                   <div>Data</div>
                 </div>
 
                 <div className="divide-y divide-slate-200">
                   {respondentsQuery.data.respondents.map((respondent) => (
                     <article key={respondent.id} className="report-table-row">
-                      <div className="hidden items-center gap-3 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px_220px]">
+                      <div className="hidden items-center gap-3 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_120px_minmax(0,1fr)_220px]">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-950">
                             {respondent.name || 'Sem nome informado'}
                           </p>
                         </div>
                         <div className="min-w-0 text-sm text-slate-700">{respondent.phone || '-'}</div>
-                        <div className="min-w-0 truncate text-sm text-slate-700">{respondent.email || '-'}</div>
                         <div className="text-sm text-slate-700">{respondent.birthdayLabel || '-'}</div>
+                        <div className="min-w-0 truncate text-sm text-slate-700">{respondent.email || '-'}</div>
                         <div className="text-sm text-slate-500">{respondent.submittedAt}</div>
                       </div>
 
