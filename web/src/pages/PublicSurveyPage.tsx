@@ -686,11 +686,12 @@ export function PublicSurveyPage() {
     )
   const rewardPickupAddress = rewardResult?.pickupAddress ?? survey?.rewardPickupAddress
   const rewardRedemptionMethod = rewardResult?.redemptionMethod ?? survey?.rewardRedemptionMethod ?? 'address_and_whatsapp'
-  const rewardProofExpiresAt = getRewardProofExpiresAt({
+  const rewardProofExpiresAtRaw = getRewardProofExpiresAt({
     awardedAt: rewardResult?.awardedAt,
     redemptionExpiresAt: rewardResult?.redemptionExpiresAt,
     redemptionExpirationDays: survey?.rewardRedemptionExpirationDays,
   })
+  const rewardProofExpiresAt = rewardProofExpiresAtRaw || (rewardResult?.won ? new Date(Date.now() + Math.max(1, survey?.rewardRedemptionExpirationDays ?? 15) * 86400000).toISOString() : '')
   const rewardContactWhatsAppUrl =
     rewardResult?.won && rewardRedemptionMethod === 'address_and_whatsapp' && rewardResult.contactWhatsApp
       ? buildRewardWhatsAppUrl({
