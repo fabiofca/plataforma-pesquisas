@@ -808,6 +808,22 @@ publicRouter.get('/preview/:token', async (request, response) => {
   response.json({ survey })
 })
 
+publicRouter.get('/surveys/:slug/attendants', async (request, response) => {
+  const survey = await getSurveyBySlug(request.params.slug)
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa pública não encontrada.' })
+    return
+  }
+
+  const result = await query<{ id: string; name: string }>(
+    `select id, name from survey_attendants where survey_id = $1 and is_active = true order by name asc`,
+    [survey.id],
+  )
+
+  response.json(result.rows.map((row) => ({ id: row.id, name: row.name })))
+})
+
 publicRouter.post('/surveys/:slug/visit', async (request, response) => {
   const payload = publicVisitSchema.parse(request.body)
   const survey = await getSurveyBySlug(request.params.slug)

@@ -589,6 +589,7 @@ export function PublicSurveyPage() {
   const [activeRetryTaskId, setActiveRetryTaskId] = useState<string | null>(null)
   const [retryTaskNow, setRetryTaskNow] = useState(() => Date.now())
   const [wheelTransitionReady, setWheelTransitionReady] = useState(false)
+  const [attendantSuggestions, setAttendantSuggestions] = useState<string[]>([])
   const trackedVisitKeyRef = useRef('')
   const sessionHydratedRef = useRef(false)
   const rewardSessionRestoreKeyRef = useRef('')
@@ -716,6 +717,32 @@ export function PublicSurveyPage() {
     const completedIds = rewardResult.completedTaskIds ?? completedRetryTaskIds
     return retryTasks.find((task) => !completedIds.includes(task.id)) ?? null
   }, [completedRetryTaskIds, retryTasks, rewardResult?.completedTaskIds, rewardResult?.retryAvailable])
+
+  // Fetch attendant suggestions when survey loads
+  useEffect(() => {
+    if (!survey?.slug || previewMode) {
+      setAttendantSuggestions([])
+      return
+    }
+
+    let cancelled = false
+
+    apiRequest<Array<{ id: string; name: string }>>(`/public/surveys/${survey.slug}/attendants`)
+      .then((attendants) => {
+        if (!cancelled) {
+          setAttendantSuggestions(attendants.map((a) => a.name))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAttendantSuggestions([])
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [survey?.slug, previewMode])
 
   function clearPersistedSurveySession() {
     removePersistedSurveySessionSnapshot(surveySessionStorageKey)
@@ -2070,11 +2097,22 @@ export function PublicSurveyPage() {
                         </div>
                       </div>
                     ) : (
-                      <input
-                        className="admin-input w-full bg-white"
-                        value={String(currentAnswer ?? '')}
-                        onChange={(event) => setSingleAnswer(question.id, event.target.value)}
-                      />
+                      <>
+                        <input
+                          className="admin-input w-full bg-white"
+                          value={String(currentAnswer ?? '')}
+                          onChange={(event) => setSingleAnswer(question.id, event.target.value)}
+                          list={question.businessMetric === 'attendant_name' && attendantSuggestions.length > 0 ? `attendants-${question.id}` : undefined}
+                          autoComplete={question.businessMetric === 'attendant_name' ? 'off' : undefined}
+                        />
+                        {question.businessMetric === 'attendant_name' && attendantSuggestions.length > 0 ? (
+                          <datalist id={`attendants-${question.id}`}>
+                            {attendantSuggestions.map((name) => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
+                        ) : null}
+                      </>
                     )}
                   </section>
                 )
