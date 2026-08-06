@@ -706,6 +706,56 @@ async function getRewardSessionState(
             : 'A roleta já foi utilizada nesta participação.',
       }
     }
+  } else {
+    // Fallback: check reward_wins directly when no spin logs exist
+    const winFallbackResult = await client.query<{
+      coupon_code: string | null
+      awarded_at: string | null
+      redemption_expires_at: string | null
+      item_title: string | null
+      image_url: string | null
+      reward_item_id: string | null
+    }>(
+      `select
+          cast(reward_wins.awarded_at as text) as awarded_at,
+          cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
+          reward_wins.coupon_code,
+          reward_items.title as item_title,
+          reward_items.image_url,
+          cast(reward_wins.reward_item_id as text) as reward_item_id
+       from reward_wins
+       left join reward_items on reward_items.id = reward_wins.reward_item_id
+       where reward_wins.response_id = $1
+       order by reward_wins.awarded_at desc
+       limit 1`,
+      [responseId],
+    )
+
+    const winFallback = winFallbackResult.rows[0]
+
+    if (winFallback) {
+      rewardResult = {
+        won: true,
+        item: winFallback.item_title ?? undefined,
+        landedLabel: winFallback.item_title ?? undefined,
+        landedSegmentId: winFallback.reward_item_id ?? undefined,
+        itemImageUrl: winFallback.image_url ?? undefined,
+        couponCode: winFallback.coupon_code ?? undefined,
+        awardedAt: winFallback.awarded_at ?? undefined,
+        redemptionExpiresAt: winFallback.redemption_expires_at ?? undefined,
+        pickupAddress: survey.reward_pickup_address ?? undefined,
+        contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
+        redemptionMethod: survey.reward_redemption_method ?? undefined,
+        retryAvailable: false,
+        retryUnlocked: false,
+        retryTasks,
+        completedTaskIds,
+        spinAttempt: maxAttempts,
+        maxAttempts,
+        finalAttempt: true,
+        message: 'Este resultado já foi registrado anteriormente.',
+      }
+    }
   }
 
   return {
@@ -1184,6 +1234,56 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           maxAttempts,
           finalAttempt: latestSpin.spin_attempt >= maxAttempts,
           message: `A roleta já foi utilizada nesta participação e parou em "${latestSpin.wheel_label}".`,
+        })
+        return
+      }
+    }
+
+    // Fallback: if no spin logs exist but a win is recorded, return the win data
+    if (attemptsMade === 0) {
+      const existingWinResult = await client.query<{
+        coupon_code: string | null
+        awarded_at: string | null
+        redemption_expires_at: string | null
+        item_title: string | null
+        image_url: string | null
+        reward_item_id: string | null
+      }>(
+        `select
+            cast(reward_wins.awarded_at as text) as awarded_at,
+            cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
+            reward_wins.coupon_code,
+            reward_items.title as item_title,
+            reward_items.image_url,
+            cast(reward_wins.reward_item_id as text) as reward_item_id
+         from reward_wins
+         left join reward_items on reward_items.id = reward_wins.reward_item_id
+         where reward_wins.response_id = $1
+         order by reward_wins.awarded_at desc
+         limit 1`,
+        [responseId],
+      )
+
+      const existingWin = existingWinResult.rows[0]
+
+      if (existingWin) {
+        await client.query('commit')
+        response.json({
+          won: true,
+          item: existingWin.item_title ?? undefined,
+          landedLabel: existingWin.item_title ?? undefined,
+          landedSegmentId: existingWin.reward_item_id ?? undefined,
+          itemImageUrl: existingWin.image_url ?? undefined,
+          couponCode: existingWin.coupon_code ?? undefined,
+          awardedAt: existingWin.awarded_at ?? undefined,
+          redemptionExpiresAt: existingWin.redemption_expires_at ?? undefined,
+          pickupAddress: survey.reward_pickup_address ?? undefined,
+          contactWhatsApp: survey.reward_contact_whatsapp ?? undefined,
+          redemptionMethod: survey.reward_redemption_method ?? undefined,
+          spinAttempt: maxAttempts,
+          maxAttempts,
+          finalAttempt: true,
+          message: 'Este resultado já foi registrado anteriormente.',
         })
         return
       }
