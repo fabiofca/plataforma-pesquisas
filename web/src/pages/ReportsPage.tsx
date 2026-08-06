@@ -1264,6 +1264,7 @@ export function ReportsPage() {
               description={`${report.totalEvaluations} avaliação(ões) cruzadas com a pergunta de nota.`}
             >
               {report.attendants.length ? (
+                <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -1314,9 +1315,18 @@ export function ReportsPage() {
                             </div>
                           </td>
                           <td className="py-2.5 pr-4 text-right">
-                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                              {attendant.ratingCount}
-                            </span>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                {attendant.ratingCount}
+                              </span>
+                              {attendant.ratingCount >= 500 ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700" title="Alto volume de avaliações">Alto</span>
+                              ) : attendant.ratingCount >= 100 ? (
+                                <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-700" title="Volume médio de avaliações">Médio</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500" title="Baixo volume de avaliações">Baixo</span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-2.5 text-right text-slate-500">{attendant.minRating}–{attendant.maxRating}</td>
                         </tr>
@@ -1324,6 +1334,14 @@ export function ReportsPage() {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+                  <span className="font-semibold uppercase tracking-wider">Volume de avaliações:</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">Alto</span> 500+</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-700">Médio</span> 100–499</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">Baixo</span> até 99</span>
+                </div>
+                </>
               ) : (
                 <div className="admin-empty-state py-8">Nenhum atendente avaliado no período.</div>
               )}

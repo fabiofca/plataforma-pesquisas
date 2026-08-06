@@ -255,6 +255,15 @@ function getWinnerFilters(request: AuthenticatedRequest): RewardWinnerFilters {
   }
 }
 
+function toTitleCase(value: string) {
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
+
 function roundNumber(value: number, digits = 2) {
   if (!Number.isFinite(value)) {
     return 0
@@ -2246,7 +2255,7 @@ async function getAttendantPerformanceReportData(
 
     const attendantMap = new Map<
       string,
-      { ratings: number[]; count: number }
+      { ratings: number[]; count: number; displayName: string }
     >()
 
     for (const row of pairedAnswers.rows) {
@@ -2257,18 +2266,19 @@ async function getAttendantPerformanceReportData(
       const numericRating = extractNumericValue(rating)
       if (numericRating === null) continue
 
-      const normalizedName = name.trim()
-      const existing = attendantMap.get(normalizedName) ?? { ratings: [], count: 0 }
+      const normalizedKey = name.trim().toLowerCase()
+      const displayName = toTitleCase(name.trim())
+      const existing = attendantMap.get(normalizedKey) ?? { ratings: [], count: 0, displayName }
       existing.ratings.push(numericRating)
       existing.count++
-      attendantMap.set(normalizedName, existing)
+      attendantMap.set(normalizedKey, existing)
     }
 
     const attendants = Array.from(attendantMap.entries())
-      .map(([name, data]) => {
+      .map(([, data]) => {
         const avg = data.ratings.reduce((s, v) => s + v, 0) / data.ratings.length
         return {
-          name,
+          name: data.displayName,
           averageRating: roundNumber(avg, 2),
           ratingCount: data.count,
           minRating: Math.min(...data.ratings),
