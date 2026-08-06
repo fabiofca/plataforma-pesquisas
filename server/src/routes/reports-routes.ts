@@ -348,6 +348,17 @@ function formatBirthdayLabel(input: { birthDay: number | null; birthMonth: numbe
   return `${String(input.birthDay).padStart(2, '0')}/${String(input.birthMonth).padStart(2, '0')}`
 }
 
+function formatDateTimeBR(value: string | Date) {
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return String(value)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${day}/${month}/${year} ${hours}:${minutes}`
+}
+
 function ensurePdfSpace(document: PDFKit.PDFDocument, minSpace = 72) {
   if (document.y > document.page.height - document.page.margins.bottom - minSpace) {
     document.addPage()
@@ -600,7 +611,7 @@ async function getRespondentsReportData(
   return {
     respondents: result.rows.map((row) => ({
       id: row.id,
-      submittedAt: row.submitted_at,
+      submittedAt: formatDateTimeBR(row.submitted_at),
       name: row.participant_name,
       phone: row.participant_phone,
       email: row.participant_email,
@@ -1271,6 +1282,8 @@ function buildCsvReportContent(input: {
     winners: RewardWinnerItem[]
     noPrizeBreakdown: NoPrizeItem[]
   }
+  missingProducts?: MissingProductsResponse[]
+  attendantPerformance?: AttendantPerformanceResponse[]
 }) {
   const lines: string[][] = [
     ['Relatório', input.title],
@@ -1394,6 +1407,29 @@ function buildCsvReportContent(input: {
     }
   }
 
+  if (input.missingProducts?.length) {
+    for (const report of input.missingProducts) {
+      lines.push([])
+      lines.push([`Produtos em falta — ${report.questionTitle}`])
+      lines.push(['Produto', 'Menções', 'Porcentagem'])
+      for (const item of report.items) {
+        lines.push([item.product, String(item.count), `${item.percentage}%`])
+      }
+    }
+  }
+
+  if (input.attendantPerformance?.length) {
+    for (const report of input.attendantPerformance) {
+      lines.push([])
+      lines.push([`Desempenho dos atendentes — ${report.nameQuestionTitle}`])
+      lines.push(['Posição', 'Atendente', 'Nota média', 'Avaliações', 'Faixa'])
+      for (let i = 0; i < report.attendants.length; i++) {
+        const att = report.attendants[i]
+        lines.push([`${i + 1}º`, att.name, String(att.averageRating), String(att.ratingCount), `${att.minRating}-${att.maxRating}`])
+      }
+    }
+  }
+
   return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
 }
 
@@ -1411,6 +1447,8 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
     winners: RewardWinnerItem[]
     noPrizeBreakdown: NoPrizeItem[]
   }
+  missingProducts?: MissingProductsResponse[]
+  attendantPerformance?: AttendantPerformanceResponse[]
 }) {
   const summaryLines = [
     `Total de respostas: ${input.summary.total_responses}`,
@@ -1568,27 +1606,61 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
 
   if (!input.rewards.winners.length) {
     document.fontSize(10).fillColor('#64748b').text('Nenhum ganhador disponível para o período selecionado.')
-    return
+  } else {
+    input.rewards.winners.forEach((winner) => {
+      ensurePdfSpace(document, 84)
+      document
+        .fontSize(10)
+        .fillColor('#111827')
+        .text(`Data: ${winner.awardedAt}`)
+        .text(`Validade: ${winner.expiresAt}`)
+        .text(`Expirado: ${winner.isExpired ? 'Sim' : 'Não'}`)
+        .text(`Nome: ${winner.name ?? '-'}`)
+        .text(`WhatsApp: ${winner.phone ?? '-'}`)
+        .text(`E-mail: ${winner.email ?? '-'}`)
+        .text(`Prêmio: ${winner.itemTitle}`)
+        .text(`Protocolo: ${winner.couponCode}`)
+        .text(`Status: ${winner.redemptionStatus}`)
+        .text(`Retirado em: ${winner.deliveredAt ?? '-'}`)
+        .text(`Observações: ${winner.redemptionNotes ?? '-'}`)
+      document.moveDown(0.6)
+    })
   }
 
-  input.rewards.winners.forEach((winner) => {
-    ensurePdfSpace(document, 84)
-    document
-      .fontSize(10)
-      .fillColor('#111827')
-      .text(`Data: ${winner.awardedAt}`)
-      .text(`Validade: ${winner.expiresAt}`)
-      .text(`Expirado: ${winner.isExpired ? 'Sim' : 'Não'}`)
-      .text(`Nome: ${winner.name ?? '-'}`)
-      .text(`WhatsApp: ${winner.phone ?? '-'}`)
-      .text(`E-mail: ${winner.email ?? '-'}`)
-      .text(`Prêmio: ${winner.itemTitle}`)
-      .text(`Protocolo: ${winner.couponCode}`)
-      .text(`Status: ${winner.redemptionStatus}`)
-      .text(`Retirado em: ${winner.deliveredAt ?? '-'}`)
-      .text(`Observações: ${winner.redemptionNotes ?? '-'}`)
-    document.moveDown(0.6)
-  })
+  if (input.missingProducts?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 180)
+    document.fontSize(14).fillColor('#0f172a').text('Produtos em falta')
+    document.moveDown(0.4)
+    for (const report of input.missingProducts) {
+      ensurePdfSpace(document, 60)
+      document.fontSize(11).fillColor('#0f172a').text(report.questionTitle)
+      document.moveDown(0.2)
+      for (const item of report.items) {
+        ensurePdfSpace(document, 24)
+        document.fontSize(10).fillColor('#111827').text(`${item.product}: ${item.count} menções (${item.percentage}%)`)
+      }
+      document.moveDown(0.4)
+    }
+  }
+
+  if (input.attendantPerformance?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 180)
+    document.fontSize(14).fillColor('#0f172a').text('Desempenho dos atendentes')
+    document.moveDown(0.4)
+    for (const report of input.attendantPerformance) {
+      ensurePdfSpace(document, 60)
+      document.fontSize(11).fillColor('#0f172a').text(report.nameQuestionTitle)
+      document.moveDown(0.2)
+      for (let i = 0; i < report.attendants.length; i++) {
+        const att = report.attendants[i]
+        ensurePdfSpace(document, 24)
+        document.fontSize(10).fillColor('#111827').text(`${i + 1}º ${att.name}: nota média ${att.averageRating} (${att.ratingCount} avaliações)`)
+      }
+      document.moveDown(0.4)
+    }
+  }
 }
 
 reportsRouter.use(requireAuth)
@@ -1682,12 +1754,14 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
     request.auth!.roleCode,
     'survey_share_tracking',
   )
-  const [title, summaryData, questionsData, respondentsData, rewardsData] = await Promise.all([
+  const [title, summaryData, questionsData, respondentsData, rewardsData, missingProductsData, attendantPerformanceData] = await Promise.all([
     getSurveyReportTitle(surveyId),
     getSummaryReportData(surveyId, range, canViewTracking),
     getQuestionReportData(surveyId, range),
     getRespondentsReportData(surveyId, range, { all: true }),
     getRewardReportData(surveyId, range, { includeAllWinners: true }),
+    getMissingProductsReportData(surveyId, range),
+    getAttendantPerformanceReportData(surveyId, range),
   ])
 
   const fileName = `relatorio-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
@@ -1699,6 +1773,8 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
     questions: questionsData.questions,
     respondents: respondentsData.respondents,
     rewards: rewardsData,
+    missingProducts: missingProductsData,
+    attendantPerformance: attendantPerformanceData,
   })
 
   response.setHeader('Content-Type', 'text/csv; charset=utf-8')
@@ -1732,12 +1808,14 @@ reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: Authenticat
     request.auth!.roleCode,
     'survey_share_tracking',
   )
-  const [title, summaryData, questionsData, respondentsData, rewardsData] = await Promise.all([
+  const [title, summaryData, questionsData, respondentsData, rewardsData, missingProductsData, attendantPerformanceData] = await Promise.all([
     getSurveyReportTitle(surveyId),
     getSummaryReportData(surveyId, range, canViewTracking),
     getQuestionReportData(surveyId, range),
     getRespondentsReportData(surveyId, range, { all: true }),
     getRewardReportData(surveyId, range, { includeAllWinners: true }),
+    getMissingProductsReportData(surveyId, range),
+    getAttendantPerformanceReportData(surveyId, range),
   ])
 
   const fileName = `relatorio-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
@@ -1758,8 +1836,70 @@ reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: Authenticat
     questions: questionsData.questions,
     respondents: respondentsData.respondents,
     rewards: rewardsData,
+    missingProducts: missingProductsData,
+    attendantPerformance: attendantPerformanceData,
   })
   document.end()
+})
+
+function buildParticipantsCsvContent(input: {
+  title: string
+  range: ReportRange
+  respondents: ReportRespondentItem[]
+}) {
+  const lines: string[][] = [
+    ['Participantes da pesquisa', input.title],
+    ['Período', `${input.range.startDate} até ${input.range.endDate}`],
+    ['Total de participantes', String(input.respondents.length)],
+    [],
+    ['Nome', 'WhatsApp', 'E-mail', 'Aniversário', 'Data de participação'],
+  ]
+
+  for (const respondent of input.respondents) {
+    lines.push([
+      respondent.name ?? '',
+      respondent.phone ?? '',
+      respondent.email ?? '',
+      respondent.birthdayLabel ?? '',
+      respondent.submittedAt,
+    ])
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, respondentsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getRespondentsReportData(surveyId, range, { all: true }),
+  ])
+
+  const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildParticipantsCsvContent({ title, range, respondents: respondentsData.respondents })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
 })
 
 reportsRouter.get('/reports/global', requireMaster, async (_request, response) => {

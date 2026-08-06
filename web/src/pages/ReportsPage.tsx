@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChartColumnBig, Download, Users } from 'lucide-react'
+import { ChartColumnBig, Download, FileSpreadsheet, Medal, Trophy, Users } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useParams } from 'react-router-dom'
 
@@ -379,6 +379,8 @@ export function ReportsPage() {
   const [customEndDate, setCustomEndDate] = useState(defaultEndDate)
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'pdf' | null>(null)
   const [exportFeedback, setExportFeedback] = useState('')
+  const [exportingParticipants, setExportingParticipants] = useState(false)
+  const [participantsExportFeedback, setParticipantsExportFeedback] = useState('')
   const [respondentsPage, setRespondentsPage] = useState(1)
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
   const canExportCsv = hasFeatureAccess(user, 'reports_export_csv')
@@ -545,6 +547,31 @@ export function ReportsPage() {
       setExportFeedback(message)
     } finally {
       setExportingFormat(null)
+    }
+  }
+
+  async function handleExportParticipants() {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingParticipants(true)
+    setParticipantsExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange)
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-participants.csv?${params.toString()}`,
+        `participantes-${activeRange.startDate}-${activeRange.endDate}.csv`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar os participantes agora.'
+
+      setParticipantsExportFeedback(message)
+    } finally {
+      setExportingParticipants(false)
     }
   }
 
@@ -933,9 +960,27 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando participantes...</div>
           ) : respondentsQuery.data?.pagination.totalItems ? (
             <div className="space-y-3">
-              <div className="report-summary-strip">
-                Total coletado no período: <strong>{respondentsQuery.data.pagination.totalItems}</strong> participante(s).
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="report-summary-strip">
+                  Total coletado no período: <strong>{respondentsQuery.data.pagination.totalItems}</strong> participante(s).
+                </div>
+
+                {canExportCsv ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleExportParticipants()}
+                    disabled={exportingParticipants}
+                    className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    {exportingParticipants ? 'Exportando...' : 'Exportar participantes'}
+                  </button>
+                ) : null}
               </div>
+
+              {participantsExportFeedback ? (
+                <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{participantsExportFeedback}</div>
+              ) : null}
 
               <div className="admin-table-shell">
                 <div className="report-table-head hidden grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px_220px] gap-3 lg:grid">
@@ -1118,13 +1163,14 @@ export function ReportsPage() {
               key={report.questionId}
               eyebrow="Métrica de negócio"
               title={`Produtos em falta — ${report.questionTitle}`}
-              description={`${report.items.length} produto(s) mencionado(s) por clientes.`}
+              description={`${report.items.length} produto(s) mencionado(s) por clientes. Total de respostas: ${report.totalResponses}.`}
             >
               {report.items.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        <th className="pb-2 pr-2">#</th>
                         <th className="pb-2 pr-4">Produto</th>
                         <th className="pb-2 pr-4 text-right">Menções</th>
                         <th className="pb-2 text-right">%</th>
@@ -1133,13 +1179,34 @@ export function ReportsPage() {
                     <tbody>
                       {report.items.map((item, index) => (
                         <tr key={`${report.questionId}-${index}`} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2.5 pr-2">
+                            {index === 0 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                <Trophy className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 1 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 2 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-700">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <span className="pl-1 text-xs text-slate-400">{index + 1}º</span>
+                            )}
+                          </td>
                           <td className="py-2.5 pr-4 font-medium text-slate-900">{item.product}</td>
-                          <td className="py-2.5 pr-4 text-right text-slate-700">{item.count}</td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              {item.count}
+                            </span>
+                          </td>
                           <td className="py-2.5 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
                                 <div
-                                  className="h-full rounded-full bg-indigo-500"
+                                  className={`h-full rounded-full ${index === 0 ? 'bg-amber-500' : index === 1 ? 'bg-slate-400' : index === 2 ? 'bg-orange-400' : 'bg-indigo-500'}`}
                                   style={{ width: `${Math.max(item.percentage, item.count > 0 ? 3 : 0)}%` }}
                                 />
                               </div>
@@ -1174,7 +1241,7 @@ export function ReportsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
-                        <th className="pb-2 pr-4">#</th>
+                        <th className="pb-2 pr-2">#</th>
                         <th className="pb-2 pr-4">Atendente</th>
                         <th className="pb-2 pr-4 text-right">Nota média</th>
                         <th className="pb-2 pr-4 text-right">Avaliações</th>
@@ -1184,18 +1251,46 @@ export function ReportsPage() {
                     <tbody>
                       {report.attendants.map((attendant, index) => (
                         <tr key={`${report.nameQuestionId}-${index}`} className="border-b border-slate-100 last:border-0">
-                          <td className="py-2.5 pr-4 text-slate-500">{index + 1}º</td>
+                          <td className="py-2.5 pr-2">
+                            {index === 0 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                                <Trophy className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 1 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 2 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-700">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <span className="pl-1 text-xs text-slate-400">{index + 1}º</span>
+                            )}
+                          </td>
                           <td className="py-2.5 pr-4 font-medium text-slate-900">{attendant.name}</td>
                           <td className="py-2.5 pr-4 text-right">
-                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              attendant.averageRating >= 4 ? 'bg-emerald-100 text-emerald-700' :
-                              attendant.averageRating >= 3 ? 'bg-amber-100 text-amber-700' :
-                              'bg-rose-100 text-rose-700'
-                            }`}>
-                              {attendant.averageRating.toFixed(1)}
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className={`h-full rounded-full ${attendant.averageRating >= 4 ? 'bg-emerald-500' : attendant.averageRating >= 3 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                  style={{ width: `${(attendant.averageRating / 5) * 100}%` }}
+                                />
+                              </div>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                attendant.averageRating >= 4 ? 'bg-emerald-100 text-emerald-700' :
+                                attendant.averageRating >= 3 ? 'bg-amber-100 text-amber-700' :
+                                'bg-rose-100 text-rose-700'
+                              }`}>
+                                {attendant.averageRating.toFixed(1)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              {attendant.ratingCount}
                             </span>
                           </td>
-                          <td className="py-2.5 pr-4 text-right text-slate-700">{attendant.ratingCount}</td>
                           <td className="py-2.5 text-right text-slate-500">{attendant.minRating}–{attendant.maxRating}</td>
                         </tr>
                       ))}
