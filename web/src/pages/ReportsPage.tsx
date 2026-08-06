@@ -379,7 +379,7 @@ export function ReportsPage() {
   const [customEndDate, setCustomEndDate] = useState(defaultEndDate)
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'pdf' | null>(null)
   const [exportFeedback, setExportFeedback] = useState('')
-  const [exportingParticipants, setExportingParticipants] = useState(false)
+  const [exportingParticipants, setExportingParticipants] = useState<'csv' | 'pdf' | 'txt' | null>(null)
   const [participantsExportFeedback, setParticipantsExportFeedback] = useState('')
   const [respondentsPage, setRespondentsPage] = useState(1)
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
@@ -550,20 +550,20 @@ export function ReportsPage() {
     }
   }
 
-  async function handleExportParticipants() {
+  async function handleExportParticipants(format: 'csv' | 'pdf' | 'txt') {
     if (!id || isInvalidCustomRange || !hasReportData) {
       return
     }
 
-    setExportingParticipants(true)
+    setExportingParticipants(format)
     setParticipantsExportFeedback('')
 
     try {
       const params = buildReportParams(activeRange)
 
       await downloadApiFile(
-        `/surveys/${id}/reports/export-participants.csv?${params.toString()}`,
-        `participantes-${activeRange.startDate}-${activeRange.endDate}.csv`,
+        `/surveys/${id}/reports/export-participants.${format}?${params.toString()}`,
+        `participantes-${activeRange.startDate}-${activeRange.endDate}.${format}`,
       )
     } catch (error) {
       const message =
@@ -571,7 +571,7 @@ export function ReportsPage() {
 
       setParticipantsExportFeedback(message)
     } finally {
-      setExportingParticipants(false)
+      setExportingParticipants(null)
     }
   }
 
@@ -965,16 +965,43 @@ export function ReportsPage() {
                   Total coletado no período: <strong>{respondentsQuery.data.pagination.totalItems}</strong> participante(s).
                 </div>
 
-                {canExportCsv ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleExportParticipants()}
-                    disabled={exportingParticipants}
-                    className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <FileSpreadsheet className="h-4 w-4" />
-                    {exportingParticipants ? 'Exportando...' : 'Exportar participantes'}
-                  </button>
+                {(canExportCsv || canExportPdf) ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-slate-500">Exportar:</span>
+                    {canExportCsv ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleExportParticipants('csv')}
+                          disabled={exportingParticipants !== null}
+                          className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <FileSpreadsheet className="h-3.5 w-3.5" />
+                          {exportingParticipants === 'csv' ? 'Exportando...' : 'CSV'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleExportParticipants('txt')}
+                          disabled={exportingParticipants !== null}
+                          className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          {exportingParticipants === 'txt' ? 'Exportando...' : 'TXT'}
+                        </button>
+                      </>
+                    ) : null}
+                    {canExportPdf ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleExportParticipants('pdf')}
+                        disabled={exportingParticipants !== null}
+                        className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        {exportingParticipants === 'pdf' ? 'Exportando...' : 'PDF'}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 

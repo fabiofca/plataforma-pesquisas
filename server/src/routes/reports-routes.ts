@@ -1902,6 +1902,147 @@ reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request
   response.send(`\ufeff${csv}`)
 })
 
+function buildParticipantsTxtContent(input: {
+  title: string
+  range: ReportRange
+  respondents: ReportRespondentItem[]
+}) {
+  const separator = '─'.repeat(70)
+  const lines: string[] = [
+    separator,
+    `  PARTICIPANTES DA PESQUISA: ${input.title}`,
+    `  Período: ${input.range.startDate} até ${input.range.endDate}`,
+    `  Total de participantes: ${input.respondents.length}`,
+    separator,
+    '',
+  ]
+
+  for (let i = 0; i < input.respondents.length; i++) {
+    const r = input.respondents[i]
+    lines.push(`  ${i + 1}. Nome: ${r.name ?? 'Não informado'}`)
+    lines.push(`     WhatsApp: ${r.phone ?? 'Não informado'}`)
+    lines.push(`     E-mail: ${r.email ?? 'Não informado'}`)
+    lines.push(`     Aniversário: ${r.birthdayLabel ?? 'Não informado'}`)
+    lines.push(`     Data de participação: ${r.submittedAt}`)
+    lines.push('')
+  }
+
+  lines.push(separator)
+  return lines.join('\n')
+}
+
+function buildParticipantsPdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  respondents: ReportRespondentItem[]
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Participantes — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${input.range.startDate} até ${input.range.endDate}`)
+  document.fontSize(11).fillColor('#475569').text(`Total: ${input.respondents.length} participante(s)`)
+  document.moveDown()
+
+  // Table header
+  const colX = { name: 40, phone: 200, email: 310, birthday: 430, date: 490 }
+  ensurePdfSpace(document, 40)
+  document.fontSize(9).fillColor('#64748b').font('Helvetica-Bold')
+  document.text('Nome', colX.name, undefined, { width: 150 })
+  document.text('WhatsApp', colX.phone, undefined, { width: 100 })
+  document.text('E-mail', colX.email, undefined, { width: 110 })
+  document.text('Aniv.', colX.birthday, undefined, { width: 50 })
+  document.text('Data', colX.date, undefined, { width: 100 })
+  document.moveDown(0.3)
+
+  // Divider line
+  const pageWidth = document.page.width - 80
+  document.moveTo(40, document.y).lineTo(40 + pageWidth, document.y).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
+  document.moveDown(0.3)
+
+  document.font('Helvetica')
+
+  for (const r of input.respondents) {
+    ensurePdfSpace(document, 36)
+    const startY = document.y
+    document.fontSize(8).fillColor('#111827')
+    document.text(r.name ?? 'Não informado', colX.name, startY, { width: 150, lineBreak: false })
+    document.text(r.phone ?? '-', colX.phone, startY, { width: 100, lineBreak: false })
+    document.text(r.email ?? '-', colX.email, startY, { width: 110, lineBreak: false })
+    document.text(r.birthdayLabel ?? '-', colX.birthday, startY, { width: 50, lineBreak: false })
+    document.text(r.submittedAt, colX.date, startY, { width: 100 })
+    document.moveDown(0.2)
+  }
+}
+
+reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, respondentsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getRespondentsReportData(surveyId, range, { all: true }),
+  ])
+
+  const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.txt`
+  const txt = buildParticipantsTxtContent({ title, range, respondents: respondentsData.respondents })
+
+  response.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(txt)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, respondentsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getRespondentsReportData(surveyId, range, { all: true }),
+  ])
+
+  const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildParticipantsPdfDocument(document, { title, range, respondents: respondentsData.respondents })
+  document.end()
+})
+
 reportsRouter.get('/reports/global', requireMaster, async (_request, response) => {
   const result = await query<{
     surveys: string
