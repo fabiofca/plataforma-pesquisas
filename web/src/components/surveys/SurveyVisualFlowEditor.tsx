@@ -806,6 +806,25 @@ export function SurveyVisualFlowEditor({
                       const type = event.target.value as QuestionType
                       const needsOptions = type === 'single_choice' || type === 'multiple_choice'
 
+                      // Validate metric compatibility with new type
+                      let nextBusinessMetric = current.businessMetric
+                      let nextLinkedQuestionId = current.linkedQuestionId
+
+                      if (current.businessMetric === 'missing_product' && type !== 'short_text' && type !== 'long_text') {
+                        nextBusinessMetric = null
+                        nextLinkedQuestionId = null
+                      }
+
+                      if (current.businessMetric === 'attendant_name' && type !== 'short_text' && type !== 'long_text') {
+                        nextBusinessMetric = null
+                        nextLinkedQuestionId = null
+                      }
+
+                      if (current.businessMetric === 'attendant_rating' && type !== 'rating_1_5' && type !== 'nps') {
+                        nextBusinessMetric = null
+                        nextLinkedQuestionId = null
+                      }
+
                       return {
                         ...current,
                         type,
@@ -814,6 +833,8 @@ export function SurveyVisualFlowEditor({
                           type === 'yes_no' || type === 'single_choice' || type === 'multiple_choice'
                             ? current.flowRules
                             : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
+                        businessMetric: nextBusinessMetric,
+                        linkedQuestionId: nextLinkedQuestionId,
                       }
                     })
                   }

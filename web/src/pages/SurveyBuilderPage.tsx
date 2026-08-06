@@ -370,27 +370,40 @@ export function SurveyBuilderPage() {
         allowMultipleResponses: form.allowMultipleResponses,
         builderMode: 'visual',
         flowLayout: normalizedFlowLayout,
-        questions: orderedQuestions.map((question, index) => ({
-          id: question.id,
-          title: question.title.trim(),
-          description: question.description.trim(),
-          type: question.type,
-          isRequired: question.required,
-          position: index,
-          options:
-            question.type === 'single_choice' || question.type === 'multiple_choice'
-              ? question.options.map((item) => item.trim()).filter(Boolean)
-              : [],
-          flowRules:
-            question.flowRules.filter(
-              (rule) =>
-                rule.value.trim() &&
-                rule.nextQuestionId.trim() &&
-                (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice' || question.type === 'multiple_choice'),
-            ),
-          businessMetric: question.businessMetric ?? null,
-          linkedQuestionId: question.linkedQuestionId ?? null,
-        })),
+        questions: orderedQuestions.map((question, index) => {
+          // Validate linkedQuestionId: must point to an existing question of compatible type
+          let validatedLinkedId = question.linkedQuestionId ?? null
+          if (validatedLinkedId) {
+            const linkedQuestion = orderedQuestions.find((q) => q.id === validatedLinkedId)
+            if (!linkedQuestion) {
+              validatedLinkedId = null
+            } else if (question.businessMetric === 'attendant_name' && linkedQuestion.type !== 'rating_1_5' && linkedQuestion.type !== 'nps') {
+              validatedLinkedId = null
+            }
+          }
+
+          return {
+            id: question.id,
+            title: question.title.trim(),
+            description: question.description.trim(),
+            type: question.type,
+            isRequired: question.required,
+            position: index,
+            options:
+              question.type === 'single_choice' || question.type === 'multiple_choice'
+                ? question.options.map((item) => item.trim()).filter(Boolean)
+                : [],
+            flowRules:
+              question.flowRules.filter(
+                (rule) =>
+                  rule.value.trim() &&
+                  rule.nextQuestionId.trim() &&
+                  (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice' || question.type === 'multiple_choice'),
+              ),
+            businessMetric: question.businessMetric ?? null,
+            linkedQuestionId: validatedLinkedId,
+          }
+        }),
       }
 
       let surveyId = params.id ?? ''
@@ -659,23 +672,37 @@ export function SurveyBuilderPage() {
         return current
       }
 
-      const removedQuestionId = current.questions[index]?.id
+      const removedQuestion = current.questions[index]
+      if (!removedQuestion) return current
+
+      // Warn if the question has a business metric
+      if (removedQuestion.businessMetric) {
+        const metricLabels: Record<string, string> = {
+          missing_product: 'Produto em falta',
+          attendant_name: 'Nome do atendente',
+          attendant_rating: 'Nota do atendente',
+        }
+        const label = metricLabels[removedQuestion.businessMetric] ?? removedQuestion.businessMetric
+        if (!window.confirm(`Esta pergunta está configurada como métrica de negócio "${label}". Deseja removê-la mesmo assim? A métrica será perdida.`)) {
+          return current
+        }
+      }
+
+      const removedQuestionId = removedQuestion.id
       const nextQuestions = current.questions.filter((_, i) => i !== index)
 
       return {
         ...current,
-        questions: removedQuestionId
-          ? nextQuestions.map((question) => ({
-              ...question,
-              flowRules: removeRulesThatPointToQuestion(question.flowRules, removedQuestionId),
-            }))
-          : nextQuestions,
-        flowLayout: removedQuestionId
-          ? {
-              ...current.flowLayout,
-              nodes: current.flowLayout.nodes.filter((node) => node.id !== removedQuestionId),
-            }
-          : current.flowLayout,
+        questions: nextQuestions.map((question) => ({
+          ...question,
+          flowRules: removeRulesThatPointToQuestion(question.flowRules, removedQuestionId),
+          // Clean up linkedQuestionId if it points to the removed question
+          linkedQuestionId: question.linkedQuestionId === removedQuestionId ? null : question.linkedQuestionId,
+        })),
+        flowLayout: {
+          ...current.flowLayout,
+          nodes: current.flowLayout.nodes.filter((node) => node.id !== removedQuestionId),
+        },
       }
     })
   }
