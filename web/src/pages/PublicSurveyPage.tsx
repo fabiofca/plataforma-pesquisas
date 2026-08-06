@@ -2375,10 +2375,19 @@ export function PublicSurveyPage() {
                               <PartyPopper className="h-7 w-7 sm:h-8 sm:w-8" />
                             </div>
                             <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
-                            <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
-                              Você não ganhou neste giro.
-                            </p>
-                            <p className="mt-1 text-sm text-slate-500">Complete a tarefa abaixo para girar novamente.</p>
+
+                            {!currentRetryTaskReturned ? (
+                              <>
+                                <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+                                  Complete a tarefa para girar novamente.
+                                </p>
+                                <p className="mt-1 text-sm text-slate-500">Siga as instruções abaixo para liberar sua próxima chance.</p>
+                              </>
+                            ) : (
+                              <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
+                                Sua nova chance está sendo preparada!
+                              </p>
+                            )}
 
                             {!currentRetryTaskReturned ? (
                               <>
