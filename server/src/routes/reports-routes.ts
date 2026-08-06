@@ -2227,6 +2227,20 @@ async function getAttendantPerformanceReportData(
     if (!ratingQuestion.rows.length) continue
     const rq = ratingQuestion.rows[0]
 
+    // Fetch registered attendants for matching
+    const registeredAttendants = await query<{ id: string; name: string; is_active: boolean }>(
+      `select id, name, is_active from survey_attendants where survey_id = $1 order by name asc`,
+      [surveyId],
+    )
+
+    // Build normalized name -> registered name map (only active attendants)
+    const registeredNameMap = new Map<string, string>()
+    for (const att of registeredAttendants.rows) {
+      if (att.is_active) {
+        registeredNameMap.set(att.name.toLowerCase(), att.name)
+      }
+    }
+
     // Get paired answers: name + rating from same response
     const pairedAnswers = await query<{
       response_id: string
@@ -2266,12 +2280,18 @@ async function getAttendantPerformanceReportData(
       const numericRating = extractNumericValue(rating)
       if (numericRating === null) continue
 
-      const normalizedKey = name.trim().toLowerCase()
-      const displayName = toTitleCase(name.trim())
-      const existing = attendantMap.get(normalizedKey) ?? { ratings: [], count: 0, displayName }
+      const trimmedName = name.trim()
+      const normalizedKey = trimmedName.toLowerCase()
+
+      // Try to match against registered attendants (exact match)
+      const matchedName = registeredNameMap.get(normalizedKey)
+      const displayName = matchedName ?? toTitleCase(trimmedName)
+      const mapKey = matchedName ? matchedName.toLowerCase() : normalizedKey
+
+      const existing = attendantMap.get(mapKey) ?? { ratings: [], count: 0, displayName }
       existing.ratings.push(numericRating)
       existing.count++
-      attendantMap.set(normalizedKey, existing)
+      attendantMap.set(mapKey, existing)
     }
 
     const attendants = Array.from(attendantMap.entries())

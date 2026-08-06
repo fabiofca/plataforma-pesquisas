@@ -933,3 +933,198 @@ surveysRouter.get('/:id/share/qr', async (request: AuthenticatedRequest, respons
   )
   response.send(qrCodeBuffer)
 })
+
+// ── Attendant CRUD ─────────────────────────────────────────────────────────
+
+const attendantCreateSchema = z.object({
+  name: z.string().min(1, 'Informe o nome do atendente.').max(255),
+})
+
+const attendantUpdateSchema = z.object({
+  name: z.string().min(1, 'Informe o nome do atendente.').max(255).optional(),
+  isActive: z.boolean().optional(),
+})
+
+surveysRouter.get('/surveys/:id/attendants', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const result = await query<{
+    id: string
+    name: string
+    is_active: boolean
+    created_at: string
+  }>(
+    `select id, name, is_active, cast(created_at as text) as created_at
+     from survey_attendants
+     where survey_id = $1
+     order by name asc`,
+    [surveyId],
+  )
+
+  response.json(
+    result.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+    })),
+  )
+})
+
+surveysRouter.post('/surveys/:id/attendants', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const parsed = attendantCreateSchema.safeParse(request.body)
+
+  if (!parsed.success) {
+    response.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos.' })
+    return
+  }
+
+  const normalizedName = parsed.data.name.trim()
+
+  try {
+    const result = await query<{
+      id: string
+      name: string
+      is_active: boolean
+      created_at: string
+    }>(
+      `insert into survey_attendants (survey_id, name)
+       values ($1, $2)
+       returning id, name, is_active, cast(created_at as text) as created_at`,
+      [surveyId, normalizedName],
+    )
+
+    const row = result.rows[0]
+
+    response.status(201).json({
+      id: row.id,
+      name: row.name,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+    })
+  } catch (error: unknown) {
+    const pgError = error as { code?: string }
+
+    if (pgError.code === '23505') {
+      response.status(409).json({ message: 'Já existe um atendente com este nome nesta pesquisa.' })
+      return
+    }
+
+    throw error
+  }
+})
+
+surveysRouter.put('/surveys/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const attendantId = String(request.params.attendantId)
+  const parsed = attendantUpdateSchema.safeParse(request.body)
+
+  if (!parsed.success) {
+    response.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos.' })
+    return
+  }
+
+  const updates: string[] = []
+  const values: unknown[] = []
+  let paramIndex = 1
+
+  if (parsed.data.name !== undefined) {
+    const normalizedName = parsed.data.name.trim()
+    updates.push(`name = $${paramIndex}`)
+    values.push(normalizedName)
+    paramIndex++
+  }
+
+  if (parsed.data.isActive !== undefined) {
+    updates.push(`is_active = $${paramIndex}`)
+    values.push(parsed.data.isActive)
+    paramIndex++
+  }
+
+  if (updates.length === 0) {
+    response.status(400).json({ message: 'Nenhum campo para atualizar.' })
+    return
+  }
+
+  values.push(attendantId, surveyId)
+
+  try {
+    const result = await query<{
+      id: string
+      name: string
+      is_active: boolean
+      created_at: string
+    }>(
+      `update survey_attendants
+       set ${updates.join(', ')}
+       where id = $${paramIndex} and survey_id = $${paramIndex + 1}
+       returning id, name, is_active, cast(created_at as text) as created_at`,
+      values,
+    )
+
+    const row = result.rows[0]
+
+    if (!row) {
+      response.status(404).json({ message: 'Atendente não encontrado.' })
+      return
+    }
+
+    response.json({
+      id: row.id,
+      name: row.name,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+    })
+  } catch (error: unknown) {
+    const pgError = error as { code?: string }
+
+    if (pgError.code === '23505') {
+      response.status(409).json({ message: 'Já existe um atendente com este nome nesta pesquisa.' })
+      return
+    }
+
+    throw error
+  }
+})
+
+surveysRouter.delete('/surveys/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const attendantId = String(request.params.attendantId)
+
+  const result = await query(`delete from survey_attendants where id = $1 and survey_id = $2`, [attendantId, surveyId])
+
+  if (result.rowCount === 0) {
+    response.status(404).json({ message: 'Atendente não encontrado.' })
+    return
+  }
+
+  response.status(204).send()
+})
