@@ -531,30 +531,6 @@ export function RewardsPage() {
     },
   })
 
-  const updateWinStatusMutation = useMutation({
-    mutationFn: async (payload: { winId: string; status: 'pending' | 'delivered' | 'cancelled' }) =>
-      apiRequest<{ ok: boolean }>(`/rewards/wins/${payload.winId}/redemption`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: payload.status,
-          redemptionNotes: '',
-        }),
-      }),
-    onSuccess: async (_result, payload) => {
-      await queryClient.invalidateQueries({ queryKey: ['rewards', id] })
-      setFeedback(
-        payload.status === 'delivered'
-          ? 'Prêmio marcado como entregue.'
-          : payload.status === 'cancelled'
-            ? 'Premiação marcada como cancelada.'
-            : 'Premiação voltou para pendente.',
-      )
-    },
-    onError: (error) => {
-      setFeedback(error instanceof Error ? error.message : 'Não foi possível atualizar o resgate agora.')
-    },
-  })
-
   const [testPhonesText, setTestPhonesText] = useState('')
 
   useEffect(() => {
@@ -1864,24 +1840,9 @@ export function RewardsPage() {
       <div className="mt-6">
         <SectionCard
           eyebrow="Resgate"
-          title="Controle de entrega dos ganhadores"
-          description="Acompanhe quem já retirou, quem ainda está pendente e marque rapidamente a situação de cada prêmio."
+          title="Ganhadores da campanha"
+          description="Lista de todos os ganhadores com seus dados de contato e situação do resgate. Para gerenciar entregas, use a aba Controle de entrega."
         >
-          <div className="mb-4 grid gap-3 md:grid-cols-3">
-            <div className="admin-inline-stat">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Pendentes</p>
-              <p className="mt-1 text-sm font-semibold text-slate-950">{rewardsQuery.data?.redemptionSummary.pendingCount ?? 0}</p>
-            </div>
-            <div className="admin-inline-stat">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Entregues</p>
-              <p className="mt-1 text-sm font-semibold text-emerald-700">{rewardsQuery.data?.redemptionSummary.deliveredCount ?? 0}</p>
-            </div>
-            <div className="admin-inline-stat">
-              <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Cancelados</p>
-              <p className="mt-1 text-sm font-semibold text-rose-700">{rewardsQuery.data?.redemptionSummary.cancelledCount ?? 0}</p>
-            </div>
-          </div>
-
           <div className="report-summary-strip mb-4">
             Local de retirada configurado: <strong>{campaignForm.pickupAddress || 'Não informado'}</strong>
           </div>
@@ -1898,149 +1859,91 @@ export function RewardsPage() {
 
           {rewardsQuery.data?.wins.length ? (
             <div className="admin-table-shell">
-              <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_150px_150px_260px] gap-3 xl:grid">
+              <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_150px_150px] gap-3 xl:grid">
                 <div>Ganhador</div>
                 <div>WhatsApp</div>
                 <div>Prêmio</div>
                 <div>Status</div>
                 <div>Premiado em</div>
                 <div>Retirado em</div>
-                <div>Ações</div>
               </div>
 
               <div className="divide-y divide-slate-200">
-                {filteredWins.length ? filteredWins.map((win) => {
-                  const isUpdating = updateWinStatusMutation.isPending && updateWinStatusMutation.variables?.winId === win.id
+                {filteredWins.length ? filteredWins.map((win) => (
+                  <article key={win.id} className="report-table-row">
+                    <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_150px_150px]">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-950">{win.name || 'Sem nome informado'}</p>
+                        <p className="truncate text-xs text-slate-500">{win.couponCode}</p>
+                      </div>
+                      <div className="text-sm text-slate-700">{win.phone || '-'}</div>
+                      <div className="min-w-0 truncate text-sm text-slate-700">{win.itemTitle}</div>
+                      <div>
+                        <span
+                          className={`admin-badge ${
+                            win.redemptionStatus === 'delivered'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : win.redemptionStatus === 'cancelled'
+                                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                : 'bg-white'
+                          }`}
+                        >
+                          {win.redemptionStatus === 'delivered'
+                            ? 'Entregue'
+                            : win.redemptionStatus === 'cancelled'
+                              ? 'Cancelado'
+                              : 'Pendente'}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-500">{formatDatePtBr(win.awardedAt) || '-'}</div>
+                      <div className="text-sm text-slate-500">{win.deliveredAt ? formatDatePtBr(win.deliveredAt) : '-'}</div>
+                    </div>
 
-                  return (
-                    <article key={win.id} className="report-table-row">
-                      <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)_140px_150px_150px_260px]">
+                    <div className="grid gap-3 xl:hidden">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Ganhador</p>
                           <p className="truncate text-sm font-semibold text-slate-950">{win.name || 'Sem nome informado'}</p>
                           <p className="truncate text-xs text-slate-500">{win.couponCode}</p>
                         </div>
-                        <div className="text-sm text-slate-700">{win.phone || '-'}</div>
-                        <div className="min-w-0 truncate text-sm text-slate-700">{win.itemTitle}</div>
+                        <span
+                          className={`admin-badge ${
+                            win.redemptionStatus === 'delivered'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : win.redemptionStatus === 'cancelled'
+                                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                                : 'bg-white'
+                          }`}
+                        >
+                          {win.redemptionStatus === 'delivered'
+                            ? 'Entregue'
+                            : win.redemptionStatus === 'cancelled'
+                              ? 'Cancelado'
+                              : 'Pendente'}
+                        </span>
+                      </div>
+
+                      <div className="grid gap-2 sm:grid-cols-2">
                         <div>
-                          <span
-                            className={`admin-badge ${
-                              win.redemptionStatus === 'delivered'
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                : win.redemptionStatus === 'cancelled'
-                                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                                  : 'bg-white'
-                            }`}
-                          >
-                            {win.redemptionStatus === 'delivered'
-                              ? 'Entregue'
-                              : win.redemptionStatus === 'cancelled'
-                                ? 'Cancelado'
-                                : 'Pendente'}
-                          </span>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p>
+                          <p className="text-sm text-slate-700">{win.phone || '-'}</p>
                         </div>
-                        <div className="text-sm text-slate-500">{formatDatePtBr(win.awardedAt) || '-'}</div>
-                        <div className="text-sm text-slate-500">{win.deliveredAt ? formatDatePtBr(win.deliveredAt) : '-'}</div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'pending' })}
-                            className="admin-button min-h-[44px] disabled:opacity-60"
-                          >
-                            Pendente
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'delivered' })}
-                            className="admin-button-primary min-h-[44px] disabled:opacity-60"
-                          >
-                            Entregue
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'cancelled' })}
-                            className="admin-button-danger min-h-[44px] disabled:opacity-60"
-                          >
-                            Cancelar
-                          </button>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p>
+                          <p className="text-sm text-slate-700">{win.itemTitle}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Premiado em</p>
+                          <p className="text-sm text-slate-500">{formatDatePtBr(win.awardedAt) || '-'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
+                          <p className="text-sm text-slate-500">{win.deliveredAt ? formatDatePtBr(win.deliveredAt) : '-'}</p>
                         </div>
                       </div>
-
-                      <div className="grid gap-3 xl:hidden">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Ganhador</p>
-                            <p className="truncate text-sm font-semibold text-slate-950">{win.name || 'Sem nome informado'}</p>
-                            <p className="truncate text-xs text-slate-500">{win.couponCode}</p>
-                          </div>
-                          <span
-                            className={`admin-badge ${
-                              win.redemptionStatus === 'delivered'
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                : win.redemptionStatus === 'cancelled'
-                                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                                  : 'bg-white'
-                            }`}
-                          >
-                            {win.redemptionStatus === 'delivered'
-                              ? 'Entregue'
-                              : win.redemptionStatus === 'cancelled'
-                                ? 'Cancelado'
-                                : 'Pendente'}
-                          </span>
-                        </div>
-
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p>
-                            <p className="text-sm text-slate-700">{win.phone || '-'}</p>
-                          </div>
-                          <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p>
-                            <p className="text-sm text-slate-700">{win.itemTitle}</p>
-                          </div>
-                          <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Premiado em</p>
-                            <p className="text-sm text-slate-500">{formatDatePtBr(win.awardedAt) || '-'}</p>
-                          </div>
-                          <div>
-                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
-                            <p className="text-sm text-slate-500">{win.deliveredAt ? formatDatePtBr(win.deliveredAt) : '-'}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'pending' })}
-                            className="admin-button min-h-[44px] disabled:opacity-60"
-                          >
-                            Pendente
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'delivered' })}
-                            className="admin-button-primary min-h-[44px] disabled:opacity-60"
-                          >
-                            Entregue
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isUpdating}
-                            onClick={() => void updateWinStatusMutation.mutateAsync({ winId: win.id, status: 'cancelled' })}
-                            className="admin-button-danger min-h-[44px] disabled:opacity-60"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  )
-                }) : null}
+                    </div>
+                  </article>
+                )) : null}
               </div>
             </div>
           ) : winsSearch.trim() ? (
