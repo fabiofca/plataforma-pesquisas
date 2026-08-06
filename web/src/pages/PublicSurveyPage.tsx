@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Download, Gift, MessageCircle, Trophy, Sparkles, PartyPopper, MapPin, Clock, ExternalLink, Instagram, Star, X, Frown, AlertTriangle, ArrowLeft, MousePointerClick } from 'lucide-react'
+import { CheckCircle2, Download, Gift, Loader2, MessageCircle, Trophy, Sparkles, PartyPopper, MapPin, Clock, ExternalLink, Instagram, Star, X, Frown, AlertTriangle, ArrowLeft, MousePointerClick } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -125,7 +125,7 @@ type PublicRewardPreviewItem = {
   sortOrder?: number
 }
 
-const RETRY_TASK_MIN_WAIT_MS = 12000
+const RETRY_TASK_MIN_WAIT_MS = 5000
 const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
 
 function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
@@ -2440,24 +2440,15 @@ export function PublicSurveyPage() {
                                 </div>
                               </>
                             ) : (
-                              <div className="mt-5 flex gap-3 rounded-[16px] border border-amber-200 bg-amber-50 p-4 text-left">
-                                <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
-                                <div>
-                                  <p className="text-sm font-semibold text-amber-900">Atenção</p>
-                                  <p className="mt-1 text-xs leading-relaxed text-amber-800">
-                                    Se você ganhar o prêmio, será necessário apresentar comprovantes de que cumpriu a tarefa (print da tela, por exemplo) no momento da retirada.
-                                  </p>
+                              <div className="mt-5">
+                                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+                                  <Loader2 className="h-6 w-6 animate-spin" />
                                 </div>
-                              </div>
-                            )}
-
-                            {currentRetryTaskReturned ? (
-                              <div className="mt-4">
-                                <div className="flex items-center justify-between text-xs text-slate-600">
-                                  <span className="font-medium">Aguarde, a roleta já será liberada</span>
-                                  <span className="font-mono font-semibold">{currentRetryTaskRemainingSeconds}s</span>
+                                <p className="mt-3 text-sm font-semibold text-slate-700">Aguarde, sua chance já será liberada...</p>
+                                <div className="mt-3 flex items-center justify-center">
+                                  <span className="font-mono text-2xl font-bold text-sky-600">{currentRetryTaskRemainingSeconds}s</span>
                                 </div>
-                                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
                                   <div
                                     className="h-full rounded-full bg-sky-500 transition-all duration-300"
                                     style={{
@@ -2469,20 +2460,10 @@ export function PublicSurveyPage() {
                                   />
                                 </div>
                               </div>
-                            ) : null}
+                            )}
 
-                            <div className="mt-5 flex items-center justify-center">
-                              {currentRetryTaskReturned ? (
-                                <button
-                                  type="button"
-                                  disabled={!currentRetryTaskCanConfirm || currentRetryTaskIsLoading}
-                                  onClick={() => void retryTaskClickMutation.mutateAsync(currentRetryTask)}
-                                  className="admin-button-primary w-full justify-center px-6 py-3 text-sm"
-                                  style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
-                                >
-                                  {currentRetryTaskIsLoading ? 'Liberando roleta...' : 'Girar roleta novamente'}
-                                </button>
-                              ) : (
+                            {!currentRetryTaskReturned ? (
+                              <div className="mt-5 flex items-center justify-center">
                                 <button
                                   type="button"
                                   disabled={currentRetryTaskIsLoading || Boolean(currentRetryTaskProgress)}
@@ -2499,8 +2480,8 @@ export function PublicSurveyPage() {
                                   <ExternalLink className="h-4 w-4" />
                                   {currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
                                 </button>
-                              )}
-                            </div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       ) : null}
