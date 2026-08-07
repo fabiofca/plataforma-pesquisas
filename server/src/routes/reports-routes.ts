@@ -2188,8 +2188,8 @@ async function getAttendantPerformanceReportData(
   surveyId: string,
   range: ReportRange,
 ): Promise<AttendantPerformanceResponse[]> {
-  // Find questions marked as attendant_name
-  const nameQuestions = await query<{
+  // Find questions marked as attendant_rating (they link to the attendant_name question)
+  const ratingQuestions = await query<{
     id: string
     title: string
     settings_json: { businessMetric?: string; linkedQuestionId?: string }
@@ -2197,23 +2197,23 @@ async function getAttendantPerformanceReportData(
     `select id, title, settings_json
      from survey_questions
      where survey_id = $1
-       and settings_json->>'businessMetric' = 'attendant_name'
+       and settings_json->>'businessMetric' = 'attendant_rating'
      order by position asc`,
     [surveyId],
   )
 
-  if (!nameQuestions.rows.length) {
+  if (!ratingQuestions.rows.length) {
     return []
   }
 
   const results: AttendantPerformanceResponse[] = []
 
-  for (const nq of nameQuestions.rows) {
-    const linkedQuestionId = nq.settings_json?.linkedQuestionId
+  for (const rq of ratingQuestions.rows) {
+    const linkedQuestionId = rq.settings_json?.linkedQuestionId
     if (!linkedQuestionId) continue
 
-    // Verify linked question exists and is a rating type
-    const ratingQuestion = await query<{
+    // Verify linked question exists and is a text type (attendant_name)
+    const nameQuestion = await query<{
       id: string
       title: string
       type: string
@@ -2224,8 +2224,8 @@ async function getAttendantPerformanceReportData(
       [linkedQuestionId, surveyId],
     )
 
-    if (!ratingQuestion.rows.length) continue
-    const rq = ratingQuestion.rows[0]
+    if (!nameQuestion.rows.length) continue
+    const nq = nameQuestion.rows[0]
 
     // Fetch registered attendants for matching
     const registeredAttendants = await query<{ id: string; name: string; is_active: boolean }>(
@@ -2264,7 +2264,7 @@ async function getAttendantPerformanceReportData(
          and sr.survey_id = $3
          and sr.submitted_at >= $4::date
          and sr.submitted_at < ($5::date + interval '1 day')`,
-      [nq.id, linkedQuestionId, surveyId, range.startDate, range.endDate],
+      [nq.id, rq.id, surveyId, range.startDate, range.endDate],
     )
 
     const attendantMap = new Map<
