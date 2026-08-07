@@ -377,7 +377,9 @@ export function SurveyBuilderPage() {
             const linkedQuestion = orderedQuestions.find((q) => q.id === validatedLinkedId)
             if (!linkedQuestion) {
               validatedLinkedId = null
-            } else if (question.businessMetric === 'attendant_name' && linkedQuestion.type !== 'rating_1_5' && linkedQuestion.type !== 'nps') {
+            } else if (question.businessMetric === 'attendant_rating' && linkedQuestion.type !== 'short_text' && linkedQuestion.type !== 'long_text') {
+              validatedLinkedId = null
+            } else if (question.businessMetric === 'attendant_name') {
               validatedLinkedId = null
             }
           }

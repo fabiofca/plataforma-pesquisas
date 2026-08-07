@@ -873,7 +873,7 @@ export function SurveyVisualFlowEditor({
                     onUpdateQuestion(selectedQuestion.id, (current) => ({
                       ...current,
                       businessMetric: (event.target.value as BusinessMetric) || null,
-                      linkedQuestionId: event.target.value === 'attendant_name' ? current.linkedQuestionId : null,
+                      linkedQuestionId: null,
                     }))
                   }
                 >
@@ -884,9 +884,9 @@ export function SurveyVisualFlowEditor({
                 </select>
               </label>
 
-              {selectedQuestion.businessMetric === 'attendant_name' ? (
+              {selectedQuestion.businessMetric === 'attendant_rating' ? (
                 <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Pergunta de nota vinculada</span>
+                  <span className="text-slate-600">Pergunta de nome vinculada</span>
                   <select
                     className="admin-select"
                     value={selectedQuestion.linkedQuestionId ?? ''}
@@ -899,7 +899,7 @@ export function SurveyVisualFlowEditor({
                   >
                     <option value="">Selecione...</option>
                     {questions
-                      .filter((q) => q.id !== selectedQuestion.id && (q.type === 'rating_1_5' || q.type === 'nps'))
+                      .filter((q) => q.id !== selectedQuestion.id && (q.type === 'short_text' || q.type === 'long_text'))
                       .map((q) => (
                         <option key={q.id} value={q.id}>
                           {q.title || 'Pergunta sem título'}

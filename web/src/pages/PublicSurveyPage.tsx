@@ -2096,23 +2096,25 @@ export function PublicSurveyPage() {
                           ))}
                         </div>
                       </div>
+                    ) : question.businessMetric === 'attendant_name' && attendantSuggestions.length > 0 ? (
+                      <select
+                        className="admin-input w-full bg-white"
+                        value={String(currentAnswer ?? '')}
+                        onChange={(event) => setSingleAnswer(question.id, event.target.value)}
+                      >
+                        <option value="">Selecione o atendente...</option>
+                        {attendantSuggestions.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
                     ) : (
-                      <>
-                        <input
-                          className="admin-input w-full bg-white"
-                          value={String(currentAnswer ?? '')}
-                          onChange={(event) => setSingleAnswer(question.id, event.target.value)}
-                          list={question.businessMetric === 'attendant_name' && attendantSuggestions.length > 0 ? `attendants-${question.id}` : undefined}
-                          autoComplete={question.businessMetric === 'attendant_name' ? 'off' : undefined}
-                        />
-                        {question.businessMetric === 'attendant_name' && attendantSuggestions.length > 0 ? (
-                          <datalist id={`attendants-${question.id}`}>
-                            {attendantSuggestions.map((name) => (
-                              <option key={name} value={name} />
-                            ))}
-                          </datalist>
-                        ) : null}
-                      </>
+                      <input
+                        className="admin-input w-full bg-white"
+                        value={String(currentAnswer ?? '')}
+                        onChange={(event) => setSingleAnswer(question.id, event.target.value)}
+                      />
                     )}
                   </section>
                 )
