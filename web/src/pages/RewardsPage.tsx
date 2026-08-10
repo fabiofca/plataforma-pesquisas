@@ -217,6 +217,35 @@ function getOutcomeRoleLabel(role: RewardOutcomeRole) {
   return 'Sem prêmio'
 }
 
+function getOutcomeRoleHelpText(role: RewardOutcomeRole) {
+  if (role === 'prize') {
+    return 'Pode ser entregue ao participante e consome estoque.'
+  }
+
+  if (role === 'showcase') {
+    return 'Pode aparecer na roleta, mas nunca pode ser entregue como prêmio real.'
+  }
+
+  return 'Pode aparecer como resultado de perda e não gera entrega.'
+}
+
+function validateRewardImageFile(file: File) {
+  const maxFileSize = 3 * 1024 * 1024
+  const allowedMimeTypes = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
+  const normalizedName = file.name.toLowerCase()
+  const hasAllowedExtension = ['.png', '.jpg', '.jpeg', '.svg', '.webp'].some((extension) =>
+    normalizedName.endsWith(extension),
+  )
+
+  if (!allowedMimeTypes.has(file.type) && !hasAllowedExtension) {
+    throw new Error('Envie uma imagem PNG, JPG, SVG ou WEBP.')
+  }
+
+  if (file.size > maxFileSize) {
+    throw new Error('A imagem deve ter no máximo 3 MB.')
+  }
+}
+
 function formatDatePtBr(value: string) {
   if (!value) return ''
   const parsed = new Date(value.includes('T') ? value : `${value}T00:00:00`)
@@ -495,10 +524,20 @@ export function RewardsPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['rewards', id] })
-      setFeedback('Prêmios da roleta atualizados com sucesso.')
+      setFeedback(
+        campaignForm.wheelMode === 'advanced'
+          ? 'Itens da roleta atualizados com sucesso.'
+          : 'Prêmios da roleta atualizados com sucesso.',
+      )
     },
     onError: (error) => {
-      setFeedback(error instanceof Error ? error.message : 'Não foi possível salvar os prêmios.')
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : campaignForm.wheelMode === 'advanced'
+            ? 'Não foi possível salvar os itens da roleta.'
+            : 'Não foi possível salvar os prêmios.',
+      )
     },
   })
 
@@ -629,7 +668,11 @@ export function RewardsPage() {
 
   function handleCreateRewardItem() {
     if (!newRewardForm.title.trim()) {
-      setFeedback('Informe o nome do prêmio antes de criar.')
+      setFeedback(
+        campaignForm.wheelMode === 'advanced'
+          ? 'Informe o nome do item antes de criar.'
+          : 'Informe o nome do prêmio antes de criar.',
+      )
       return
     }
 
@@ -676,6 +719,13 @@ export function RewardsPage() {
       return
     }
 
+    try {
+      validateRewardImageFile(file)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível validar a imagem agora.')
+      return
+    }
+
     const previewUrl = URL.createObjectURL(file)
 
     setItemsForm((current) =>
@@ -712,6 +762,13 @@ export function RewardsPage() {
 
   async function handleNewItemImageChange(file?: File) {
     if (!file) {
+      return
+    }
+
+    try {
+      validateRewardImageFile(file)
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível validar a imagem agora.')
       return
     }
 
@@ -761,7 +818,7 @@ export function RewardsPage() {
         title={campaignForm.wheelMode === 'advanced' ? 'Novo item da roleta' : 'Novo prêmio'}
         description={
           campaignForm.wheelMode === 'advanced'
-            ? 'Cadastre um item premiável, sem prêmio ou somente vitrine e depois salve a lista para publicar.'
+            ? 'Escolha se este item será um prêmio real, uma mensagem sem prêmio ou apenas um item de vitrine.'
             : 'Cadastre um prêmio real pelo modal e depois salve a lista para aplicar na roleta.'
         }
         onClose={handleCloseCreateRewardModal}
@@ -815,12 +872,13 @@ export function RewardsPage() {
                 <option value="no_prize">Sem prêmio</option>
                 <option value="showcase">Somente vitrine</option>
               </select>
+              <span className="text-xs text-slate-500">{getOutcomeRoleHelpText(newRewardForm.outcomeRole)}</span>
             </label>
           ) : null}
 
           <div className="grid gap-2 text-sm">
-            <span className="text-slate-600">Imagem do prêmio (opcional)</span>
-            <span className="text-xs text-slate-400">PNG, JPG ou WebP · Imagem quadrada recomendada · Mínimo 200×200 px</span>
+            <span className="text-slate-600">Imagem do item (opcional)</span>
+            <span className="text-xs text-slate-400">PNG, JPG, SVG ou WebP · até 3 MB · imagem quadrada recomendada · mínimo 200×200 px</span>
             {getRewardImagePreview(newRewardForm) ? (
               <div className="flex h-32 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 p-3" style={{ background: 'var(--surface-1)' }}>
                 <img
@@ -839,7 +897,7 @@ export function RewardsPage() {
               type="file"
               id="new-reward-image"
               className="sr-only"
-              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
               onChange={(event) => void handleNewItemImageChange(event.target.files?.[0])}
             />
             <label
@@ -950,7 +1008,7 @@ export function RewardsPage() {
               checked={newRewardForm.isActive}
               onChange={(event) => setNewRewardForm((current) => ({ ...current, isActive: event.target.checked }))}
             />
-            Participa da roleta
+            {campaignForm.wheelMode === 'advanced' ? 'Item ativo na roleta' : 'Participa da roleta'}
           </label>
 
           <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 pt-4">
@@ -958,7 +1016,7 @@ export function RewardsPage() {
               Cancelar
             </button>
             <button type="button" onClick={handleCreateRewardItem} className="admin-button-primary">
-              Criar prêmio
+              {campaignForm.wheelMode === 'advanced' ? 'Criar item' : 'Criar prêmio'}
             </button>
           </div>
         </div>
@@ -1456,7 +1514,7 @@ export function RewardsPage() {
                 <span className="text-slate-600">Telefones de teste (um por linha)</span>
                 <textarea
                   className="admin-input min-h-[80px] resize-y font-mono text-sm"
-                  placeholder="Ex:&#10;5521999998888&#10;5511977776666"
+                  placeholder="21999998888&#10;11977776666"
                   value={testPhonesText}
                   onChange={(event) => setTestPhonesText(event.target.value)}
                 />
@@ -1503,11 +1561,11 @@ export function RewardsPage() {
         </SectionCard>
 
         <SectionCard
-          eyebrow="Premiação"
+          eyebrow={campaignForm.wheelMode === 'advanced' ? 'Itens da roleta' : 'Premiação'}
           title={campaignForm.wheelMode === 'advanced' ? 'Itens da roleta avançada' : 'Prêmios reais'}
           description={
             campaignForm.wheelMode === 'advanced'
-              ? 'Cadastre itens premiáveis, sem prêmio e somente vitrine. Itens esgotados continuam visíveis, mas saem do sorteio.'
+              ? 'Cadastre os itens visuais e os resultados da roleta. Use prêmio real para itens que podem ser entregues, sem prêmio para mensagens de perda e somente vitrine para itens promocionais que nunca devem ser pagos.'
               : 'Cadastre no máximo 3 prêmios. Cada prêmio pode estar ativo ou inativo e ter sua própria frequência.'
           }
         >
@@ -1540,11 +1598,21 @@ export function RewardsPage() {
               className="admin-button-primary"
             >
               <Target className="h-4 w-4" />
-              {saveItemsMutation.isPending ? 'Salvando...' : 'Salvar prêmios'}
+              {saveItemsMutation.isPending
+                ? 'Salvando...'
+                : campaignForm.wheelMode === 'advanced'
+                  ? 'Salvar itens da roleta'
+                  : 'Salvar prêmios'}
             </button>
           </div>
 
           <div className="space-y-3">
+            {campaignForm.wheelMode === 'advanced' ? (
+              <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
+                <strong>Prêmio real</strong> paga e consome estoque. <strong>Sem prêmio</strong> apenas encerra o giro sem custo.
+                <strong> Somente vitrine</strong> aparece visualmente, mas nunca é entregue.
+              </div>
+            ) : null}
             {itemsForm.length ? (
               itemsForm.map((item, index) => (
                 <article key={item.id ?? `new-${index}`} className="admin-panel p-4">
@@ -1618,6 +1686,7 @@ export function RewardsPage() {
                               <option value="no_prize">Sem prêmio</option>
                               <option value="showcase">Somente vitrine</option>
                             </select>
+                            <span className="text-xs text-slate-500">{getOutcomeRoleHelpText(item.outcomeRole)}</span>
                           </label>
 
                           <label className="grid gap-2">
@@ -1662,8 +1731,8 @@ export function RewardsPage() {
                       ) : null}
 
                       <div className="grid gap-2">
-                        <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem opcional</span>
-                        <span className="text-[11px] text-slate-400">PNG, JPG ou WebP · quadrada · mínimo 200×200 px</span>
+                        <span className="text-xs uppercase tracking-[0.16em] text-slate-500">Imagem do item (opcional)</span>
+                        <span className="text-[11px] text-slate-400">PNG, JPG, SVG ou WebP · até 3 MB · quadrada · mínimo 200×200 px</span>
                         {getRewardImagePreview(item) ? (
                           <div className="flex h-24 items-center justify-center overflow-hidden rounded-[16px] border border-slate-200 p-3" style={{ background: 'var(--surface-1)' }}>
                             <img
@@ -1682,7 +1751,7 @@ export function RewardsPage() {
                           type="file"
                           id={`reward-image-${item.id ?? index}`}
                           className="sr-only"
-                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
                           onChange={(event) => void handleItemImageChange(index, event.target.files?.[0])}
                         />
                         <label
@@ -1822,7 +1891,7 @@ export function RewardsPage() {
               ))
             ) : (
               <div className="admin-empty-state py-10 flex-col gap-4">
-                <p>Nenhum prêmio cadastrado ainda.</p>
+                <p>{campaignForm.wheelMode === 'advanced' ? 'Nenhum item cadastrado ainda.' : 'Nenhum prêmio cadastrado ainda.'}</p>
                 <button
                   type="button"
                   onClick={handleOpenCreateRewardModal}
@@ -1966,8 +2035,8 @@ export function RewardsPage() {
                 <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Demonstração</p>
                 <h2 className="mt-2 font-display text-2xl text-white">Prévia visual da roleta</h2>
                 <p className="mt-2 max-w-xl text-sm text-slate-300">
-                  Teste visual antes de publicar. O sistema monta 6 opções com os prêmios ativos e mensagens sem
-                  prêmio.
+                  Teste visual antes de publicar. O sistema monta as opções com os itens ativos da roleta e as
+                  mensagens sem prêmio.
                 </p>
               </div>
 
@@ -2066,7 +2135,7 @@ export function RewardsPage() {
                   </p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <div className="rounded-[14px] border border-white/10 bg-slate-900/40 px-3 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Prêmios ativos</p>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">Itens ativos na roleta</p>
                       <p className="mt-1 text-lg font-semibold text-white">
                         {itemsForm.filter((item) => item.title.trim() && item.isActive).length}
                       </p>
@@ -2079,7 +2148,7 @@ export function RewardsPage() {
                 </div>
 
                 <div className="rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0.03)_100%)] p-4">
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Prêmios atualmente configurados</p>
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Itens atualmente configurados</p>
                   <div className="mt-3 space-y-2">
                     {itemsForm.filter((item) => item.title.trim()).length ? (
                       itemsForm
@@ -2109,7 +2178,7 @@ export function RewardsPage() {
                         ))
                     ) : (
                       <div className="rounded-[14px] border border-dashed border-white/10 bg-slate-900/30 px-4 py-6 text-center text-sm text-slate-300">
-                        Nenhum prêmio foi configurado ainda. A demonstração abre apenas com as mensagens neutras padrão.
+                        Nenhum item foi configurado ainda. A demonstração abre apenas com as mensagens neutras padrão.
                       </div>
                     )}
                   </div>

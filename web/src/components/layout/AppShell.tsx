@@ -266,6 +266,10 @@ export function AppShell({
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [location.pathname])
+
   const navigation = useMemo(
     () => [
       { to: '/app', label: 'Resumo', icon: LayoutDashboard },

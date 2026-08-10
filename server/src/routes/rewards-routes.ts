@@ -33,8 +33,10 @@ const rewardImageUpload = multer({
   },
   fileFilter: (_request: Request, file: Express.Multer.File, callback: FileFilterCallback) => {
     const allowedMimeTypes = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'])
+    const allowedExtensions = new Set(['.png', '.jpg', '.jpeg', '.svg', '.webp'])
+    const extension = path.extname(file.originalname || '').toLowerCase()
 
-    if (!allowedMimeTypes.has(file.mimetype)) {
+    if (!allowedMimeTypes.has(file.mimetype) && !allowedExtensions.has(extension)) {
       callback(new Error('Envie uma imagem PNG, JPG, SVG ou WEBP.'))
       return
     }
