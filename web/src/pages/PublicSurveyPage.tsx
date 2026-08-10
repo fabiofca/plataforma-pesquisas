@@ -624,6 +624,7 @@ export function PublicSurveyPage() {
   const [submitMessage, setSubmitMessage] = useState('')
   const [responseId, setResponseId] = useState('')
   const [canSpinReward, setCanSpinReward] = useState(false)
+  const [isTestResponseSession, setIsTestResponseSession] = useState(false)
   const [rewardResult, setRewardResult] = useState<RewardResultState | null>(null)
   const [eligibilityMessage, setEligibilityMessage] = useState('')
   const [validationState, setValidationState] = useState<PublicSurveyValidationState | null>(null)
@@ -641,6 +642,7 @@ export function PublicSurveyPage() {
   const [attendantSuggestions, setAttendantSuggestions] = useState<string[]>([])
   const trackedVisitKeyRef = useRef('')
   const sessionHydratedRef = useRef(false)
+  const restoredPersistedSessionRef = useRef(false)
   const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
@@ -769,6 +771,9 @@ export function PublicSurveyPage() {
     const completedIds = rewardResult.completedTaskIds ?? completedRetryTaskIds
     return retryTasks.find((task) => !completedIds.includes(task.id)) ?? null
   }, [completedRetryTaskIds, retryTasks, rewardResult?.completedTaskIds, rewardResult?.retryAvailable])
+  const canSubmitAnotherResponse = Boolean(
+    survey?.allowMultipleResponses && !canSpinReward && !wheelSpinning && !rewardResult?.won,
+  )
 
   // Fetch attendant suggestions when survey loads
   useEffect(() => {
@@ -801,6 +806,11 @@ export function PublicSurveyPage() {
   }
 
   function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
+    if (isTestResponseSession) {
+      clearPersistedSurveySession()
+      return
+    }
+
     const snapshot: PersistedPublicSurveySession = {
       participantName,
       participantPhone,
@@ -840,6 +850,7 @@ export function PublicSurveyPage() {
 
     clearPersistedSurveySession()
     sessionHydratedRef.current = false
+    restoredPersistedSessionRef.current = false
     rewardSessionRestoreKeyRef.current = ''
     navigate({ search: '' }, { replace: true })
   }, [navigate, shouldStartFresh, surveySessionStorageKey])
@@ -854,11 +865,13 @@ export function PublicSurveyPage() {
     const rawSession = readPersistedSurveySessionSnapshot(surveySessionStorageKey)
 
     if (!rawSession) {
+      restoredPersistedSessionRef.current = false
       setSessionStateReady(true)
       return
     }
 
     try {
+      restoredPersistedSessionRef.current = true
       const parsed = JSON.parse(rawSession) as PersistedPublicSurveySession
       const nextRetryTaskProgressMap = { ...(parsed.retryTaskProgressMap ?? {}) }
       let nextActiveRetryTaskId = parsed.activeRetryTaskId ?? null
@@ -877,6 +890,7 @@ export function PublicSurveyPage() {
       setSubmitMessage(parsed.submitMessage ?? '')
       setResponseId(parsed.responseId ?? '')
       setCanSpinReward(Boolean(parsed.canSpinReward))
+      setIsTestResponseSession(false)
       setRewardResult(parsed.rewardResult ?? null)
       setWheelRotation(parsed.wheelRotation ?? 0)
       setWheelSpinning(false)
@@ -921,6 +935,7 @@ export function PublicSurveyPage() {
     activeWheelSegmentId,
     canSpinReward,
     completedRetryTaskIds,
+    isTestResponseSession,
     participantName,
     participantPhone,
     responseId,
@@ -954,6 +969,7 @@ export function PublicSurveyPage() {
       participantPhone: string
       submitMessage?: string | null
       canSpinReward: boolean
+      isTestResponse: boolean
       completedTaskIds: string[]
       rewardResult: RewardResultState | null
     }>(`/public/surveys/${survey.slug}/reward-session?responseId=${encodeURIComponent(responseId)}`)
@@ -961,6 +977,28 @@ export function PublicSurveyPage() {
         if (cancelled) {
           return
         }
+
+        if (session.isTestResponse && restoredPersistedSessionRef.current) {
+          restoredPersistedSessionRef.current = false
+          clearPersistedSurveySession()
+          setSubmitted(false)
+          setSubmitMessage('')
+          setResponseId('')
+          setCanSpinReward(false)
+          setIsTestResponseSession(false)
+          setRewardResult(null)
+          setWheelRotation(0)
+          setWheelSpinning(false)
+          setActiveWheelSegmentId('')
+          setCompletedRetryTaskIds([])
+          setWheelModalOpen(false)
+          setRetryTaskProgressMap({})
+          setActiveRetryTaskId(null)
+          setRetryTaskNow(Date.now())
+          return
+        }
+
+        restoredPersistedSessionRef.current = false
 
         const nextCompletedTaskIds = session.completedTaskIds ?? []
         const restoredSegment = session.rewardResult?.landedSegmentId
@@ -973,6 +1011,7 @@ export function PublicSurveyPage() {
         setParticipantName((current) => current || session.participantName || '')
         setParticipantPhone((current) => current || session.participantPhone || '')
         setSubmitted(true)
+        setIsTestResponseSession(Boolean(session.isTestResponse))
         setSubmitMessage(
           session.submitMessage ??
             (session.canSpinReward
@@ -1030,6 +1069,7 @@ export function PublicSurveyPage() {
         setSubmitMessage('')
         setResponseId('')
         setCanSpinReward(false)
+        setIsTestResponseSession(false)
         setRewardResult(null)
         setWheelRotation(0)
         setWheelSpinning(false)
@@ -1236,14 +1276,16 @@ export function PublicSurveyPage() {
     setValidationState((current) => (current?.target === target ? null : current))
   }
 
-  function resetPreviewSession() {
+  function restartSurveyResponse() {
     setSubmitted(false)
     setSubmitMessage('')
     setResponseId('')
     setCanSpinReward(false)
+    setIsTestResponseSession(false)
     setRewardResult(null)
     setEligibilityMessage('')
-      setValidationState(null)
+    setValidationState(null)
+    setAnswers({})
     setWheelRotation(0)
     setWheelSpinning(false)
     setActiveWheelSegmentId('')
@@ -1251,7 +1293,11 @@ export function PublicSurveyPage() {
     setWheelModalOpen(false)
     setRetryTaskProgressMap({})
     setActiveRetryTaskId(null)
+    rewardSessionRestoreKeyRef.current = ''
     clearPersistedSurveySession()
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
   }
 
   const submitMutation = useMutation({
@@ -1305,6 +1351,7 @@ export function PublicSurveyPage() {
           responseId: 'preview-response',
           rewardEnabled: survey.rewardEnabled,
           rewardEligible: survey.rewardEnabled,
+            isTestResponse: false,
           rewardMessage: survey.rewardEnabled
             ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
             : 'Sua resposta foi registrada com sucesso.',
@@ -1315,6 +1362,7 @@ export function PublicSurveyPage() {
         responseId: string
         rewardEnabled: boolean
         rewardEligible: boolean
+          isTestResponse: boolean
         rewardMessage?: string | null
       }>(`/public/surveys/${survey.slug}/respond`, {
         method: 'POST',
@@ -1340,6 +1388,7 @@ export function PublicSurveyPage() {
       setValidationState(null)
       setResponseId(result.responseId)
       setCanSpinReward(result.rewardEnabled && result.rewardEligible)
+        setIsTestResponseSession(Boolean(result.isTestResponse))
       setCompletedRetryTaskIds([])
       setRewardResult(null)
       setActiveWheelSegmentId('')
@@ -1362,6 +1411,7 @@ export function PublicSurveyPage() {
       setSubmitMessage('')
       setCompletedRetryTaskIds([])
       setCanSpinReward(false)
+        setIsTestResponseSession(false)
       setSubmitted(false)
       setRetryTaskProgressMap({})
       setActiveRetryTaskId(null)
@@ -2423,6 +2473,17 @@ export function PublicSurveyPage() {
                       </button>
                     </div>
                   ) : null}
+                  {canSubmitAnotherResponse ? (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={restartSurveyResponse}
+                        className="inline-flex w-full items-center justify-center rounded-[14px] border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                      >
+                        Enviar outra resposta
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -2597,6 +2658,17 @@ export function PublicSurveyPage() {
                       : 'Não desanime, continue participando das próximas campanhas.'}
                 </p>
                 <p className="mt-3 text-sm font-semibold text-slate-700">Obrigado por participar!</p>
+                {canSubmitAnotherResponse ? (
+                  <div className="mt-5">
+                    <button
+                      type="button"
+                      onClick={restartSurveyResponse}
+                      className="inline-flex w-full items-center justify-center rounded-[14px] border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      Enviar outra resposta
+                    </button>
+                  </div>
+                ) : null}
 
                 {rewardResult.spinAttempt && rewardResult.maxAttempts ? (
                   <div className="mt-5">

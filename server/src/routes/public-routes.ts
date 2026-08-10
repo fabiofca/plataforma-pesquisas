@@ -1043,6 +1043,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     responseId,
     rewardEnabled: survey.reward_enabled,
     rewardEligible,
+    isTestResponse: testPhone,
     rewardMessage: buildRewardSubmitMessage(survey, {
       rewardEligible,
       blockedByRecentUsage,
