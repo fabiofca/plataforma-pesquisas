@@ -1716,7 +1716,10 @@ export function PublicSurveyPage() {
       const pagePadding = 48
       const contentWidth = canvas.width - pagePadding * 2
       const prizeTitle = rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado'
+      const congratulationsTitle = participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'
 
+      measureContext.font = '700 36px Arial'
+      const congratulationsLines = wrapCanvasText(measureContext, congratulationsTitle, 760).slice(0, 2)
       measureContext.font = '900 56px Arial'
       const prizeLines = wrapCanvasText(measureContext, prizeTitle, 880).slice(0, 3)
 
@@ -1730,7 +1733,7 @@ export function PublicSurveyPage() {
       const protocolBoxHeight = rewardResult.couponCode ? 132 : 0
       const expiryBoxHeight = rewardProofExpiresAt ? 104 : 0
       const addressBoxHeight = rewardPickupAddress ? Math.max(112, 78 + addressLines.length * 28) : 0
-      const heroBottomY = 406 + prizeLines.length * 72
+      const heroBottomY = 330 + congratulationsLines.length * 46 + 52 + prizeLines.length * 72
       const totalCardHeights =
         (protocolBoxHeight ? protocolBoxHeight + 18 : 0) +
         (expiryBoxHeight ? expiryBoxHeight + 18 : 0) +
@@ -1767,6 +1770,7 @@ export function PublicSurveyPage() {
   
       // Prêmio confirmado
       currentY = trophyCircleY + 72
+      context.textAlign = 'center'
       context.fillStyle = '#64748b'
       context.font = '800 18px Arial'
       context.letterSpacing = '3px'
@@ -1777,10 +1781,13 @@ export function PublicSurveyPage() {
       currentY += 42
       context.fillStyle = '#0f172a'
       context.font = '700 36px Arial'
-      context.fillText(`Parabéns, ${participantName || 'você'}!`, canvas.width / 2, currentY)
+      for (const line of congratulationsLines) {
+        context.fillText(line, canvas.width / 2, currentY)
+        currentY += 46
+      }
   
       // Você ganhou
-      currentY += 52
+      currentY += 6
       context.fillStyle = '#64748b'
       context.font = '500 22px Arial'
       context.fillText('Você ganhou:', canvas.width / 2, currentY)
