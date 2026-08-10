@@ -2621,7 +2621,7 @@ export function PublicSurveyPage() {
                         isSpinning={wheelSpinning}
                         primaryColor={survey.primaryColor}
                         activeSegmentId={activeWheelSegmentId}
-                        showCelebration={false}
+                        showCelebration={Boolean(rewardResult?.won && !wheelSpinning)}
                         celebrationKey={celebrationKey}
                         disabled={spinMutation.isPending || !responseId || !canSpinReward}
                         variant="fullscreen"

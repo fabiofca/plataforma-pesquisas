@@ -53,17 +53,21 @@ const neutralSegmentPalette = [
   { start: '#06b6d4', end: '#22d3ee', text: '#ffffff' },
 ]
 
-const confettiPalette = ['#facc15', '#ff006e', '#6366f1', '#22c55e', '#38bdf8', '#ffffff']
-const confettiPieces = Array.from({ length: 18 }, (_, index) => {
-  const angle = (Math.PI * 2 * index) / 18
-  const distance = 84 + (index % 3) * 18
+const confettiPalette = ['#facc15', '#ff006e', '#6366f1', '#22c55e', '#38bdf8', '#ffffff', '#fb7185', '#f97316']
+const confettiPieces = Array.from({ length: 34 }, (_, index) => {
+  const angle = (Math.PI * 2 * index) / 34
+  const distance = 108 + (index % 4) * 28
 
   return {
     x: `${Math.cos(angle) * distance}px`,
-    y: `${Math.sin(angle) * distance - 28}px`,
-    rotate: `${index % 2 === 0 ? 120 : -120}deg`,
-    delay: `${index * 28}ms`,
+    y: `${Math.sin(angle) * distance - 42}px`,
+    rotate: `${index % 2 === 0 ? 220 : -220}deg`,
+    delay: `${index * 18}ms`,
+    duration: `${1180 + (index % 4) * 160}ms`,
     color: confettiPalette[index % confettiPalette.length],
+    width: `${8 + (index % 3) * 3}px`,
+    height: `${12 + (index % 4) * 4}px`,
+    shape: index % 5 === 0 ? '999px' : '3px',
   }
 })
 
@@ -407,6 +411,8 @@ export function PrizeWheel({
         <div className="absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,_rgba(250,204,21,0.35)_0%,_rgba(249,115,22,0.28)_22%,_rgba(236,72,153,0.24)_45%,_rgba(139,92,246,0.18)_68%,_rgba(255,255,255,0)_88%)] blur-2xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
+            <span className="confetti-burst-core" />
+            <span className="confetti-burst-ring" />
             {confettiPieces.map((piece, index) => (
               <span
                 key={`${celebrationKey}-${index}`}
@@ -417,6 +423,10 @@ export function PrizeWheel({
                     top: '42%',
                     backgroundColor: piece.color,
                     animationDelay: piece.delay,
+                    animationDuration: piece.duration,
+                    width: piece.width,
+                    height: piece.height,
+                    borderRadius: piece.shape,
                     ['--confetti-x' as string]: piece.x,
                     ['--confetti-y' as string]: piece.y,
                     ['--confetti-rotate' as string]: piece.rotate,
