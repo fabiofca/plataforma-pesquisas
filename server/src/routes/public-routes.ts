@@ -373,20 +373,22 @@ function isRewardCampaignAvailable(survey: Awaited<ReturnType<typeof getSurveyBy
   return survey.reward_campaign_expires_at >= new Date().toISOString().slice(0, 10)
 }
 
-function formatCooldownDays(days: number) {
-  if (days <= 1) {
-    return '1 dia'
-  }
-
-  return `${days} dias`
-}
+const RECENT_REWARD_USAGE_MESSAGE =
+  'Sua resposta foi registrada com sucesso. A roleta já foi utilizada recentemente neste aparelho ou número. Aguarde o prazo da campanha para participar novamente. A pesquisa continua funcionando normalmente.'
 
 function buildRewardSubmitMessage(
   survey: Awaited<ReturnType<typeof getSurveyBySlug>>,
-  rewardEligible: boolean,
+  options: {
+    rewardEligible: boolean
+    blockedByRecentUsage?: boolean
+  },
 ) {
-  if (!survey?.reward_enabled || rewardEligible) {
+  if (!survey?.reward_enabled || options.rewardEligible) {
     return null
+  }
+
+  if (options.blockedByRecentUsage) {
+    return RECENT_REWARD_USAGE_MESSAGE
   }
 
   if (!isRewardCampaignAvailable(survey)) {
@@ -456,20 +458,99 @@ async function hasPermanentDuplicateResponse(input: {
 }
 
 async function hasRecentSpinByPhone(input: {
-  surveyId: string
-  phone: string
+  client: Pick<typeof pool, 'query'>
+  campaignId: string
+  phone?: string | null
+  browserCookieId?: string | null
+  fingerprint?: string | null
   cooldownDays: number
+  excludeResponseId?: string
 }) {
-  const result = await query<{ count: string }>(
+  const conditions: string[] = []
+  const values: Array<string | number> = [input.campaignId]
+  let nextIndex = 2
+
+  if (input.phone) {
+    conditions.push(`survey_responses.participant_phone = $${nextIndex}`)
+    values.push(input.phone)
+    nextIndex += 1
+  }
+
+  if (input.browserCookieId) {
+    conditions.push(`survey_responses.browser_cookie_id = $${nextIndex}`)
+    values.push(input.browserCookieId)
+    nextIndex += 1
+  }
+
+  if (input.fingerprint) {
+    conditions.push(`survey_responses.browser_fingerprint = $${nextIndex}`)
+    values.push(input.fingerprint)
+    nextIndex += 1
+  }
+
+  if (!conditions.length) {
+    return false
+  }
+
+  const cooldownIndex = nextIndex
+  values.push(input.cooldownDays)
+  nextIndex += 1
+
+  let excludeResponseClause = ''
+
+  if (input.excludeResponseId) {
+    excludeResponseClause = ` and reward_spin_logs.response_id <> $${nextIndex}`
+    values.push(input.excludeResponseId)
+  }
+
+  const result = await input.client.query<{ count: string }>(
     `select cast(count(*) as text) as count
      from reward_spin_logs
-     where campaign_id in (select reward_campaign_id from surveys where id = $1)
-       and response_id in (select id from survey_responses where survey_id = $1 and participant_phone = $2)
-       and created_at > now() - make_interval(days => $3)`,
-    [input.surveyId, input.phone, input.cooldownDays],
+     join survey_responses on survey_responses.id = reward_spin_logs.response_id
+     where reward_spin_logs.campaign_id = $1
+       and survey_responses.is_test_response = false
+       and (${conditions.join(' or ')})
+       and reward_spin_logs.created_at > now() - make_interval(days => $${cooldownIndex})${excludeResponseClause}`,
+    values,
   )
 
   return Number(result.rows[0]?.count ?? 0) > 0
+}
+
+function buildRewardDeviceIdentity(input: {
+  browserCookieId?: string | null
+  fingerprint?: string | null
+}) {
+  const parts = [input.browserCookieId?.trim(), input.fingerprint?.trim()].filter(Boolean)
+
+  if (!parts.length) {
+    return null
+  }
+
+  return parts.join('|')
+}
+
+async function acquireRewardSpinLocks(
+  client: Pick<typeof pool, 'query'>,
+  input: {
+    campaignId: string
+    phone?: string | null
+    browserCookieId?: string | null
+    fingerprint?: string | null
+  },
+) {
+  const deviceIdentity = buildRewardDeviceIdentity(input)
+  const lockKeys = [
+    input.phone?.trim() ? `phone:${input.phone.trim()}` : null,
+    deviceIdentity ? `device:${deviceIdentity}` : null,
+  ].filter((value): value is string => Boolean(value))
+
+  for (const lockKey of lockKeys.sort()) {
+    await client.query(
+      `select pg_advisory_xact_lock(hashtext($1), hashtext($2))`,
+      [input.campaignId, lockKey],
+    )
+  }
 }
 
 function normalizeExistingItemSchedule(item: RewardDrawItem, currentSpin: number) {
@@ -538,6 +619,8 @@ async function getRewardSessionState(
     id: string
     participant_name: string | null
     participant_phone: string | null
+    browser_cookie_id: string | null
+    browser_fingerprint: string | null
     reward_eligible: boolean
     reward_spin_completed: boolean
     reward_retry_count: number
@@ -549,6 +632,8 @@ async function getRewardSessionState(
         id,
         participant_name,
         participant_phone,
+        browser_cookie_id,
+        browser_fingerprint,
         reward_eligible,
         reward_spin_completed,
         reward_retry_count,
@@ -620,16 +705,20 @@ async function getRewardSessionState(
   const wheelCooldownDays = survey.duplicate_response_cooldown_days
   let isInCooldown = false
 
-  if (wheelCooldownDays > 0 && surveyResponse.participant_phone) {
-    const recentSpinResult = await client.query<{ count: string }>(
-      `select cast(count(*) as text) as count
-       from reward_spin_logs
-       where campaign_id = $1
-         and response_id in (select id from survey_responses where survey_id = $2 and participant_phone = $3)
-         and created_at > now() - make_interval(days => $4)`,
-      [survey.reward_campaign_id, survey.id, surveyResponse.participant_phone, wheelCooldownDays],
-    )
-    isInCooldown = Number(recentSpinResult.rows[0]?.count ?? 0) > 0
+  if (
+    wheelCooldownDays > 0 &&
+    survey.reward_campaign_id &&
+    (surveyResponse.participant_phone || surveyResponse.browser_cookie_id || surveyResponse.browser_fingerprint)
+  ) {
+    isInCooldown = await hasRecentSpinByPhone({
+      client,
+      campaignId: survey.reward_campaign_id,
+      phone: surveyResponse.participant_phone,
+      browserCookieId: surveyResponse.browser_cookie_id,
+      fingerprint: surveyResponse.browser_fingerprint,
+      cooldownDays: wheelCooldownDays,
+      excludeResponseId: responseId,
+    })
   }
 
   const canSpinReward = surveyResponse.is_test_response
@@ -763,8 +852,8 @@ async function getRewardSessionState(
     participantName: surveyResponse.participant_name ?? '',
     participantPhone: surveyResponse.participant_phone ?? '',
     submitMessage: isInCooldown
-      ? `A roleta só poderá ser usada novamente após ${formatCooldownDays(wheelCooldownDays)}.`
-      : buildRewardSubmitMessage(survey, surveyResponse.reward_eligible),
+      ? RECENT_REWARD_USAGE_MESSAGE
+      : buildRewardSubmitMessage(survey, { rewardEligible: surveyResponse.reward_eligible }),
     canSpinReward,
     completedTaskIds,
     rewardResult,
@@ -883,6 +972,22 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
   const sourceIp = request.ip ? hashValue(request.ip) : null
   const campaignAvailable = isRewardCampaignAvailable(survey)
   const testPhone = isTestPhone(payload.participant.phone, survey.test_phones)
+  const wheelCooldownDays = survey.duplicate_response_cooldown_days
+  const blockedByRecentUsage =
+    !testPhone &&
+    campaignAvailable &&
+    wheelCooldownDays > 0 &&
+    Boolean(survey.reward_campaign_id) &&
+    (payload.participant.phone || payload.browserCookieId || payload.fingerprint)
+      ? await hasRecentSpinByPhone({
+          client: pool,
+          campaignId: survey.reward_campaign_id!,
+          phone: payload.participant.phone,
+          browserCookieId: payload.browserCookieId ?? null,
+          fingerprint: payload.fingerprint ?? null,
+          cooldownDays: wheelCooldownDays,
+        })
+      : false
 
   if (!survey.allow_multiple_responses && !testPhone) {
     const hasDuplicate = await hasPermanentDuplicateResponse({
@@ -896,7 +1001,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     }
   }
 
-  const rewardEligible = campaignAvailable || testPhone
+  const rewardEligible = testPhone || (campaignAvailable && !blockedByRecentUsage)
   const responseId = makeId()
 
   await query(
@@ -938,7 +1043,10 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     responseId,
     rewardEnabled: survey.reward_enabled,
     rewardEligible,
-    rewardMessage: buildRewardSubmitMessage(survey, rewardEligible),
+    rewardMessage: buildRewardSubmitMessage(survey, {
+      rewardEligible,
+      blockedByRecentUsage,
+    }),
   })
 })
 
@@ -1093,6 +1201,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     const surveyResponseResult = await client.query<{
       id: string
       participant_phone: string
+      browser_cookie_id: string | null
+      browser_fingerprint: string | null
       reward_eligible: boolean
       reward_spin_completed: boolean
       reward_retry_count: number
@@ -1103,6 +1213,8 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       `select
           id,
           participant_phone,
+          browser_cookie_id,
+          browser_fingerprint,
           reward_eligible,
           reward_spin_completed,
           reward_retry_count,
@@ -1123,6 +1235,15 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       response.status(404).json({ message: 'Resposta não encontrada para esta pesquisa.' })
       return
     }
+
+    await acquireRewardSpinLocks(client, {
+      campaignId: survey.reward_campaign_id,
+      phone: surveyResponse.participant_phone,
+      browserCookieId: surveyResponse.browser_cookie_id,
+      fingerprint: surveyResponse.browser_fingerprint,
+    })
+
+    const isTestSpin = Boolean(surveyResponse.is_test_response)
 
     const existingSpinLogs = await client.query<{
       spin_attempt: number
@@ -1318,17 +1439,25 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     }
 
     const wheelCooldownDays = survey.duplicate_response_cooldown_days
-    if (wheelCooldownDays > 0 && surveyResponse.participant_phone && !surveyResponse.is_test_response) {
+    if (
+      wheelCooldownDays > 0 &&
+      !surveyResponse.is_test_response &&
+      (surveyResponse.participant_phone || surveyResponse.browser_cookie_id || surveyResponse.browser_fingerprint)
+    ) {
       const hasRecentSpin = await hasRecentSpinByPhone({
-        surveyId: survey.id,
+        client,
+        campaignId: survey.reward_campaign_id,
         phone: surveyResponse.participant_phone,
+        browserCookieId: surveyResponse.browser_cookie_id ?? null,
+        fingerprint: surveyResponse.browser_fingerprint ?? null,
         cooldownDays: wheelCooldownDays,
+        excludeResponseId: responseId,
       })
 
       if (hasRecentSpin) {
         await client.query('commit')
         response.status(409).json({
-          message: `A roleta só poderá ser usada novamente após ${formatCooldownDays(wheelCooldownDays)}.`,
+          message: RECENT_REWARD_USAGE_MESSAGE,
         })
         return
       }
@@ -1352,9 +1481,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           : { rewardItemId: null, wheelLabel: selectNoPrizeLabel() }
 
       await client.query(
-        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-         values ($1, $2, $3, $4, 'no_prize', $5, $6)`,
-        [makeId(), survey.reward_campaign_id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt],
+        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt, is_test_spin)
+         values ($1, $2, $3, $4, 'no_prize', $5, $6, $7)`,
+        [makeId(), survey.reward_campaign_id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt, isTestSpin],
       )
 
       await client.query(
@@ -1481,13 +1610,15 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           ? selectDueRewardItem(normalizedItems, currentSpin)
           : null
 
-    await client.query(
-      `update reward_campaigns
-       set spin_count = $2,
-           updated_at = now()
-       where id = $1`,
-      [campaign.id, currentSpin],
-    )
+    if (!isTestSpin) {
+      await client.query(
+        `update reward_campaigns
+         set spin_count = $2,
+             updated_at = now()
+         where id = $1`,
+        [campaign.id, currentSpin],
+      )
+    }
 
     if (!selectedItem) {
       const noPrizeOutcome =
@@ -1498,9 +1629,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       const nextRetryCount = currentAttempt > 1 ? surveyResponse.reward_retry_count + 1 : surveyResponse.reward_retry_count
 
       await client.query(
-        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-         values ($1, $2, $3, $4, 'no_prize', $5, $6)`,
-        [makeId(), campaign.id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt],
+        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt, is_test_spin)
+         values ($1, $2, $3, $4, 'no_prize', $5, $6, $7)`,
+        [makeId(), campaign.id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt, isTestSpin],
       )
 
       if (retryEnabledForLoss) {
@@ -1561,22 +1692,24 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     }
 
     const frequencyTarget = getFrequencyTarget(selectedItem.frequency_mode, selectedItem.frequency_target)
-    const itemUpdateResult = await client.query<{ id: string }>(
-      `update reward_items
-       set quantity_awarded = quantity_awarded + 1,
-           last_awarded_spin = $2,
-           next_release_spin = $3,
-           min_gap_spins = $4
-       where id = $1
-         and quantity_awarded < quantity_total
-       returning id`,
-      [
-        selectedItem.id,
-        currentSpin,
-        createNextReleaseSpin(currentSpin, frequencyTarget),
-        calculateMinimumGapSpins(frequencyTarget),
-      ],
-    )
+    const itemUpdateResult = isTestSpin
+      ? { rows: [{ id: selectedItem.id }] }
+      : await client.query<{ id: string }>(
+          `update reward_items
+           set quantity_awarded = quantity_awarded + 1,
+               last_awarded_spin = $2,
+               next_release_spin = $3,
+               min_gap_spins = $4
+           where id = $1
+             and quantity_awarded < quantity_total
+           returning id`,
+          [
+            selectedItem.id,
+            currentSpin,
+            createNextReleaseSpin(currentSpin, frequencyTarget),
+            calculateMinimumGapSpins(frequencyTarget),
+          ],
+        )
 
     if (!itemUpdateResult.rows[0]) {
       const noPrizeOutcome =
@@ -1587,9 +1720,9 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       const nextRetryCount = currentAttempt > 1 ? surveyResponse.reward_retry_count + 1 : surveyResponse.reward_retry_count
 
       await client.query(
-        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-         values ($1, $2, $3, $4, 'no_prize', $5, $6)`,
-        [makeId(), campaign.id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt],
+        `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt, is_test_spin)
+         values ($1, $2, $3, $4, 'no_prize', $5, $6, $7)`,
+        [makeId(), campaign.id, responseId, noPrizeOutcome.rewardItemId, noPrizeOutcome.wheelLabel, currentAttempt, isTestSpin],
       )
 
       if (retryEnabledForLoss) {
@@ -1651,25 +1784,27 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
 
     const couponCode = generateCouponCode(env.rewardCodePrefix)
 
-    await client.query(
-      `update reward_campaigns
-       set last_winning_spin = $2,
-           updated_at = now()
-       where id = $1`,
-      [campaign.id, currentSpin],
-    )
+    if (!isTestSpin) {
+      await client.query(
+        `update reward_campaigns
+         set last_winning_spin = $2,
+             updated_at = now()
+         where id = $1`,
+        [campaign.id, currentSpin],
+      )
+    }
     const rewardExpirationDays = Math.max(1, survey.reward_redemption_expiration_days ?? 15)
     const rewardWinInsert = await client.query<{ awarded_at: string; redemption_expires_at: string }>(
-      `insert into reward_wins (id, campaign_id, reward_item_id, response_id, coupon_code, redemption_expires_at)
-       values ($1, $2, $3, $4, $5, now() + make_interval(days => $6))
+      `insert into reward_wins (id, campaign_id, reward_item_id, response_id, coupon_code, redemption_expires_at, is_test_win)
+       values ($1, $2, $3, $4, $5, now() + make_interval(days => $6), $7)
        returning cast(awarded_at as text) as awarded_at,
                  cast(redemption_expires_at as text) as redemption_expires_at`,
-      [makeId(), campaign.id, selectedItem.id, responseId, couponCode, rewardExpirationDays],
+      [makeId(), campaign.id, selectedItem.id, responseId, couponCode, rewardExpirationDays, isTestSpin],
     )
     await client.query(
-      `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt)
-       values ($1, $2, $3, $4, 'win', $5, $6)`,
-      [makeId(), campaign.id, responseId, selectedItem.id, selectedItem.wheel_label ?? selectedItem.title, currentAttempt],
+      `insert into reward_spin_logs (id, campaign_id, response_id, reward_item_id, outcome_type, wheel_label, spin_attempt, is_test_spin)
+       values ($1, $2, $3, $4, 'win', $5, $6, $7)`,
+      [makeId(), campaign.id, responseId, selectedItem.id, selectedItem.wheel_label ?? selectedItem.title, currentAttempt, isTestSpin],
     )
     await client.query(
       `update survey_responses

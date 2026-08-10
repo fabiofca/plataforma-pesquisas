@@ -218,7 +218,8 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
           cast(count(*) filter (where redemption_status = 'delivered') as text) as delivered_count,
           cast(count(*) filter (where redemption_status = 'cancelled') as text) as cancelled_count
        from reward_wins
-       where campaign_id = $1`,
+       where campaign_id = $1
+         and is_test_win = false`,
       [campaign.id],
     ),
     query<{
@@ -248,6 +249,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
        join survey_responses on survey_responses.id = reward_wins.response_id
        join reward_items on reward_items.id = reward_wins.reward_item_id
        where reward_wins.campaign_id = $1
+         and reward_wins.is_test_win = false
        order by reward_wins.awarded_at desc
        limit 50`,
       [campaign.id],
@@ -804,6 +806,7 @@ rewardsRouter.delete('/surveys/:id/rewards/test-responses', async (request: Auth
          select count(*)::integer
          from reward_wins
          where reward_wins.reward_item_id = reward_items.id
+           and reward_wins.is_test_win = false
        )
        where campaign_id in (
          select id from reward_campaigns where survey_id = $1

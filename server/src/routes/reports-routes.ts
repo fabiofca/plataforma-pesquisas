@@ -439,6 +439,7 @@ async function getSummaryReportData(
             from reward_wins
             join survey_responses on reward_wins.response_id = survey_responses.id
             where survey_responses.survey_id = $1
+              and reward_wins.is_test_win = false
               and survey_responses.submitted_at >= $2::date
               and survey_responses.submitted_at < ($3::date + interval '1 day')
           ) as reward_wins,
@@ -944,6 +945,7 @@ async function getRewardReportData(
   const winnerPagination = options?.winnerPagination ?? { page: 1, pageSize: 20 }
   const winnerWhereClauses = [
     'reward_wins.campaign_id = $1',
+    'reward_wins.is_test_win = false',
     'reward_wins.awarded_at >= $2::date',
     "reward_wins.awarded_at < ($3::date + interval '1 day')",
   ]
@@ -1010,22 +1012,26 @@ async function getRewardReportData(
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
+              and is_test_win = false
               and redemption_status = 'pending'
           ) as pending_redemptions,
           (
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
+              and is_test_win = false
               and redemption_status = 'delivered'
           ) as delivered_redemptions,
           (
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
+              and is_test_win = false
               and redemption_status = 'cancelled'
           ) as cancelled_redemptions
        from reward_spin_logs
        where campaign_id = $1
+         and is_test_spin = false
          and created_at >= $2::date
          and created_at < ($3::date + interval '1 day')`,
       [campaignId, range.startDate, range.endDate],
@@ -1045,6 +1051,7 @@ async function getRewardReportData(
           cast(count(reward_wins.id) filter (
             where reward_wins.awarded_at >= $2::date
               and reward_wins.awarded_at < ($3::date + interval '1 day')
+              and reward_wins.is_test_win = false
           ) as text) as wins_in_range
        from reward_items
        left join reward_wins on reward_wins.reward_item_id = reward_items.id
@@ -1091,6 +1098,7 @@ async function getRewardReportData(
       `select wheel_label as label, cast(count(*) as text) as count
        from reward_spin_logs
        where campaign_id = $1
+         and is_test_spin = false
          and outcome_type = 'no_prize'
          and created_at >= $2::date
          and created_at < ($3::date + interval '1 day')
@@ -2063,7 +2071,7 @@ reportsRouter.get('/reports/global', requireMaster, async (_request, response) =
         (select cast(count(*) as text) from surveys) as surveys,
         (select cast(count(*) as text) from users where deleted_at is null) as users,
         (select cast(count(*) as text) from survey_responses) as responses,
-        (select cast(count(*) as text) from reward_wins) as wins`,
+        (select cast(count(*) as text) from reward_wins where is_test_win = false) as wins`,
   )
 
   response.json({ metrics: result.rows[0] })
