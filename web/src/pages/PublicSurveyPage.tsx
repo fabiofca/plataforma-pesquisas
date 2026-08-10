@@ -645,6 +645,7 @@ export function PublicSurveyPage() {
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
   const validationElementRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoConfirmTriggeredRef = useRef<Record<string, boolean>>({})
+  const previousVisibleQuestionIdsRef = useRef<string[]>([])
   const source = searchParams.get('src')
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
 
@@ -1048,6 +1049,43 @@ export function PublicSurveyPage() {
       return Object.fromEntries(nextEntries)
     })
   }, [survey, visibleQuestions])
+
+  useEffect(() => {
+    const currentVisibleQuestionIds = visibleQuestions.map((question) => question.id)
+    const previousVisibleQuestionIds = previousVisibleQuestionIdsRef.current
+
+    if (!previousVisibleQuestionIds.length) {
+      previousVisibleQuestionIdsRef.current = currentVisibleQuestionIds
+      return
+    }
+
+    const newlyVisibleQuestionIds = currentVisibleQuestionIds.filter((questionId) => !previousVisibleQuestionIds.includes(questionId))
+    previousVisibleQuestionIdsRef.current = currentVisibleQuestionIds
+
+    if (!newlyVisibleQuestionIds.length) {
+      return
+    }
+
+    const targetQuestionId = newlyVisibleQuestionIds[newlyVisibleQuestionIds.length - 1]
+
+    window.requestAnimationFrame(() => {
+      const element = validationElementRefs.current[`question:${targetQuestionId}`]
+
+      if (!element) {
+        return
+      }
+
+      const rect = element.getBoundingClientRect()
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight
+      const isFullyVisible = rect.top >= 24 && rect.bottom <= viewportHeight - 24
+
+      if (isFullyVisible) {
+        return
+      }
+
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [visibleQuestions])
 
   useEffect(() => {
     if (previewMode || !slug || !trackedSource) {
