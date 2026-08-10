@@ -1705,17 +1705,43 @@ export function PublicSurveyPage() {
     try {
       const canvas = document.createElement('canvas')
       canvas.width = 1080
-      canvas.height = rewardPickupAddress ? 1200 : 1000
-      const context = canvas.getContext('2d')
+      const measureCanvas = document.createElement('canvas')
+      const measureContext = measureCanvas.getContext('2d')
   
-      if (!context) {
+      if (!measureContext) {
         throw new Error('Não foi possível gerar a imagem do comprovante.')
       }
   
       const primaryHex = survey?.primaryColor && /^#([0-9A-Fa-f]{6})$/.test(survey.primaryColor) ? survey.primaryColor : '#0f172a'
-      const primaryRgba = hexToRgba(primaryHex, 0.08)
       const pagePadding = 48
       const contentWidth = canvas.width - pagePadding * 2
+      const prizeTitle = rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado'
+
+      measureContext.font = '900 56px Arial'
+      const prizeLines = wrapCanvasText(measureContext, prizeTitle, 880).slice(0, 3)
+
+      const addressLines = rewardPickupAddress
+        ? (() => {
+            measureContext.font = '500 22px Arial'
+            return wrapCanvasText(measureContext, rewardPickupAddress, contentWidth - 176).slice(0, 4)
+          })()
+        : []
+
+      const protocolBoxHeight = rewardResult.couponCode ? 132 : 0
+      const expiryBoxHeight = rewardProofExpiresAt ? 104 : 0
+      const addressBoxHeight = rewardPickupAddress ? Math.max(112, 78 + addressLines.length * 28) : 0
+      const heroBottomY = 406 + prizeLines.length * 72
+      const totalCardHeights =
+        (protocolBoxHeight ? protocolBoxHeight + 18 : 0) +
+        (expiryBoxHeight ? expiryBoxHeight + 18 : 0) +
+        (addressBoxHeight ? addressBoxHeight + 18 : 0)
+      canvas.height = Math.max(920, heroBottomY + totalCardHeights + 64)
+
+      const context = canvas.getContext('2d')
+
+      if (!context) {
+        throw new Error('Não foi possível gerar a imagem do comprovante.')
+      }
   
       // Fundo slate-50 igual à tela final
       context.fillStyle = '#f8fafc'
@@ -1763,13 +1789,12 @@ export function PublicSurveyPage() {
       currentY += 48
       context.fillStyle = '#0f172a'
       context.font = '900 56px Arial'
-      const prizeLines = wrapCanvasText(context, rewardResult.item || rewardResult.landedLabel || 'Prêmio confirmado', 880)
       for (const line of prizeLines.slice(0, 3)) {
         context.fillText(line, canvas.width / 2, currentY)
         currentY += 72
       }
   
-      currentY += 20
+      currentY += 18
   
       // Cards de informação (estilo igual à tela: branco, borda, sombra)
       const cardX = pagePadding
@@ -1778,7 +1803,7 @@ export function PublicSurveyPage() {
   
       // Protocolo / Cupom
       if (rewardResult.couponCode) {
-        const codeBoxH = 140
+        const codeBoxH = 132
         context.shadowColor = 'rgba(0,0,0,0.06)'
         context.shadowBlur = 12
         context.shadowOffsetY = 4
@@ -1797,20 +1822,19 @@ export function PublicSurveyPage() {
         context.fillStyle = '#64748b'
         context.font = '800 16px Arial'
         context.letterSpacing = '2px'
-        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, currentY + 32)
+        context.fillText('PROTOCOLO / CUPOM', canvas.width / 2, currentY + 34)
         context.letterSpacing = '0px'
   
-        context.textAlign = 'left'
         context.fillStyle = '#0f172a'
         context.font = '900 40px Arial'
-        context.fillText(rewardResult.couponCode, cardX + 32, currentY + 96)
+        context.fillText(rewardResult.couponCode, canvas.width / 2, currentY + 88)
   
-        currentY += codeBoxH + 20
+        currentY += codeBoxH + 18
       }
   
       // Válido até
       if (rewardProofExpiresAt) {
-        const infoBoxH = 96
+        const infoBoxH = 104
         context.shadowColor = 'rgba(0,0,0,0.06)'
         context.shadowBlur = 12
         context.shadowOffsetY = 4
@@ -1825,7 +1849,7 @@ export function PublicSurveyPage() {
         strokeRoundedRect(context, cardX, currentY, cardW, infoBoxH, cardRadius)
   
         // Ícone de relógio em círculo colorido
-        const iconCX = cardX + 52
+        const iconCX = cardX + 56
         const iconCY = currentY + infoBoxH / 2
         context.fillStyle = hexToRgba(primaryHex, 0.1)
         context.beginPath()
@@ -1838,20 +1862,19 @@ export function PublicSurveyPage() {
         context.fillStyle = '#64748b'
         context.font = '800 14px Arial'
         context.letterSpacing = '1.5px'
-        context.fillText('VÁLIDO ATÉ', cardX + 100, currentY + 38)
+        context.fillText('VÁLIDO ATÉ', cardX + 108, currentY + 40)
         context.letterSpacing = '0px'
   
         context.fillStyle = '#0f172a'
         context.font = '700 28px Arial'
-        context.fillText(formatDatePtBr(rewardProofExpiresAt), cardX + 100, currentY + 74)
+        context.fillText(formatDatePtBr(rewardProofExpiresAt), cardX + 108, currentY + 78)
   
-        currentY += infoBoxH + 20
+        currentY += infoBoxH + 18
       }
   
       // Retirada
       if (rewardPickupAddress) {
-        const addressLines = wrapCanvasText(context, rewardPickupAddress, cardW - 160)
-        const addressBoxH = Math.max(100, 56 + addressLines.slice(0, 4).length * 30)
+        const addressBoxH = Math.max(112, 78 + addressLines.length * 28)
   
         context.shadowColor = 'rgba(0,0,0,0.06)'
         context.shadowBlur = 12
@@ -1867,7 +1890,7 @@ export function PublicSurveyPage() {
         strokeRoundedRect(context, cardX, currentY, cardW, addressBoxH, cardRadius)
   
         // Ícone de localização em círculo colorido
-        const iconCX = cardX + 52
+        const iconCX = cardX + 56
         const iconCY = currentY + 44
         context.fillStyle = hexToRgba(primaryHex, 0.1)
         context.beginPath()
@@ -1884,18 +1907,18 @@ export function PublicSurveyPage() {
         context.fillStyle = '#64748b'
         context.font = '800 14px Arial'
         context.letterSpacing = '1.5px'
-        context.fillText('RETIRADA', cardX + 100, currentY + 36)
+        context.fillText('RETIRADA', cardX + 108, currentY + 38)
         context.letterSpacing = '0px'
   
         context.fillStyle = '#334155'
         context.font = '500 22px Arial'
-        let addressY = currentY + 64
-        for (const line of addressLines.slice(0, 4)) {
-          context.fillText(line, cardX + 100, addressY)
-          addressY += 30
+        let addressY = currentY + 70
+        for (const line of addressLines) {
+          context.fillText(line, cardX + 108, addressY)
+          addressY += 28
         }
   
-        currentY += addressBoxH + 20
+        currentY += addressBoxH + 18
       }
   
       const link = document.createElement('a')
