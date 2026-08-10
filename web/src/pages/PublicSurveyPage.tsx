@@ -1624,12 +1624,7 @@ export function PublicSurveyPage() {
   const currentRetryTaskRemainingSeconds = currentRetryTask ? getRetryTaskRemainingSeconds(currentRetryTask.id) : 0
   const currentRetryTaskCountdownValue =
     currentRetryTask && currentRetryTaskReturned && !currentRetryTaskCanConfirm ? Math.max(1, currentRetryTaskRemainingSeconds) : 0
-  const retryExitGuardActive = Boolean(
-    activeRetryTaskId ||
-      currentRetryTaskProgress ||
-      (currentRetryTaskReturned && !currentRetryTaskCanConfirm) ||
-      retryTaskClickMutation.isPending,
-  )
+  const retryExitGuardActive = Boolean((currentRetryTaskReturned && !currentRetryTaskCanConfirm) || retryTaskClickMutation.isPending)
   const currentRetryTaskIsLoading = currentRetryTask
     ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
     : false
@@ -1644,6 +1639,10 @@ export function PublicSurveyPage() {
     }
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (retryExitGuardBypassRef.current) {
+        return
+      }
+
       event.preventDefault()
       event.returnValue = ''
     }
@@ -1715,6 +1714,10 @@ export function PublicSurveyPage() {
   ])
 
   function openRetryTaskLink(task: RewardRetryTask) {
+    retryExitGuardBypassRef.current = true
+    window.setTimeout(() => {
+      retryExitGuardBypassRef.current = false
+    }, 1500)
     window.location.assign(task.url)
   }
 
