@@ -71,6 +71,22 @@ const confettiPieces = Array.from({ length: 34 }, (_, index) => {
   }
 })
 
+const confettiRainPieces = Array.from({ length: 22 }, (_, index) => {
+  const spread = 10 + (index % 6) * 4
+
+  return {
+    left: `${8 + ((index * 11) % 84)}%`,
+    delay: `${220 + index * 55}ms`,
+    duration: `${1800 + (index % 5) * 180}ms`,
+    drift: `${index % 2 === 0 ? -spread : spread}px`,
+    rotate: `${index % 2 === 0 ? -160 : 160}deg`,
+    color: confettiPalette[(index + 3) % confettiPalette.length],
+    width: `${6 + (index % 3) * 3}px`,
+    height: `${12 + (index % 4) * 4}px`,
+    shape: index % 4 === 0 ? '999px' : '3px',
+  }
+})
+
 function splitSegmentLabel(label: string) {
   const words = label.trim().split(/\s+/).filter(Boolean)
 
@@ -411,6 +427,8 @@ export function PrizeWheel({
         <div className="absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,_rgba(250,204,21,0.35)_0%,_rgba(249,115,22,0.28)_22%,_rgba(236,72,153,0.24)_45%,_rgba(139,92,246,0.18)_68%,_rgba(255,255,255,0)_88%)] blur-2xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
+            <span className="celebration-flash" />
+            <span className="celebration-glow-ring" />
             <span className="confetti-burst-core" />
             <span className="confetti-burst-ring" />
             {confettiPieces.map((piece, index) => (
@@ -430,6 +448,26 @@ export function PrizeWheel({
                     ['--confetti-x' as string]: piece.x,
                     ['--confetti-y' as string]: piece.y,
                     ['--confetti-rotate' as string]: piece.rotate,
+                  } as Record<string, string>
+                }
+              />
+            ))}
+            {confettiRainPieces.map((piece, index) => (
+              <span
+                key={`rain-${celebrationKey}-${index}`}
+                className="confetti-rain-piece"
+                style={
+                  {
+                    left: piece.left,
+                    top: '12%',
+                    backgroundColor: piece.color,
+                    animationDelay: piece.delay,
+                    animationDuration: piece.duration,
+                    width: piece.width,
+                    height: piece.height,
+                    borderRadius: piece.shape,
+                    ['--confetti-rain-drift' as string]: piece.drift,
+                    ['--confetti-rain-rotate' as string]: piece.rotate,
                   } as Record<string, string>
                 }
               />

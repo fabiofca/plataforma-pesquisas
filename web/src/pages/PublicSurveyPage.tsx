@@ -59,6 +59,19 @@ const neutralWheelLabels = [
   'Obrigado',
 ]
 
+const winnerConfettiPalette = ['#facc15', '#fb7185', '#38bdf8', '#8b5cf6', '#22c55e', '#f97316', '#ffffff']
+const winnerConfettiRainPieces = Array.from({ length: 28 }, (_, index) => ({
+  left: `${4 + ((index * 9) % 92)}%`,
+  delay: `${index * 80}ms`,
+  duration: `${2200 + (index % 5) * 220}ms`,
+  drift: `${index % 2 === 0 ? -(10 + (index % 4) * 5) : 10 + (index % 4) * 5}px`,
+  rotate: `${index % 2 === 0 ? -190 : 190}deg`,
+  color: winnerConfettiPalette[index % winnerConfettiPalette.length],
+  width: `${6 + (index % 3) * 3}px`,
+  height: `${12 + (index % 4) * 4}px`,
+  radius: index % 4 === 0 ? '999px' : '3px',
+}))
+
 type RewardRetryTask = {
   id: string
   type: 'google_review' | 'instagram_follow' | 'custom_link'
@@ -1477,6 +1490,7 @@ export function PublicSurveyPage() {
       return result
     },
     onSuccess: (result, task) => {
+      delete autoConfirmTriggeredRef.current[task.id]
       setCompletedRetryTaskIds(result.completedTaskIds)
       setCanSpinReward(result.unlocked)
       setRetryTaskProgressMap((current) => {
@@ -1497,11 +1511,15 @@ export function PublicSurveyPage() {
           : current,
       )
     },
+    onError: (_error, task) => {
+      delete autoConfirmTriggeredRef.current[task.id]
+    },
   })
 
   const currentRetryTaskProgress = currentRetryTask ? retryTaskProgressMap[currentRetryTask.id] : null
   const currentRetryTaskReturned = Boolean(currentRetryTaskProgress?.returnedAt)
   const currentRetryTaskCanConfirm = currentRetryTask ? canConfirmRetryTask(currentRetryTask.id) : false
+  const currentRetryTaskReadyToUnlock = Boolean(currentRetryTask && currentRetryTaskReturned && currentRetryTaskCanConfirm)
   const currentRetryTaskRemainingSeconds = currentRetryTask ? getRetryTaskRemainingSeconds(currentRetryTask.id) : 0
   const currentRetryTaskCountdownValue =
     currentRetryTask && currentRetryTaskReturned && !currentRetryTaskCanConfirm ? Math.max(1, currentRetryTaskRemainingSeconds) : 0
@@ -2377,8 +2395,30 @@ export function PublicSurveyPage() {
         <div className="fixed inset-0 z-50 flex flex-col bg-white">
           {/* Tela final: prêmio confirmado (página inteira, sem roleta) */}
           {rewardResult?.won ? (
-            <div className="flex flex-1 flex-col bg-slate-50 p-3 animate-fade-in sm:p-5">
-              <div className="mx-auto flex h-full w-full max-w-[540px] flex-col">
+            <div className="winner-reveal-shell flex flex-1 flex-col bg-slate-50 p-3 animate-fade-in sm:p-5">
+              <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-10 overflow-hidden" aria-hidden="true">
+                {winnerConfettiRainPieces.map((piece, index) => (
+                  <span
+                    key={`winner-rain-${celebrationKey}-${index}`}
+                    className="winner-confetti-rain-piece"
+                    style={
+                      {
+                        left: piece.left,
+                        top: '-6%',
+                        backgroundColor: piece.color,
+                        animationDelay: piece.delay,
+                        animationDuration: piece.duration,
+                        width: piece.width,
+                        height: piece.height,
+                        borderRadius: piece.radius,
+                        ['--winner-confetti-drift' as string]: piece.drift,
+                        ['--winner-confetti-rotate' as string]: piece.rotate,
+                      } as Record<string, string>
+                    }
+                  />
+                ))}
+              </div>
+              <div className="winner-reveal-card mx-auto flex h-full w-full max-w-[540px] flex-col">
                 <div className="mb-3 flex items-center justify-end sm:mb-4">
                   <button
                     type="button"
@@ -2392,28 +2432,28 @@ export function PublicSurveyPage() {
                 <div className="flex flex-1 flex-col overflow-hidden text-center">
                   <div className="flex flex-col items-center justify-center">
                     <div
-                      className="flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-16 sm:w-16"
+                      className="winner-trophy-pop flex h-14 w-14 items-center justify-center rounded-full bg-white shadow-[0_8px_24px_rgba(0,0,0,0.1)] sm:h-16 sm:w-16"
                       style={{ color: survey?.primaryColor || '#0f172a' }}
                     >
                       <Trophy className="h-7 w-7 sm:h-8 sm:w-8" strokeWidth={1.5} />
                     </div>
 
-                    <p className="mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-sm">Prêmio confirmado</p>
-                    <p className="mt-1 text-lg font-semibold text-slate-900 sm:text-2xl">
+                    <p className="winner-copy-rise mt-2 text-xs font-bold uppercase tracking-[0.2em] text-slate-500 sm:text-sm" style={{ animationDelay: '80ms' }}>Prêmio confirmado</p>
+                    <p className="winner-copy-rise mt-1 text-lg font-semibold text-slate-900 sm:text-2xl" style={{ animationDelay: '130ms' }}>
                       {participantName ? `Parabéns, ${participantName}!` : 'Parabéns!'}
                     </p>
 
                     <div className="mt-2">
-                      <p className="text-xs text-slate-500 sm:text-sm">Você ganhou:</p>
-                      <p className="font-display text-2xl font-bold text-slate-950 sm:text-4xl">{rewardResult.item}</p>
+                      <p className="winner-copy-rise text-xs text-slate-500 sm:text-sm" style={{ animationDelay: '180ms' }}>Você ganhou:</p>
+                      <p className="winner-prize-pop font-display text-2xl font-bold text-slate-950 sm:text-4xl" style={{ animationDelay: '220ms' }}>{rewardResult.item}</p>
                     </div>
 
                     {rewardInstructionText ? (
-                      <p className="mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-500 sm:text-sm">{rewardInstructionText}</p>
+                      <p className="winner-copy-rise mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-500 sm:text-sm" style={{ animationDelay: '280ms' }}>{rewardInstructionText}</p>
                     ) : null}
                   </div>
 
-                  <div className="mt-4 flex w-full flex-col gap-2 sm:gap-2.5">
+                  <div className="winner-copy-rise mt-4 flex w-full flex-col gap-2 sm:gap-2.5" style={{ animationDelay: '320ms' }}>
                     {rewardResult.couponCode ? (
                       <div className="w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm">
                         <p className="text-center text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:text-xs">Protocolo / Cupom</p>
@@ -2463,7 +2503,7 @@ export function PublicSurveyPage() {
                   </div>
                 </div>
 
-                <div className="flex w-full flex-col gap-2 pt-3 sm:gap-2.5 sm:pt-4">
+                <div className="winner-copy-rise flex w-full flex-col gap-2 pt-3 sm:gap-2.5 sm:pt-4" style={{ animationDelay: '380ms' }}>
                   {rewardContactWhatsAppUrl ? (
                     <a
                       href={rewardContactWhatsAppUrl}
@@ -2664,19 +2704,32 @@ export function PublicSurveyPage() {
                                   <div className="absolute inset-6 rounded-full border border-dashed border-violet-300 animate-spin [animation-duration:8s]" />
                                   <div className="absolute -top-1 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-sky-500 shadow-[0_0_16px_rgba(14,165,233,0.5)]" />
                                   <div className="relative flex flex-col items-center justify-center">
-                                    <span className="text-[3.2rem] font-black leading-none text-slate-950 sm:text-[3.6rem]">
-                                      {currentRetryTaskCountdownValue}
-                                    </span>
-                                    <span className="mt-1 text-[11px] font-bold uppercase tracking-[0.24em] text-sky-700">
-                                      segundos
-                                    </span>
+                                    {currentRetryTaskReadyToUnlock ? (
+                                      <>
+                                        <Loader2 className="h-12 w-12 animate-spin text-sky-600 sm:h-14 sm:w-14" />
+                                        <span className="mt-3 text-[11px] font-bold uppercase tracking-[0.24em] text-sky-700">
+                                          liberando
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="text-[3.2rem] font-black leading-none text-slate-950 sm:text-[3.6rem]">
+                                          {currentRetryTaskCountdownValue}
+                                        </span>
+                                        <span className="mt-1 text-[11px] font-bold uppercase tracking-[0.24em] text-sky-700">
+                                          segundos
+                                        </span>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
                                 <p className="mt-5 text-base font-black text-slate-950 sm:text-lg">
-                                  Sua roleta será liberada em instantes.
+                                  {currentRetryTaskReadyToUnlock ? 'Estamos liberando sua roleta.' : 'Sua roleta será liberada em instantes.'}
                                 </p>
                                 <p className="mx-auto mt-2 max-w-[24rem] text-sm leading-6 text-slate-600">
-                                  Continue nesta tela. Quando a contagem terminar, sua nova chance será ativada automaticamente.
+                                  {currentRetryTaskReadyToUnlock
+                                    ? 'Sua tarefa já foi reconhecida. Se demorar mais que o normal, você pode liberar manualmente no botão abaixo.'
+                                    : 'Continue nesta tela. Quando a contagem terminar, sua nova chance será ativada automaticamente.'}
                                 </p>
                               </div>
                             )}
@@ -2687,6 +2740,11 @@ export function PublicSurveyPage() {
                                 disabled={currentRetryTaskIsLoading || (!currentRetryTaskReturned && Boolean(currentRetryTaskProgress))}
                                 onClick={(event) => {
                                   event.stopPropagation()
+                                  if (currentRetryTaskReturned && currentRetryTaskCanConfirm) {
+                                    autoConfirmTriggeredRef.current[currentRetryTask.id] = true
+                                    void retryTaskClickMutation.mutateAsync(currentRetryTask)
+                                    return
+                                  }
                                   if (currentRetryTaskProgress) {
                                     openRetryTaskLink(currentRetryTask)
                                     return
@@ -2700,7 +2758,15 @@ export function PublicSurveyPage() {
                                 }`}
                               >
                                 <ExternalLink className="h-4 w-4" />
-                                {currentRetryTaskReturned ? 'Ir para a tarefa novamente' : currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
+                                {currentRetryTaskIsLoading
+                                  ? 'Liberando roleta...'
+                                  : currentRetryTaskReadyToUnlock
+                                    ? 'Liberar roleta'
+                                    : currentRetryTaskReturned
+                                      ? 'Ir para a tarefa novamente'
+                                      : currentRetryTaskProgress
+                                        ? 'Reabrir tarefa'
+                                        : 'Ir para a tarefa'}
                               </button>
                             </div>
                             {!currentRetryTaskReturned ? (
