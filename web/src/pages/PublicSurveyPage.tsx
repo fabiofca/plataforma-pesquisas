@@ -287,11 +287,36 @@ function strokeRoundedRect(
   context.stroke()
 }
 
-function formatDatePtBr(value: string) {
-  const normalized = value.trim().replace(' ', 'T')
+function extractCalendarDateParts(value: string) {
+  const trimmed = value.trim()
+  const matchedDate = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/)
+
+  if (matchedDate) {
+    return {
+      year: Number(matchedDate[1]),
+      month: Number(matchedDate[2]),
+      day: Number(matchedDate[3]),
+    }
+  }
+
+  const normalized = trimmed.replace(' ', 'T')
   const parsed = new Date(normalized.includes('T') ? normalized : `${normalized}T00:00:00`)
 
   if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+
+  return {
+    year: parsed.getUTCFullYear(),
+    month: parsed.getUTCMonth() + 1,
+    day: parsed.getUTCDate(),
+  }
+}
+
+function formatDatePtBr(value: string) {
+  const parts = extractCalendarDateParts(value)
+
+  if (!parts) {
     return ''
   }
 
@@ -299,7 +324,31 @@ function formatDatePtBr(value: string) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
-  }).format(parsed)
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day)))
+}
+
+function buildRewardProofExpirationIsoDate(input: {
+  awardedAt?: string
+  redemptionExpiresAt?: string
+  redemptionExpirationDays?: number
+}) {
+  const baseParts = extractCalendarDateParts(input.redemptionExpiresAt ?? input.awardedAt ?? '')
+
+  if (!baseParts) {
+    return ''
+  }
+
+  const date = new Date(Date.UTC(baseParts.year, baseParts.month - 1, baseParts.day))
+
+  if (!input.redemptionExpiresAt) {
+    date.setUTCDate(date.getUTCDate() + Math.max(1, input.redemptionExpirationDays ?? 15))
+  }
+
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function getRewardProofExpiresAt(input: {
@@ -307,22 +356,7 @@ function getRewardProofExpiresAt(input: {
   redemptionExpiresAt?: string
   redemptionExpirationDays?: number
 }) {
-  if (input.redemptionExpiresAt) {
-    return input.redemptionExpiresAt
-  }
-
-  if (!input.awardedAt) {
-    return ''
-  }
-
-  const parsed = new Date(input.awardedAt)
-
-  if (Number.isNaN(parsed.getTime())) {
-    return ''
-  }
-
-  parsed.setDate(parsed.getDate() + Math.max(1, input.redemptionExpirationDays ?? 15))
-  return parsed.toISOString()
+  return buildRewardProofExpirationIsoDate(input)
 }
 
 function getRewardRedemptionInstruction(input: {
