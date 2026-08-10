@@ -2413,17 +2413,6 @@ export function PublicSurveyPage() {
                 </div>
               ) : null}
 
-              {previewMode || survey.allowMultipleResponses ? (
-                <div className="mt-5 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={resetPreviewSession}
-                    className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
-                  >
-                    Responder novamente
-                  </button>
-                </div>
-              ) : null}
             </section>
           )}
         </div>
