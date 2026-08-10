@@ -113,6 +113,10 @@ type RetryTaskProgressMap = Record<
 type PersistedPublicSurveySession = {
   participantName: string
   participantPhone: string
+  participantEmail: string
+  birthDay: string
+  birthMonth: string
+  answers: SurveyAnswerMap
   submitted: boolean
   submitMessage: string
   responseId: string
@@ -814,6 +818,10 @@ export function PublicSurveyPage() {
     const snapshot: PersistedPublicSurveySession = {
       participantName,
       participantPhone,
+      participantEmail,
+      birthDay,
+      birthMonth,
+      answers,
       submitted,
       submitMessage,
       responseId,
@@ -828,7 +836,16 @@ export function PublicSurveyPage() {
       ...overrides,
     }
 
+    const hasParticipantDraft =
+      Boolean(snapshot.participantName.trim()) ||
+      Boolean(snapshot.participantPhone.trim()) ||
+      Boolean(snapshot.participantEmail.trim()) ||
+      Boolean(snapshot.birthDay) ||
+      Boolean(snapshot.birthMonth)
+    const hasDraftAnswers = Object.keys(snapshot.answers).length > 0
     const hasMeaningfulSession =
+      hasParticipantDraft ||
+      hasDraftAnswers ||
       snapshot.submitted ||
       Boolean(snapshot.responseId) ||
       Boolean(snapshot.rewardResult) ||
@@ -886,6 +903,10 @@ export function PublicSurveyPage() {
 
       setParticipantName(parsed.participantName ?? '')
       setParticipantPhone(parsed.participantPhone ?? '')
+      setParticipantEmail(parsed.participantEmail ?? '')
+      setBirthDay(parsed.birthDay ?? '')
+      setBirthMonth(parsed.birthMonth ?? '')
+      setAnswers(parsed.answers ?? {})
       setSubmitted(Boolean(parsed.submitted))
       setSubmitMessage(parsed.submitMessage ?? '')
       setResponseId(parsed.responseId ?? '')
@@ -938,6 +959,10 @@ export function PublicSurveyPage() {
     isTestResponseSession,
     participantName,
     participantPhone,
+    participantEmail,
+    birthDay,
+    birthMonth,
+    answers,
     responseId,
     retryTaskProgressMap,
     rewardResult,
@@ -1277,6 +1302,11 @@ export function PublicSurveyPage() {
   }
 
   function restartSurveyResponse() {
+    setParticipantName('')
+    setParticipantPhone('')
+    setParticipantEmail('')
+    setBirthDay('')
+    setBirthMonth('')
     setSubmitted(false)
     setSubmitMessage('')
     setResponseId('')
