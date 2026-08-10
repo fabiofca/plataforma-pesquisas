@@ -313,6 +313,11 @@ function extractCalendarDateParts(value: string) {
   }
 }
 
+type PublicSurveyValidationState = {
+  target: string
+  message: string
+}
+
 function formatDatePtBr(value: string) {
   const parts = extractCalendarDateParts(value)
 
@@ -612,6 +617,7 @@ export function PublicSurveyPage() {
   const [canSpinReward, setCanSpinReward] = useState(false)
   const [rewardResult, setRewardResult] = useState<RewardResultState | null>(null)
   const [eligibilityMessage, setEligibilityMessage] = useState('')
+  const [validationState, setValidationState] = useState<PublicSurveyValidationState | null>(null)
   const [wheelRotation, setWheelRotation] = useState(0)
   const [wheelSpinning, setWheelSpinning] = useState(false)
   const [activeWheelSegmentId, setActiveWheelSegmentId] = useState('')
@@ -629,6 +635,7 @@ export function PublicSurveyPage() {
   const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
+  const validationElementRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoConfirmTriggeredRef = useRef<Record<string, boolean>>({})
   const source = searchParams.get('src')
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
@@ -1141,6 +1148,35 @@ export function PublicSurveyPage() {
     }
   }, [canCloseWheelModal, wheelModalOpen])
 
+  function setValidationElementRef(key: string, element: HTMLElement | null) {
+    validationElementRefs.current[key] = element
+  }
+
+  function focusValidationTarget(target: string, message: string) {
+    setValidationState({ target, message })
+    setEligibilityMessage(message)
+
+    window.requestAnimationFrame(() => {
+      const element = validationElementRefs.current[target]
+
+      if (!element) {
+        return
+      }
+
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+      const focusable = element.querySelector('input, select, textarea, button')
+
+      if (focusable instanceof HTMLElement) {
+        focusable.focus({ preventScroll: true })
+      }
+    })
+  }
+
+  function clearValidationTarget(target: string) {
+    setValidationState((current) => (current?.target === target ? null : current))
+  }
+
   function resetPreviewSession() {
     setSubmitted(false)
     setSubmitMessage('')
@@ -1148,6 +1184,7 @@ export function PublicSurveyPage() {
     setCanSpinReward(false)
     setRewardResult(null)
     setEligibilityMessage('')
+      setValidationState(null)
     setWheelRotation(0)
     setWheelSpinning(false)
     setActiveWheelSegmentId('')
@@ -1171,29 +1208,35 @@ export function PublicSurveyPage() {
       const normalizedBirthMonth = Number(birthMonth)
 
       if (normalizedName.length < 3) {
+        focusValidationTarget('participant-name', 'Informe o nome completo para continuar.')
         throw new Error('Informe o nome completo para continuar.')
       }
 
       if (!isValidPhone(normalizedPhone)) {
+        focusValidationTarget('participant-phone', 'Informe um telefone válido no formato 21996336092.')
         throw new Error('Informe um telefone válido no formato 21996336092.')
       }
 
       if (normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        focusValidationTarget('participant-email', 'Informe um e-mail válido ou deixe este campo em branco.')
         throw new Error('Informe um e-mail válido ou deixe este campo em branco.')
       }
 
-      if (!normalizedBirthDay || normalizedBirthDay < 1 || normalizedBirthDay > 31) {
-        throw new Error('Selecione o dia do aniversário.')
+      if (!normalizedBirthMonth || normalizedBirthMonth < 1 || normalizedBirthMonth > 12) {
+        focusValidationTarget('participant-birth-month', 'Selecione o mês do aniversário.')
+        throw new Error('Selecione o mês do aniversário.')
       }
 
-      if (!normalizedBirthMonth || normalizedBirthMonth < 1 || normalizedBirthMonth > 12) {
-        throw new Error('Selecione o mês do aniversário.')
+      if (!normalizedBirthDay || normalizedBirthDay < 1 || normalizedBirthDay > 31) {
+        focusValidationTarget('participant-birth-day', 'Selecione o dia do aniversário.')
+        throw new Error('Selecione o dia do aniversário.')
       }
 
       for (const question of visibleQuestions) {
         const currentAnswer = answers[question.id]
 
         if (question.required && !isQuestionAnswered(question, currentAnswer)) {
+          focusValidationTarget(`question:${question.id}`, `Preencha a pergunta "${question.title}" para continuar.`)
           throw new Error(`Preencha a pergunta "${question.title}" para continuar.`)
         }
       }
@@ -1235,6 +1278,7 @@ export function PublicSurveyPage() {
     },
     onSuccess: (result) => {
       setEligibilityMessage('')
+      setValidationState(null)
       setResponseId(result.responseId)
       setCanSpinReward(result.rewardEnabled && result.rewardEligible)
       setCompletedRetryTaskIds([])
@@ -1809,10 +1853,12 @@ export function PublicSurveyPage() {
   }
 
   function setSingleAnswer(questionId: string, value: string | number) {
+    clearValidationTarget(`question:${questionId}`)
     setAnswers((current) => pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, value))
   }
 
   function toggleOption(questionId: string, value: string) {
+    clearValidationTarget(`question:${questionId}`)
     setAnswers((current) => {
       const existing = current[questionId]
       const list = Array.isArray(existing) ? existing : []
@@ -1911,49 +1957,80 @@ export function PublicSurveyPage() {
               }}
             >
               <section className="grid gap-4 border border-slate-200 bg-white p-4 sm:p-5 md:grid-cols-2" style={{ borderRadius: 8 }}>
-                <label className="grid gap-2 text-sm">
+                <label
+                  ref={(element) => setValidationElementRef('participant-name', element)}
+                  className="grid gap-2 text-sm"
+                >
                   <span className="text-slate-600">Nome completo</span>
                   <input
                     aria-label="Nome do participante"
-                    className="admin-input"
+                    className={`admin-input ${validationState?.target === 'participant-name' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
                     value={participantName}
-                    onChange={(event) => setParticipantName(event.target.value)}
+                    onChange={(event) => {
+                      clearValidationTarget('participant-name')
+                      setParticipantName(event.target.value)
+                    }}
                   />
+                  {validationState?.target === 'participant-name' ? (
+                    <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
+                  ) : null}
                 </label>
 
-                <label className="grid gap-2 text-sm">
+                <label
+                  ref={(element) => setValidationElementRef('participant-phone', element)}
+                  className="grid gap-2 text-sm"
+                >
                   <span className="text-slate-600">Telefone com WhatsApp</span>
                   <input
                     aria-label="Telefone do participante"
                     inputMode="numeric"
                     maxLength={11}
-                    className="admin-input"
+                    className={`admin-input ${validationState?.target === 'participant-phone' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
                     placeholder="21989988988"
                     value={participantPhone}
-                    onChange={(event) => setParticipantPhone(sanitizePhone(event.target.value))}
+                    onChange={(event) => {
+                      clearValidationTarget('participant-phone')
+                      setParticipantPhone(sanitizePhone(event.target.value))
+                    }}
                   />
+                  {validationState?.target === 'participant-phone' ? (
+                    <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
+                  ) : null}
                 </label>
 
-                <label className="grid gap-2 text-sm">
+                <label
+                  ref={(element) => setValidationElementRef('participant-email', element)}
+                  className="grid gap-2 text-sm"
+                >
                   <span className="text-slate-600">E-mail (opcional)</span>
                   <input
                     aria-label="E-mail do participante"
                     type="email"
-                    className="admin-input"
+                    className={`admin-input ${validationState?.target === 'participant-email' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
                     placeholder="cliente@email.com"
                     value={participantEmail}
-                    onChange={(event) => setParticipantEmail(event.target.value)}
+                    onChange={(event) => {
+                      clearValidationTarget('participant-email')
+                      setParticipantEmail(event.target.value)
+                    }}
                   />
+                  {validationState?.target === 'participant-email' ? (
+                    <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
+                  ) : null}
                 </label>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm">
+                  <label
+                    ref={(element) => setValidationElementRef('participant-birth-month', element)}
+                    className="grid gap-2 text-sm"
+                  >
                     <span className="text-slate-600">Mês</span>
                     <select
                       aria-label="Mês do aniversário"
-                      className="admin-select"
+                      className={`admin-select ${validationState?.target === 'participant-birth-month' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
                       value={birthMonth}
                       onChange={(event) => {
+                        clearValidationTarget('participant-birth-month')
                         const nextMonth = event.target.value
                         setBirthMonth(nextMonth)
                         if (birthDay) {
@@ -1971,16 +2048,25 @@ export function PublicSurveyPage() {
                         </option>
                       ))}
                     </select>
+                      {validationState?.target === 'participant-birth-month' ? (
+                        <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
+                      ) : null}
                   </label>
 
-                  <label className="grid gap-2 text-sm">
+                  <label
+                    ref={(element) => setValidationElementRef('participant-birth-day', element)}
+                    className="grid gap-2 text-sm"
+                  >
                     <span className="text-slate-600">Dia</span>
                     <select
                       aria-label="Dia do aniversário"
-                      className="admin-select"
+                      className={`admin-select ${validationState?.target === 'participant-birth-day' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
                       value={birthDay}
                       disabled={!birthMonth}
-                      onChange={(event) => setBirthDay(event.target.value)}
+                      onChange={(event) => {
+                        clearValidationTarget('participant-birth-day')
+                        setBirthDay(event.target.value)
+                      }}
                     >
                       <option value="">{birthMonth ? 'Selecione o dia' : 'Escolha o mês primeiro'}</option>
                       {Array.from({ length: getDaysInBirthMonth(Number(birthMonth)) }, (_, index) => (
@@ -1989,6 +2075,9 @@ export function PublicSurveyPage() {
                         </option>
                       ))}
                     </select>
+                      {validationState?.target === 'participant-birth-day' ? (
+                        <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
+                      ) : null}
                   </label>
                 </div>
               </section>
@@ -2001,7 +2090,12 @@ export function PublicSurveyPage() {
                     : Array.isArray(currentAnswer) && currentAnswer.includes(option)
 
                 return (
-                  <section key={question.id} className="border border-slate-200 bg-white p-4 sm:p-5" style={{ borderRadius: 8 }}>
+                  <section
+                    key={question.id}
+                    ref={(element) => setValidationElementRef(`question:${question.id}`, element)}
+                    className={`border bg-white p-4 sm:p-5 ${validationState?.target === `question:${question.id}` ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-200'}`}
+                    style={{ borderRadius: 8 }}
+                  >
                     <div className="mb-4 flex items-start gap-3">
                       <span
                         className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
@@ -2016,6 +2110,9 @@ export function PublicSurveyPage() {
                         </h2>
                         {question.description ? (
                           <p className="mt-1 text-sm text-slate-500">{question.description}</p>
+                        ) : null}
+                        {validationState?.target === `question:${question.id}` ? (
+                          <p className="mt-2 text-sm font-medium text-rose-600">{validationState.message}</p>
                         ) : null}
                       </div>
                     </div>
