@@ -15,7 +15,6 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
 import { SurveyVisualFlowEditor } from '@/components/surveys/SurveyVisualFlowEditor'
-import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
 
@@ -301,7 +300,6 @@ export function SurveyBuilderPage() {
   const [selectedVisualQuestionId, setSelectedVisualQuestionId] = useState('')
   const [feedback, setFeedback] = useState('')
   const [centeredFeedback, setCenteredFeedback] = useState<{ message: string; key: number } | null>(null)
-  const [previewOpen, setPreviewOpen] = useState(false)
   const [uploadingKey, setUploadingKey] = useState<SurveyUploadTarget | ''>('')
   const [removingKey, setRemovingKey] = useState<SurveyUploadTarget | ''>('')
   const [uploadErrors, setUploadErrors] = useState<Record<SurveyUploadTarget, string>>({
@@ -928,121 +926,8 @@ export function SurveyBuilderPage() {
     }))
   }
 
-  const previewContent = (
-    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div
-        className="overflow-hidden border border-slate-200"
-        style={{
-          borderRadius: 8,
-          backgroundImage: form.bannerUrl
-            ? `linear-gradient(180deg, rgba(15,23,42,0.18) 0%, rgba(15,23,42,0.7) 100%), url(${form.bannerUrl})`
-            : `linear-gradient(135deg, ${form.primaryColor || '#0b5cff'} 0%, #0f172a 100%)`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="flex min-h-[260px] flex-col justify-between px-5 py-5 text-white">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              {form.logoUrl ? (
-                <div className="flex h-14 w-14 items-center justify-center overflow-hidden border border-white/30 bg-white/90" style={{ borderRadius: 8 }}>
-                  <img src={form.logoUrl} alt="Logo da previa da pesquisa" className="h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div
-                  className="flex h-14 w-14 items-center justify-center border border-white/30 bg-white/15 text-sm font-semibold"
-                  style={{ borderRadius: 8 }}
-                >
-                  {getBrandInitials(form.brandName)}
-                </div>
-              )}
-
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.18em] text-white/70">{form.brandName.trim() || 'Sua marca'}</p>
-                <p className="mt-1 text-sm font-medium text-white/90">/s/{form.slug.trim() || 'seu-link-aqui'}</p>
-              </div>
-            </div>
-
-            <span className="border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ borderRadius: 999 }}>
-              {form.rewardEnabled ? 'Com roleta' : 'Pesquisa simples'}
-            </span>
-          </div>
-
-          <div className="max-w-2xl">
-            <h3 className="text-2xl font-semibold leading-tight sm:text-3xl">
-              {form.title.trim() || 'O titulo da sua pesquisa aparecera aqui'}
-            </h3>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-white/85">
-              {form.description.trim() || 'Use a descricao para explicar rapidamente o objetivo da pesquisa e orientar o participante.'}
-            </p>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                Nome e WhatsApp obrigatorios
-              </span>
-              <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4">
-        <div className="border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Como o participante percebe</p>
-          <div className="mt-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-            <p className="text-sm font-semibold text-slate-950">
-              {form.questions[0]?.title?.trim() || 'A primeira pergunta aparecera aqui'}
-            </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {form.questions[0]?.description?.trim() || 'Voce pode usar a descricao de apoio para orientar a resposta do cliente.'}
-            </p>
-            <div className="mt-4 grid gap-2">
-              <div className="h-10 border border-slate-200 bg-slate-50" style={{ borderRadius: 8 }} />
-              <div
-                className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white"
-                style={{ borderRadius: 8, backgroundColor: form.primaryColor || '#0b5cff' }}
-              >
-                Continuar
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Resumo da identidade</p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 8 }}>
-              <p className="text-xs text-slate-500">Cor principal</p>
-              <div className="mt-2 flex items-center gap-2">
-                <div
-                  className="h-8 w-8 border border-slate-200"
-                  style={{ borderRadius: 8, backgroundColor: form.primaryColor || '#0b5cff' }}
-                />
-                <span className="text-sm font-medium text-slate-900">{form.primaryColor || '#0b5cff'}</span>
-              </div>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 8 }}>
-              <p className="text-xs text-slate-500">Logo</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{form.logoUrl ? 'Enviada' : 'Pendente'}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 8 }}>
-              <p className="text-xs text-slate-500">Banner</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{form.bannerUrl ? 'Enviado' : 'Pendente'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
   const actionButtons = (
     <>
-      <button type="button" onClick={() => setPreviewOpen(true)} className="admin-button">
-        <FileImage className="h-4 w-4" />
-        Ver prévia
-      </button>
       {params.id ? (
         <Link to={getSurveyTestPath(params.id)} className="admin-button border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100">
           <Sparkles className="h-4 w-4" />
@@ -1213,20 +1098,10 @@ export function SurveyBuilderPage() {
         </div>
       </section>
 
-      <AdminModal
-        open={previewOpen}
-        title="Previa da pesquisa"
-        description="Confira como a identidade e a abertura da pesquisa estao ficando antes de publicar."
-        onClose={() => setPreviewOpen(false)}
-      >
-        {previewContent}
-      </AdminModal>
-
       <div className="grid gap-6">
-        <SectionCard
-          eyebrow="Fluxo"
-          title="Canvas da pesquisa"
-          description="O fluxo fica no centro. Toque em um bloco para editar a pergunta."
+        <section
+          className="overflow-hidden rounded-[8px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-4 shadow-card"
+          style={{ background: 'linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%)' }}
         >
           <SurveyVisualFlowEditor
             primaryColor={form.primaryColor}
@@ -1272,7 +1147,7 @@ export function SurveyBuilderPage() {
               }
             }}
           />
-        </SectionCard>
+        </section>
 
         <SectionCard
           eyebrow="Configuração"

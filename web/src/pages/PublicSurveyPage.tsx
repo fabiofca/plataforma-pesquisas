@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { CheckCircle2, Download, Gift, Loader2, MessageCircle, Trophy, Sparkles, PartyPopper, MapPin, Clock, ExternalLink, Instagram, Star, X, Frown, AlertTriangle } from 'lucide-react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
 import { getBrowserCookieId, getBrowserFingerprint } from '@/lib/browser-identity'
@@ -606,6 +606,7 @@ function buildPrizeWheelSegments(
 
 export function PublicSurveyPage() {
   const { slug, id, token } = useParams()
+  const navigate = useNavigate()
   const previewVariant = id ? 'internal' : token ? 'shared' : 'public'
   const previewMode = previewVariant !== 'public'
   const sharedPreviewMode = previewVariant === 'shared'
@@ -648,6 +649,7 @@ export function PublicSurveyPage() {
   const previousVisibleQuestionIdsRef = useRef<string[]>([])
   const source = searchParams.get('src')
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
+  const shouldStartFresh = previewVariant === 'internal' && searchParams.get('fresh') === '1'
 
   const surveyQuery = useQuery({
     queryKey: ['public-survey', previewVariant, id ?? token ?? slug],
@@ -832,6 +834,17 @@ export function PublicSurveyPage() {
   }
 
   useEffect(() => {
+    if (!shouldStartFresh) {
+      return
+    }
+
+    clearPersistedSurveySession()
+    sessionHydratedRef.current = false
+    rewardSessionRestoreKeyRef.current = ''
+    navigate({ search: '' }, { replace: true })
+  }, [navigate, shouldStartFresh, surveySessionStorageKey])
+
+  useEffect(() => {
     if (sessionHydratedRef.current) {
       return
     }
@@ -878,7 +891,7 @@ export function PublicSurveyPage() {
     } finally {
       setSessionStateReady(true)
     }
-  }, [surveySessionStorageKey])
+  }, [surveySessionStorageKey, shouldStartFresh])
 
   useEffect(() => {
     if (!sessionStateReady) {
