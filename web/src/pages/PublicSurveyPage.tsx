@@ -287,6 +287,73 @@ function strokeRoundedRect(
   context.stroke()
 }
 
+function drawProofTrophyIcon(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  color: string,
+) {
+  context.save()
+  context.strokeStyle = color
+  context.fillStyle = color
+  context.lineWidth = 4
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+
+  context.beginPath()
+  context.moveTo(centerX - 16, centerY - 14)
+  context.lineTo(centerX + 16, centerY - 14)
+  context.lineTo(centerX + 12, centerY + 2)
+  context.quadraticCurveTo(centerX, centerY + 14, centerX - 12, centerY + 2)
+  context.closePath()
+  context.stroke()
+
+  context.beginPath()
+  context.moveTo(centerX - 8, centerY + 6)
+  context.lineTo(centerX + 8, centerY + 6)
+  context.moveTo(centerX, centerY + 6)
+  context.lineTo(centerX, centerY + 16)
+  context.moveTo(centerX - 12, centerY + 20)
+  context.lineTo(centerX + 12, centerY + 20)
+  context.stroke()
+
+  context.beginPath()
+  context.arc(centerX - 19, centerY - 8, 8, Math.PI * 0.5, Math.PI * 1.5, true)
+  context.stroke()
+
+  context.beginPath()
+  context.arc(centerX + 19, centerY - 8, 8, Math.PI * 1.5, Math.PI * 0.5, true)
+  context.stroke()
+
+  context.restore()
+}
+
+function drawProofClockIcon(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  color: string,
+) {
+  context.save()
+  context.strokeStyle = color
+  context.lineWidth = 4
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+
+  context.beginPath()
+  context.arc(centerX, centerY, 13, 0, Math.PI * 2)
+  context.stroke()
+
+  context.beginPath()
+  context.moveTo(centerX, centerY)
+  context.lineTo(centerX, centerY - 7)
+  context.moveTo(centerX, centerY)
+  context.lineTo(centerX + 6, centerY + 4)
+  context.stroke()
+
+  context.restore()
+}
+
 function extractCalendarDateParts(value: string) {
   const trimmed = value.trim()
   const matchedDate = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/)
@@ -1670,11 +1737,7 @@ export function PublicSurveyPage() {
       context.shadowOffsetY = 0
   
       context.fillStyle = primaryHex
-      context.font = '700 44px Arial'
-      context.textAlign = 'center'
-      context.textBaseline = 'middle'
-      context.fillText('', canvas.width / 2, trophyCircleY + 2)
-      context.textBaseline = 'alphabetic'
+      drawProofTrophyIcon(context, canvas.width / 2, trophyCircleY + 2, primaryHex)
   
       // Prêmio confirmado
       currentY = trophyCircleY + 72
@@ -1769,11 +1832,7 @@ export function PublicSurveyPage() {
         context.arc(iconCX, iconCY, 28, 0, Math.PI * 2)
         context.fill()
         context.fillStyle = primaryHex
-        context.font = '700 28px Arial'
-        context.textAlign = 'center'
-        context.textBaseline = 'middle'
-        context.fillText('', iconCX, iconCY + 2)
-        context.textBaseline = 'alphabetic'
+        drawProofClockIcon(context, iconCX, iconCY, primaryHex)
   
         context.textAlign = 'left'
         context.fillStyle = '#64748b'
