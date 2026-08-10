@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Download, Gift, Loader2, MessageCircle, Trophy, Sparkles, PartyPopper, MapPin, Clock, ExternalLink, Instagram, Star, X, Frown, AlertTriangle, ArrowLeft, MousePointerClick } from 'lucide-react'
+import { CheckCircle2, Download, Gift, Loader2, MessageCircle, Trophy, Sparkles, PartyPopper, MapPin, Clock, ExternalLink, Instagram, Star, X, Frown, AlertTriangle } from 'lucide-react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { PrizeWheel, getSegmentTargetRotation, type PrizeWheelSegment } from '@/components/public/PrizeWheel'
@@ -510,78 +510,6 @@ function getRetryTaskTypeColor(type: RewardRetryTask['type']) {
   }
 
   return { bg: 'bg-sky-50', border: 'border-sky-200', text: 'text-sky-700', icon: 'text-sky-500' }
-}
-
-function RetryTaskInstructions({ currentStep }: { currentStep: number }) {
-  const steps = [
-    {
-      label: 'Abrir tarefa',
-      description: 'Clique no botão para ir até a tarefa.',
-      icon: MousePointerClick,
-    },
-    {
-      label: 'Voltar pelo navegador',
-      description: 'Use o botão voltar do navegador para retornar.',
-      icon: ArrowLeft,
-    },
-    {
-      label: 'Roleta liberada',
-      description: 'A roleta será desbloqueada automaticamente.',
-      icon: Gift,
-    },
-  ]
-
-  return (
-    <div className="space-y-3">
-      {steps.map((step, index) => {
-        const stepNumber = index + 1
-        const isActive = stepNumber === currentStep
-        const isCompleted = stepNumber < currentStep
-        const Icon = step.icon
-
-        return (
-          <div
-            key={step.label}
-            className={`flex items-start gap-3 rounded-[14px] border p-3 text-left transition ${
-              isCompleted
-                ? 'border-emerald-200 bg-emerald-50'
-                : isActive
-                  ? 'border-sky-200 bg-sky-50 ring-1 ring-sky-100'
-                  : 'border-slate-200 bg-slate-50'
-            }`}
-          >
-            <div
-              className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full sm:h-9 sm:w-9 ${
-                isCompleted
-                  ? 'bg-emerald-500 text-white'
-                  : isActive
-                    ? 'bg-sky-500 text-white'
-                    : 'bg-white text-slate-400 shadow-sm'
-              }`}
-            >
-              {isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-            </div>
-            <div>
-              <p
-                className={`text-sm font-semibold ${
-                  isCompleted ? 'text-emerald-800' : isActive ? 'text-sky-800' : 'text-slate-600'
-                }`}
-              >
-                {stepNumber}. {step.label}
-              </p>
-              <p
-                className={`mt-0.5 text-xs ${
-                  isCompleted ? 'text-emerald-700' : isActive ? 'text-sky-700' : 'text-slate-500'
-                }`}
-              >
-                {step.description}
-              </p>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 function buildPrizeWheelSegments(
@@ -1586,28 +1514,6 @@ export function PublicSurveyPage() {
   const currentRetryTaskIsLoading = currentRetryTask
     ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
     : false
-  const currentRetryTaskStatusLabel = !currentRetryTask
-    ? ''
-    : currentRetryTaskIsLoading
-      ? 'Confirmando...'
-      : !currentRetryTaskProgress
-        ? 'Pendente'
-        : !currentRetryTaskReturned
-          ? 'Volte para a página'
-          : currentRetryTaskCanConfirm
-            ? 'Pronto para girar'
-            : 'Verificando tarefa'
-  const currentRetryTaskButtonLabel = !currentRetryTask
-    ? ''
-    : currentRetryTaskIsLoading
-      ? 'Liberando roleta...'
-      : !currentRetryTaskProgress
-        ? 'Ir para a tarefa'
-        : !currentRetryTaskReturned
-          ? 'Volte para esta página'
-          : currentRetryTaskCanConfirm
-            ? 'Liberar roleta'
-            : `Aguarde ${currentRetryTaskRemainingSeconds}s`
   const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
   const retryExitGuardBypassRef = useRef(false)
   const retryExitGuardArmedRef = useRef(false)
@@ -1712,24 +1618,6 @@ export function PublicSurveyPage() {
     })
 
     openRetryTaskLink(task)
-  }
-
-  function handleRetryTaskCardClick(input: {
-    task: RewardRetryTask
-    taskProgress?: { startedAt: number; returnedAt: number | null }
-    canConfirm: boolean
-    isLoading: boolean
-  }) {
-    if (input.isLoading || input.canConfirm) {
-      return
-    }
-
-    if (input.taskProgress) {
-      openRetryTaskLink(input.task)
-      return
-    }
-
-    startRetryTask(input.task)
   }
 
   function getRetryTaskProgress(taskId: string) {
@@ -2722,10 +2610,10 @@ export function PublicSurveyPage() {
                             {!currentRetryTaskReturned ? (
                               <>
                                 <p className="mt-3 text-[1.45rem] font-black leading-tight text-slate-950 sm:text-[1.9rem]">
-                                  Falta pouco para liberar sua próxima chance.
+                                  Você tem mais uma chance.
                                 </p>
-                                <p className="mx-auto mt-2 max-w-[30rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
-                                  Abra a tarefa, conclua e volte para esta página. Sem voltar para esta tela, a roleta não será liberada.
+                                <p className="mx-auto mt-2 max-w-[28rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
+                                  Conclua a tarefa e volte para esta página para liberar sua nova chance.
                                 </p>
                               </>
                             ) : (
@@ -2733,57 +2621,26 @@ export function PublicSurveyPage() {
                                 <p className="mt-3 text-[1.45rem] font-black leading-tight text-slate-950 sm:text-[1.9rem]">
                                   Aguarde...
                                 </p>
-                                <p className="mx-auto mt-2 max-w-[28rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
-                                  Você voltou. Agora estamos liberando sua nova chance na roleta.
+                                <p className="mx-auto mt-2 max-w-[25rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
+                                  Estamos liberando sua nova chance na roleta.
                                 </p>
                               </>
                             )}
 
                             {!currentRetryTaskReturned ? (
                               <>
-                                <div className="mt-5 rounded-[22px] border border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.95),rgba(255,255,255,0.98))] px-4 py-4 shadow-[0_12px_36px_rgba(14,165,233,0.08)]">
-                                  <div className="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-sky-700">
-                                    <MousePointerClick className="h-4 w-4" />
-                                    Desbloqueie sua roleta
-                                  </div>
-                                  <RetryTaskInstructions
-                                    currentStep={currentRetryTaskProgress ? 2 : 1}
-                                  />
-                                </div>
-
                                 <div
-                                  className={`mt-5 rounded-[24px] border px-5 py-5 text-left transition ${
+                                  className={`mt-5 rounded-[24px] border px-5 py-5 text-left ${
                                     currentRetryTaskIsLoading
                                       ? 'border-slate-200 bg-slate-50'
-                                      : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer shadow-[0_16px_42px_rgba(15,23,42,0.08)] hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.12)]`
+                                      : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} shadow-[0_16px_42px_rgba(15,23,42,0.08)]`
                                   }`}
-                                  role="button"
-                                  tabIndex={currentRetryTaskIsLoading ? -1 : 0}
-                                  onClick={() =>
-                                    handleRetryTaskCardClick({
-                                      task: currentRetryTask,
-                                      taskProgress: currentRetryTaskProgress ?? undefined,
-                                      canConfirm: currentRetryTaskCanConfirm,
-                                      isLoading: currentRetryTaskIsLoading,
-                                    })
-                                  }
-                                  onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') {
-                                      event.preventDefault()
-                                      handleRetryTaskCardClick({
-                                        task: currentRetryTask,
-                                        taskProgress: currentRetryTaskProgress ?? undefined,
-                                        canConfirm: currentRetryTaskCanConfirm,
-                                        isLoading: currentRetryTaskIsLoading,
-                                      })
-                                    }
-                                  }}
                                 >
                                   <div className="flex items-start gap-3">
                                     <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
                                       {(() => {
                                         const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
-                                        return <Icon className="h-5 w-5 animate-pulse" />
+                                        return <Icon className="h-5 w-5" />
                                       })()}
                                     </div>
                                     <div className="flex-1">
@@ -2792,17 +2649,11 @@ export function PublicSurveyPage() {
                                       <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
                                         {getRetryTaskTypeLabel(currentRetryTask.type)}
                                       </p>
-                                      <p className="mt-2 text-sm text-slate-600">
-                                        Depois de concluir, volte para esta página para liberar sua nova chance.
+                                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                                        Depois de concluir, volte para esta página. Sem voltar, a roleta não será liberada.
                                       </p>
                                     </div>
                                   </div>
-                                </div>
-
-                                <div className="mt-4 flex items-center justify-center">
-                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 shadow-sm">
-                                    {currentRetryTaskStatusLabel}
-                                  </span>
                                 </div>
                               </>
                             ) : (
@@ -2825,14 +2676,8 @@ export function PublicSurveyPage() {
                                   Sua roleta será liberada em instantes.
                                 </p>
                                 <p className="mx-auto mt-2 max-w-[24rem] text-sm leading-6 text-slate-600">
-                                  Continue nesta tela. Assim que a contagem terminar, sua nova chance será ativada automaticamente.
+                                  Continue nesta tela. Quando a contagem terminar, sua nova chance será ativada automaticamente.
                                 </p>
-                                <div className="mt-4 flex items-center justify-center">
-                                  <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-sky-700 shadow-sm">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Preparando roleta
-                                  </span>
-                                </div>
                               </div>
                             )}
 
@@ -2860,7 +2705,7 @@ export function PublicSurveyPage() {
                             </div>
                             {!currentRetryTaskReturned ? (
                               <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                                Importante: depois de concluir, volte para esta página.
+                                Volte para esta página depois de concluir a tarefa.
                               </p>
                             ) : null}
                           </div>
