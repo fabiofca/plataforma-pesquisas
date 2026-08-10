@@ -2180,66 +2180,75 @@ export function PublicSurveyPage() {
                   ) : null}
                 </label>
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label
-                    ref={(element) => setValidationElementRef('participant-birth-month', element)}
-                    className="grid gap-2 text-sm"
-                  >
-                    <span className="text-slate-600">Mês</span>
-                    <select
-                      aria-label="Mês do aniversário"
-                      className={`admin-select ${validationState?.target === 'participant-birth-month' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
-                      value={birthMonth}
-                      onChange={(event) => {
-                        clearValidationTarget('participant-birth-month')
-                        const nextMonth = event.target.value
-                        setBirthMonth(nextMonth)
-                        if (birthDay) {
-                          const maxDay = getDaysInBirthMonth(Number(nextMonth))
-                          if (Number(birthDay) > maxDay) {
-                            setBirthDay('')
-                          }
-                        }
-                      }}
+                <div className="md:col-span-2 rounded-[8px] border border-slate-200 bg-slate-50/60 p-4">
+                  <div className="mb-4">
+                    <p className="text-sm font-semibold text-slate-900">Data de aniversário</p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Informe sua data correta para que a loja possa enviar felicitações e ações especiais no seu aniversário.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label
+                      ref={(element) => setValidationElementRef('participant-birth-month', element)}
+                      className="grid gap-2 text-sm"
                     >
-                      <option value="">Selecione o mês</option>
-                      {birthdayMonths.map((month) => (
-                        <option key={month.value} value={month.value}>
-                          {month.label}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="text-slate-600">Mês do aniversário</span>
+                      <select
+                        aria-label="Mês do aniversário"
+                        className={`admin-select ${validationState?.target === 'participant-birth-month' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
+                        value={birthMonth}
+                        onChange={(event) => {
+                          clearValidationTarget('participant-birth-month')
+                          const nextMonth = event.target.value
+                          setBirthMonth(nextMonth)
+                          if (birthDay) {
+                            const maxDay = getDaysInBirthMonth(Number(nextMonth))
+                            if (Number(birthDay) > maxDay) {
+                              setBirthDay('')
+                            }
+                          }
+                        }}
+                      >
+                        <option value="">Selecione o mês</option>
+                        {birthdayMonths.map((month) => (
+                          <option key={month.value} value={month.value}>
+                            {month.label}
+                          </option>
+                        ))}
+                      </select>
                       {validationState?.target === 'participant-birth-month' ? (
                         <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
                       ) : null}
-                  </label>
+                    </label>
 
-                  <label
-                    ref={(element) => setValidationElementRef('participant-birth-day', element)}
-                    className="grid gap-2 text-sm"
-                  >
-                    <span className="text-slate-600">Dia</span>
-                    <select
-                      aria-label="Dia do aniversário"
-                      className={`admin-select ${validationState?.target === 'participant-birth-day' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
-                      value={birthDay}
-                      disabled={!birthMonth}
-                      onChange={(event) => {
-                        clearValidationTarget('participant-birth-day')
-                        setBirthDay(event.target.value)
-                      }}
+                    <label
+                      ref={(element) => setValidationElementRef('participant-birth-day', element)}
+                      className="grid gap-2 text-sm"
                     >
-                      <option value="">{birthMonth ? 'Selecione o dia' : 'Escolha o mês primeiro'}</option>
-                      {Array.from({ length: getDaysInBirthMonth(Number(birthMonth)) }, (_, index) => (
-                        <option key={index + 1} value={index + 1}>
-                          {index + 1}
-                        </option>
-                      ))}
-                    </select>
+                      <span className="text-slate-600">Dia do aniversário</span>
+                      <select
+                        aria-label="Dia do aniversário"
+                        className={`admin-select ${validationState?.target === 'participant-birth-day' ? 'border-rose-400 ring-2 ring-rose-100' : ''}`}
+                        value={birthDay}
+                        disabled={!birthMonth}
+                        onChange={(event) => {
+                          clearValidationTarget('participant-birth-day')
+                          setBirthDay(event.target.value)
+                        }}
+                      >
+                        <option value="">{birthMonth ? 'Selecione o dia' : 'Escolha o mês primeiro'}</option>
+                        {Array.from({ length: getDaysInBirthMonth(Number(birthMonth)) }, (_, index) => (
+                          <option key={index + 1} value={index + 1}>
+                            {index + 1}
+                          </option>
+                        ))}
+                      </select>
                       {validationState?.target === 'participant-birth-day' ? (
                         <p className="text-xs font-medium text-rose-600">{validationState.message}</p>
                       ) : null}
-                  </label>
+                    </label>
+                  </div>
                 </div>
               </section>
 
