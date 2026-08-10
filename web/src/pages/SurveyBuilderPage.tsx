@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  CheckCircle2,
   Download,
   FileImage,
   Palette,
@@ -9,7 +10,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
@@ -80,6 +81,23 @@ type BuilderState = {
 }
 
 type FlowDraftState = Pick<BuilderState, 'questions' | 'flowLayout'>
+type BuilderDraftState = Pick<
+  BuilderState,
+  | 'title'
+  | 'description'
+  | 'slug'
+  | 'brandName'
+  | 'logoUrl'
+  | 'primaryColor'
+  | 'bannerUrl'
+  | 'closingMessage'
+  | 'rewardEnabled'
+  | 'preventDuplicateResponses'
+  | 'duplicateResponseCooldownDays'
+  | 'allowMultipleResponses'
+  | 'questions'
+  | 'flowLayout'
+>
 
 const surveyColorPresets = ['#0b5cff', '#11284a', '#0f766e', '#7c3aed', '#d97706', '#dc2626']
 
@@ -152,6 +170,33 @@ function extractFlowDraft(state: Pick<BuilderState, 'questions' | 'flowLayout'>)
   }
 }
 
+function extractBuilderDraft(state: BuilderState): BuilderDraftState {
+  return {
+    title: state.title,
+    description: state.description,
+    slug: state.slug,
+    brandName: state.brandName,
+    logoUrl: state.logoUrl,
+    primaryColor: state.primaryColor,
+    bannerUrl: state.bannerUrl,
+    closingMessage: state.closingMessage,
+    rewardEnabled: state.rewardEnabled,
+    preventDuplicateResponses: state.preventDuplicateResponses,
+    duplicateResponseCooldownDays: state.duplicateResponseCooldownDays,
+    allowMultipleResponses: state.allowMultipleResponses,
+    questions: state.questions.map((question) => ({
+      ...question,
+      options: [...question.options],
+      flowRules: question.flowRules.map((rule) => ({ ...rule })),
+    })),
+    flowLayout: {
+      ...state.flowLayout,
+      nodes: state.flowLayout.nodes.map((node) => ({ ...node })),
+      viewport: state.flowLayout.viewport ? { ...state.flowLayout.viewport } : undefined,
+    },
+  }
+}
+
 function normalizeFlowDraft(state: FlowDraftState): FlowDraftState {
   const normalizedLayout = mergeFlowLayout(
     state.questions.map((question) => question.id),
@@ -179,6 +224,31 @@ function normalizeFlowDraft(state: FlowDraftState): FlowDraftState {
 
 function getFlowDraftSignature(state: FlowDraftState) {
   return JSON.stringify(normalizeFlowDraft(state))
+}
+
+function normalizeBuilderDraft(state: BuilderDraftState): BuilderDraftState {
+  const normalizedLayout = mergeFlowLayout(
+    state.questions.map((question) => question.id),
+    state.flowLayout,
+  )
+
+  return {
+    ...state,
+    questions: state.questions.map((question) => ({
+      ...question,
+      options: [...question.options],
+      flowRules: question.flowRules.map((rule) => ({ ...rule })),
+    })),
+    flowLayout: {
+      ...normalizedLayout,
+      nodes: [...normalizedLayout.nodes].sort((left, right) => left.id.localeCompare(right.id)),
+      viewport: normalizedLayout.viewport ? { ...normalizedLayout.viewport } : undefined,
+    },
+  }
+}
+
+function getBuilderDraftSignature(state: BuilderDraftState) {
+  return JSON.stringify(normalizeBuilderDraft(state))
 }
 
 function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
@@ -227,8 +297,10 @@ export function SurveyBuilderPage() {
   const isEditing = Boolean(params.id)
   const [form, setForm] = useState<BuilderState>(makeEmptyBuilderState)
   const [savedFlowSnapshot, setSavedFlowSnapshot] = useState<FlowDraftState | null>(null)
+  const [savedBuilderSnapshot, setSavedBuilderSnapshot] = useState<BuilderDraftState | null>(null)
   const [selectedVisualQuestionId, setSelectedVisualQuestionId] = useState('')
   const [feedback, setFeedback] = useState('')
+  const [centeredFeedback, setCenteredFeedback] = useState<{ message: string; key: number } | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [uploadingKey, setUploadingKey] = useState<SurveyUploadTarget | ''>('')
   const [removingKey, setRemovingKey] = useState<SurveyUploadTarget | ''>('')
@@ -240,6 +312,7 @@ export function SurveyBuilderPage() {
     logo: 0,
     banner: 0,
   })
+  const centeredFeedbackTimeoutRef = useRef<number | null>(null)
 
   const surveyQuery = useQuery({
     queryKey: ['survey', params.id],
@@ -296,6 +369,7 @@ export function SurveyBuilderPage() {
       const nextForm = mapSurveyToBuilderState(survey)
       setForm(nextForm)
       setSavedFlowSnapshot(extractFlowDraft(nextForm))
+      setSavedBuilderSnapshot(extractBuilderDraft(nextForm))
       setUploadErrors({ logo: '', banner: '' })
       return
     }
@@ -304,21 +378,41 @@ export function SurveyBuilderPage() {
       const nextForm = makeEmptyBuilderState()
       setForm(nextForm)
       setSavedFlowSnapshot(extractFlowDraft(nextForm))
+      setSavedBuilderSnapshot(extractBuilderDraft(nextForm))
       setFeedback('')
       setUploadErrors({ logo: '', banner: '' })
     }
   }, [isEditing, survey])
 
   useEffect(() => {
-    const state = location.state as { feedback?: string } | null
+    const state = location.state as { feedback?: string; visualNotice?: string } | null
 
-    if (!state?.feedback) {
+    if (!state?.feedback && !state?.visualNotice) {
       return
     }
 
-    setFeedback(state.feedback)
+    if (state.feedback) {
+      setFeedback(state.feedback)
+    }
+    if (state.visualNotice) {
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({ message: state.visualNotice, key: Date.now() })
+      centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCenteredFeedback(null)
+      }, 1800)
+    }
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
+    return () => {
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!form.questions.length) {
@@ -337,37 +431,82 @@ export function SurveyBuilderPage() {
     () => (savedFlowSnapshot ? getFlowDraftSignature(savedFlowSnapshot) : ''),
     [savedFlowSnapshot],
   )
+  const currentBuilderSnapshot = useMemo(() => extractBuilderDraft(form), [form])
+  const currentBuilderSignature = useMemo(() => getBuilderDraftSignature(currentBuilderSnapshot), [currentBuilderSnapshot])
+  const savedBuilderSignature = useMemo(
+    () => (savedBuilderSnapshot ? getBuilderDraftSignature(savedBuilderSnapshot) : ''),
+    [savedBuilderSnapshot],
+  )
+  const hasUnsavedBuilderChanges = Boolean(savedBuilderSnapshot) && currentBuilderSignature !== savedBuilderSignature
   const hasUnsavedFlowChanges = Boolean(savedFlowSnapshot) && currentFlowSignature !== savedFlowSignature
+  const navigationBlocker = useBlocker(hasUnsavedBuilderChanges)
+
+  useEffect(() => {
+    if (navigationBlocker.state !== 'blocked') {
+      return
+    }
+
+    if (window.confirm('Você tem alterações não salvas. Deseja sair mesmo assim?')) {
+      navigationBlocker.proceed()
+      return
+    }
+
+    navigationBlocker.reset()
+  }, [navigationBlocker])
+
+  useEffect(() => {
+    if (!hasUnsavedBuilderChanges) {
+      return
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [hasUnsavedBuilderChanges])
 
   const saveMutation = useMutation({
-    mutationFn: async ({ shouldPublish, flowSnapshot }: { shouldPublish: boolean; flowSnapshot: FlowDraftState }) => {
+    mutationFn: async ({
+      shouldPublish,
+      flowSnapshot,
+      draft,
+    }: {
+      shouldPublish: boolean
+      flowSnapshot: FlowDraftState
+      draft: BuilderState
+    }) => {
       const normalizedFlowLayout = mergeFlowLayout(
-        form.questions.map((question) => question.id),
-        form.flowLayout,
+        draft.questions.map((question) => question.id),
+        draft.flowLayout,
       )
       const orderedQuestions =
-        form.builderMode === 'visual'
+        draft.builderMode === 'visual'
           ? sortIdsByFlowLayout(
-              form.questions.map((question) => question.id),
+              draft.questions.map((question) => question.id),
               normalizedFlowLayout,
             )
-              .map((questionId) => form.questions.find((question) => question.id === questionId))
+              .map((questionId) => draft.questions.find((question) => question.id === questionId))
               .filter((question): question is BuilderQuestion => Boolean(question))
-          : form.questions
+          : draft.questions
       const payload = {
-        title: form.title.trim(),
-        description: form.description.trim(),
+        title: draft.title.trim(),
+        description: draft.description.trim(),
         participationMode: 'identified' as const,
-        slug: form.slug.trim(),
-        brandName: form.brandName.trim(),
-        logoUrl: form.logoUrl.trim(),
-        primaryColor: form.primaryColor.trim(),
-        bannerUrl: form.bannerUrl.trim(),
-        closingMessage: form.closingMessage.trim(),
-        rewardEnabled: form.rewardEnabled,
-        preventDuplicateResponses: form.preventDuplicateResponses,
-        duplicateResponseCooldownDays: form.duplicateResponseCooldownDays,
-        allowMultipleResponses: form.allowMultipleResponses,
+        slug: draft.slug.trim(),
+        brandName: draft.brandName.trim(),
+        logoUrl: draft.logoUrl.trim(),
+        primaryColor: draft.primaryColor.trim(),
+        bannerUrl: draft.bannerUrl.trim(),
+        closingMessage: draft.closingMessage.trim(),
+        rewardEnabled: draft.rewardEnabled,
+        preventDuplicateResponses: draft.preventDuplicateResponses,
+        duplicateResponseCooldownDays: draft.duplicateResponseCooldownDays,
+        allowMultipleResponses: draft.allowMultipleResponses,
         builderMode: 'visual',
         flowLayout: normalizedFlowLayout,
         questions: orderedQuestions.map((question, index) => {
@@ -429,9 +568,9 @@ export function SurveyBuilderPage() {
         })
       }
 
-      return { surveyId, published: shouldPublish, flowSnapshot }
+      return { surveyId, published: shouldPublish, flowSnapshot, builderSnapshot: extractBuilderDraft(draft) }
     },
-    onSuccess: async ({ surveyId, published, flowSnapshot }) => {
+    onSuccess: async ({ surveyId, published, flowSnapshot, builderSnapshot }) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
@@ -439,6 +578,7 @@ export function SurveyBuilderPage() {
       ])
 
       setSavedFlowSnapshot(flowSnapshot)
+      setSavedBuilderSnapshot(builderSnapshot)
 
       const successMessage = published
         ? 'Pesquisa salva e publicada com sucesso.'
@@ -447,12 +587,19 @@ export function SurveyBuilderPage() {
       if (!isEditing) {
         navigate(`/app/pesquisas/${surveyId}/editar`, {
           replace: true,
-          state: { feedback: successMessage },
+          state: { feedback: successMessage, visualNotice: successMessage },
         })
         return
       }
 
       setFeedback(successMessage)
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({ message: successMessage, key: Date.now() })
+      centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCenteredFeedback(null)
+      }, 1800)
     },
     onError: (error) => {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível salvar a pesquisa.')
@@ -523,6 +670,13 @@ export function SurveyBuilderPage() {
       ])
 
       setFeedback('Pesquisa movida de volta para rascunho com sucesso.')
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({ message: 'Pesquisa atualizada com sucesso.', key: Date.now() })
+      centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCenteredFeedback(null)
+      }, 1800)
     },
     onError: (error) => {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível voltar a pesquisa para rascunho.')
@@ -889,6 +1043,7 @@ export function SurveyBuilderPage() {
           void saveMutation.mutateAsync({
             shouldPublish: false,
             flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+            draft: form,
           })
         }
         disabled={saveMutation.isPending || unpublishMutation.isPending}
@@ -903,6 +1058,7 @@ export function SurveyBuilderPage() {
           void saveMutation.mutateAsync({
             shouldPublish: true,
             flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+            draft: form,
           })
         }
         disabled={saveMutation.isPending || unpublishMutation.isPending}
@@ -934,7 +1090,23 @@ export function SurveyBuilderPage() {
   )
 
   return (
-    <AppShell
+    <>
+      {centeredFeedback ? (
+        <div className="pointer-events-none fixed inset-0 z-[140] flex items-center justify-center px-4">
+          <div
+            key={centeredFeedback.key}
+            className="animate-fade-in-scale rounded-[24px] border border-emerald-200 bg-white/95 px-6 py-5 text-center shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur-sm"
+          >
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-[0_12px_30px_rgba(16,185,129,0.18)]">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <p className="mt-3 text-xs font-bold uppercase tracking-[0.22em] text-emerald-700">Tudo certo</p>
+            <p className="mt-2 text-base font-semibold text-slate-950 sm:text-lg">{centeredFeedback.message}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <AppShell
       title={params.id ? (survey?.title ?? 'Fluxo da pesquisa') : 'Nova pesquisa'}
       subtitle=""
       hideHeader={Boolean(params.id)}
@@ -985,12 +1157,12 @@ export function SurveyBuilderPage() {
             className={`rounded-full px-3 py-1 text-xs font-semibold ${
               saveMutation.isPending
                 ? 'border border-sky-200 bg-sky-50 text-sky-700'
-                : hasUnsavedFlowChanges
+                : hasUnsavedBuilderChanges
                   ? 'border border-amber-200 bg-amber-50 text-amber-700'
                   : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
             }`}
           >
-            {saveMutation.isPending ? 'Salvando fluxo...' : hasUnsavedFlowChanges ? 'Fluxo com alterações' : 'Fluxo salvo'}
+            {saveMutation.isPending ? 'Salvando...' : hasUnsavedBuilderChanges ? 'Alterações não salvas' : 'Tudo salvo'}
           </span>
           {form.slug ? (
             <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
@@ -1035,6 +1207,7 @@ export function SurveyBuilderPage() {
               void saveMutation.mutateAsync({
                 shouldPublish: false,
                 flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+                draft: form,
               })
             }
             onDiscardFlow={() => {
@@ -1336,7 +1509,7 @@ export function SurveyBuilderPage() {
         </SectionCard>
       </div>
       </div>
-
     </AppShell>
+    </>
   )
 }
