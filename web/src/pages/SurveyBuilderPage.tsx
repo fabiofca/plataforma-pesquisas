@@ -10,7 +10,7 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react'
-import { Link, useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
@@ -439,20 +439,6 @@ export function SurveyBuilderPage() {
   )
   const hasUnsavedBuilderChanges = Boolean(savedBuilderSnapshot) && currentBuilderSignature !== savedBuilderSignature
   const hasUnsavedFlowChanges = Boolean(savedFlowSnapshot) && currentFlowSignature !== savedFlowSignature
-  const navigationBlocker = useBlocker(hasUnsavedBuilderChanges)
-
-  useEffect(() => {
-    if (navigationBlocker.state !== 'blocked') {
-      return
-    }
-
-    if (window.confirm('Você tem alterações não salvas. Deseja sair mesmo assim?')) {
-      navigationBlocker.proceed()
-      return
-    }
-
-    navigationBlocker.reset()
-  }, [navigationBlocker])
 
   useEffect(() => {
     if (!hasUnsavedBuilderChanges) {
@@ -467,6 +453,57 @@ export function SurveyBuilderPage() {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [hasUnsavedBuilderChanges])
+
+  useEffect(() => {
+    if (!hasUnsavedBuilderChanges) {
+      return
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return
+      }
+
+      const target = event.target
+
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      const anchor = target.closest('a')
+
+      if (!(anchor instanceof HTMLAnchorElement) || !anchor.href || anchor.target === '_blank' || anchor.hasAttribute('download')) {
+        return
+      }
+
+      const currentUrl = new URL(window.location.href)
+      const nextUrl = new URL(anchor.href, currentUrl.href)
+
+      if (nextUrl.origin !== currentUrl.origin) {
+        return
+      }
+
+      if (
+        nextUrl.pathname === currentUrl.pathname &&
+        nextUrl.search === currentUrl.search &&
+        nextUrl.hash === currentUrl.hash
+      ) {
+        return
+      }
+
+      if (window.confirm('Você tem alterações não salvas. Deseja sair mesmo assim?')) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    document.addEventListener('click', handleDocumentClick, true)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true)
     }
   }, [hasUnsavedBuilderChanges])
 
