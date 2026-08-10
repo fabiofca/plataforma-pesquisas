@@ -1577,6 +1577,12 @@ export function PublicSurveyPage() {
   const currentRetryTaskRemainingSeconds = currentRetryTask ? getRetryTaskRemainingSeconds(currentRetryTask.id) : 0
   const currentRetryTaskCountdownValue =
     currentRetryTask && currentRetryTaskReturned && !currentRetryTaskCanConfirm ? Math.max(1, currentRetryTaskRemainingSeconds) : 0
+  const retryExitGuardActive = Boolean(
+    activeRetryTaskId ||
+      currentRetryTaskProgress ||
+      (currentRetryTaskReturned && !currentRetryTaskCanConfirm) ||
+      retryTaskClickMutation.isPending,
+  )
   const currentRetryTaskIsLoading = currentRetryTask
     ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
     : false
@@ -1603,6 +1609,63 @@ export function PublicSurveyPage() {
             ? 'Liberar roleta'
             : `Aguarde ${currentRetryTaskRemainingSeconds}s`
   const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
+  const retryExitGuardBypassRef = useRef(false)
+  const retryExitGuardArmedRef = useRef(false)
+
+  useEffect(() => {
+    if (!retryExitGuardActive) {
+      retryExitGuardArmedRef.current = false
+      return
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [retryExitGuardActive])
+
+  useEffect(() => {
+    if (!retryExitGuardActive) {
+      retryExitGuardArmedRef.current = false
+      return
+    }
+
+    if (!retryExitGuardArmedRef.current) {
+      window.history.pushState({ publicSurveyRetryGuard: true }, '', window.location.href)
+      retryExitGuardArmedRef.current = true
+    }
+
+    const handlePopState = () => {
+      if (retryExitGuardBypassRef.current) {
+        return
+      }
+
+      const shouldLeave = window.confirm('Sua nova chance ainda não foi liberada. Deseja sair mesmo assim?')
+
+      if (shouldLeave) {
+        retryExitGuardBypassRef.current = true
+        window.history.back()
+        window.setTimeout(() => {
+          retryExitGuardBypassRef.current = false
+        }, 0)
+        return
+      }
+
+      window.history.pushState({ publicSurveyRetryGuard: true }, '', window.location.href)
+    }
+
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [retryExitGuardActive])
 
   useEffect(() => {
     if (!currentRetryTask || !currentRetryTaskReturned || !currentRetryTaskCanConfirm) {
@@ -2662,16 +2725,16 @@ export function PublicSurveyPage() {
                                   Falta pouco para liberar sua próxima chance.
                                 </p>
                                 <p className="mx-auto mt-2 max-w-[30rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
-                                  Conclua a tarefa abaixo e volte para esta tela. Assim que retornar, a roleta será preparada automaticamente.
+                                  Abra a tarefa, conclua e volte para esta página. Sem voltar para esta tela, a roleta não será liberada.
                                 </p>
                               </>
                             ) : (
                               <>
                                 <p className="mt-3 text-[1.45rem] font-black leading-tight text-slate-950 sm:text-[1.9rem]">
-                                  Boa, você voltou.
+                                  Aguarde...
                                 </p>
                                 <p className="mx-auto mt-2 max-w-[28rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
-                                  Segure por alguns segundos enquanto liberamos sua nova chance na roleta.
+                                  Você voltou. Agora estamos liberando sua nova chance na roleta.
                                 </p>
                               </>
                             )}
@@ -2730,7 +2793,7 @@ export function PublicSurveyPage() {
                                         {getRetryTaskTypeLabel(currentRetryTask.type)}
                                       </p>
                                       <p className="mt-2 text-sm text-slate-600">
-                                        Toque aqui para abrir a tarefa e voltar com a sua próxima chance pronta para liberar.
+                                        Depois de concluir, volte para esta página para liberar sua nova chance.
                                       </p>
                                     </div>
                                   </div>
@@ -2795,6 +2858,11 @@ export function PublicSurveyPage() {
                                 {currentRetryTaskReturned ? 'Ir para a tarefa novamente' : currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
                               </button>
                             </div>
+                            {!currentRetryTaskReturned ? (
+                              <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                Importante: depois de concluir, volte para esta página.
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       ) : null}
