@@ -71,28 +71,28 @@ export function SurveyNavBar({
 
   return (
     <div className="sticky top-[56px] z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
-      <div className="flex items-center px-2 sm:px-3">
-        {surveyTitle ? (
-          <div className="mr-3 hidden shrink-0 lg:block">
-            <p className="max-w-[160px] truncate text-sm font-semibold text-slate-900">{surveyTitle}</p>
-          </div>
-        ) : null}
-        <div className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto">
+      <div className="border-b border-slate-200/80 px-3 py-3 sm:px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Pesquisa atual
+          </span>
+          <p className="min-w-0 truncate text-sm font-semibold text-slate-950 sm:text-base">
+            {surveyTitle?.trim() || 'Pesquisa sem título'}
+          </p>
+        </div>
+      </div>
+
+      <div className="px-2 py-2 sm:px-3">
+        <div className="flex min-w-0 gap-2 overflow-x-auto pb-1">
           {tabs.map((tab) => {
             const Icon = tab.icon
             const isActive = isTabActive(tab)
 
-            const className = `relative flex shrink-0 items-center gap-1.5 px-2.5 py-3 text-sm font-medium transition sm:gap-2 sm:px-4 ${
-              isActive ? 'text-blue-600' : 'text-slate-500 hover:text-slate-800'
+            const className = `relative flex shrink-0 items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition sm:px-4 ${
+              isActive
+                ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-[0_8px_24px_rgba(37,99,235,0.12)]'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900'
             }`
-
-            const underline = (
-              <span
-                className={`absolute inset-x-0 -bottom-px h-0.5 transition-colors ${
-                  isActive ? 'bg-blue-600' : 'bg-transparent'
-                }`}
-              />
-            )
 
             if (onTabClick && ['summary', 'questions', 'share'].includes(tab.id)) {
               return (
@@ -103,8 +103,7 @@ export function SurveyNavBar({
                   className={className}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  {underline}
+                  <span className="whitespace-nowrap text-xs sm:text-sm">{tab.label}</span>
                 </button>
               )
             }
@@ -112,8 +111,7 @@ export function SurveyNavBar({
             return (
               <Link key={tab.id} to={tab.href} className={className}>
                 <Icon className="h-4 w-4 shrink-0" />
-                <span className="hidden sm:inline">{tab.label}</span>
-                {underline}
+                <span className="whitespace-nowrap text-xs sm:text-sm">{tab.label}</span>
               </Link>
             )
           })}
