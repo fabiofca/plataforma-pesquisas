@@ -1575,6 +1575,8 @@ export function PublicSurveyPage() {
   const currentRetryTaskReturned = Boolean(currentRetryTaskProgress?.returnedAt)
   const currentRetryTaskCanConfirm = currentRetryTask ? canConfirmRetryTask(currentRetryTask.id) : false
   const currentRetryTaskRemainingSeconds = currentRetryTask ? getRetryTaskRemainingSeconds(currentRetryTask.id) : 0
+  const currentRetryTaskCountdownValue =
+    currentRetryTask && currentRetryTaskReturned && !currentRetryTaskCanConfirm ? Math.max(1, currentRetryTaskRemainingSeconds) : 0
   const currentRetryTaskIsLoading = currentRetryTask
     ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
     : false
@@ -2630,39 +2632,67 @@ export function PublicSurveyPage() {
 
                       {showRetryTaskOverlay && currentRetryTask ? (
                         <div className="absolute inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 animate-fade-in">
-                          <div className="absolute inset-0 rounded-[inherit] bg-white/85 backdrop-blur-[3px]" />
-                          <div className="relative w-full max-w-[min(94vw,520px)] rounded-[28px] border border-sky-200 bg-white px-5 py-6 text-center shadow-[0_24px_80px_rgba(14,165,233,0.18)] sm:px-8 sm:py-9 animate-fade-in-scale">
-                            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-sky-100 text-sky-600 shadow-[0_8px_24px_rgba(14,165,233,0.24)] sm:h-16 sm:w-16">
-                              <PartyPopper className="h-7 w-7 sm:h-8 sm:w-8" />
+                          <div className="absolute inset-0 rounded-[inherit] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.94))] backdrop-blur-[4px]" />
+                          <div className="relative w-full max-w-[min(94vw,560px)] overflow-hidden rounded-[30px] border border-sky-200/80 bg-white px-5 py-6 text-center shadow-[0_28px_90px_rgba(14,165,233,0.18)] sm:px-8 sm:py-9 animate-fade-in-scale">
+                            <div className="pointer-events-none absolute inset-x-8 top-0 h-24 rounded-b-[32px] bg-[linear-gradient(180deg,rgba(56,189,248,0.16),rgba(255,255,255,0))]" />
+                            <div className="pointer-events-none absolute -right-10 top-6 h-24 w-24 rounded-full bg-sky-100/70 blur-2xl" />
+                            <div className="pointer-events-none absolute -left-10 bottom-10 h-24 w-24 rounded-full bg-violet-100/70 blur-2xl" />
+
+                            <div className="relative mx-auto flex h-16 w-16 items-center justify-center sm:h-20 sm:w-20">
+                              <div className="absolute inset-0 rounded-full bg-sky-200/60 animate-ping" />
+                              <div className="absolute inset-[6px] rounded-full bg-white/80" />
+                              <div className="relative flex h-full w-full items-center justify-center rounded-full bg-[linear-gradient(135deg,#e0f2fe,#ffffff_55%,#ede9fe)] text-sky-600 shadow-[0_14px_34px_rgba(14,165,233,0.22)]">
+                                {currentRetryTaskReturned ? (
+                                  <Sparkles className="h-8 w-8 sm:h-9 sm:w-9 animate-pulse" />
+                                ) : (
+                                  <PartyPopper className="h-8 w-8 sm:h-9 sm:w-9" />
+                                )}
+                              </div>
                             </div>
-                            <p className="mt-4 text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
+
+                            <div className="relative mt-4 flex items-center justify-center gap-2">
+                              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-sky-500 animate-pulse" />
+                              <p className="text-xs font-bold uppercase tracking-[0.24em] text-sky-600">Mais uma chance</p>
+                              <span className="inline-flex h-2.5 w-2.5 rounded-full bg-violet-500 animate-pulse" />
+                            </div>
 
                             {!currentRetryTaskReturned ? (
                               <>
-                                <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
-                                  Complete a tarefa para girar novamente.
+                                <p className="mt-3 text-[1.45rem] font-black leading-tight text-slate-950 sm:text-[1.9rem]">
+                                  Falta pouco para liberar sua próxima chance.
                                 </p>
-                                <p className="mt-1 text-sm text-slate-500">Siga as instruções abaixo para liberar sua próxima chance.</p>
+                                <p className="mx-auto mt-2 max-w-[30rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
+                                  Conclua a tarefa abaixo e volte para esta tela. Assim que retornar, a roleta será preparada automaticamente.
+                                </p>
                               </>
                             ) : (
-                              <p className="mt-2 text-base font-semibold text-slate-900 sm:text-lg">
-                                Sua nova chance está sendo preparada!
-                              </p>
+                              <>
+                                <p className="mt-3 text-[1.45rem] font-black leading-tight text-slate-950 sm:text-[1.9rem]">
+                                  Boa, você voltou.
+                                </p>
+                                <p className="mx-auto mt-2 max-w-[28rem] text-sm leading-6 text-slate-600 sm:text-[15px]">
+                                  Segure por alguns segundos enquanto liberamos sua nova chance na roleta.
+                                </p>
+                              </>
                             )}
 
                             {!currentRetryTaskReturned ? (
                               <>
-                                <div className="mt-5">
+                                <div className="mt-5 rounded-[22px] border border-sky-100 bg-[linear-gradient(180deg,rgba(240,249,255,0.95),rgba(255,255,255,0.98))] px-4 py-4 shadow-[0_12px_36px_rgba(14,165,233,0.08)]">
+                                  <div className="mb-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-sky-700">
+                                    <MousePointerClick className="h-4 w-4" />
+                                    Desbloqueie sua roleta
+                                  </div>
                                   <RetryTaskInstructions
                                     currentStep={currentRetryTaskProgress ? 2 : 1}
                                   />
                                 </div>
 
                                 <div
-                                  className={`mt-5 rounded-[20px] border px-5 py-4 text-left transition ${
+                                  className={`mt-5 rounded-[24px] border px-5 py-5 text-left transition ${
                                     currentRetryTaskIsLoading
                                       ? 'border-slate-200 bg-slate-50'
-                                      : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer hover:shadow-md`
+                                      : `${getRetryTaskTypeColor(currentRetryTask.type).border} ${getRetryTaskTypeColor(currentRetryTask.type).bg} cursor-pointer shadow-[0_16px_42px_rgba(15,23,42,0.08)] hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.12)]`
                                   }`}
                                   role="button"
                                   tabIndex={currentRetryTaskIsLoading ? -1 : 0}
@@ -2687,71 +2717,84 @@ export function PublicSurveyPage() {
                                   }}
                                 >
                                   <div className="flex items-start gap-3">
-                                    <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
+                                    <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-white shadow-sm ${getRetryTaskTypeColor(currentRetryTask.type).icon}`}>
                                       {(() => {
                                         const Icon = getRetryTaskTypeIcon(currentRetryTask.type)
-                                        return <Icon className="h-5 w-5" />
+                                        return <Icon className="h-5 w-5 animate-pulse" />
                                       })()}
                                     </div>
                                     <div className="flex-1">
                                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Tarefa atual</p>
-                                      <p className="mt-1 text-lg font-semibold text-slate-950 sm:text-xl">{currentRetryTask.title}</p>
+                                      <p className="mt-1 text-lg font-black leading-tight text-slate-950 sm:text-[1.35rem]">{currentRetryTask.title}</p>
                                       <p className={`mt-1 text-xs font-semibold uppercase tracking-[0.16em] ${getRetryTaskTypeColor(currentRetryTask.type).text}`}>
                                         {getRetryTaskTypeLabel(currentRetryTask.type)}
+                                      </p>
+                                      <p className="mt-2 text-sm text-slate-600">
+                                        Toque aqui para abrir a tarefa e voltar com a sua próxima chance pronta para liberar.
                                       </p>
                                     </div>
                                   </div>
                                 </div>
 
                                 <div className="mt-4 flex items-center justify-center">
-                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700 shadow-sm">
                                     {currentRetryTaskStatusLabel}
                                   </span>
                                 </div>
                               </>
                             ) : (
-                              <div className="mt-5">
-                                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-sky-600">
-                                  <Loader2 className="h-6 w-6 animate-spin" />
+                              <div className="mt-6">
+                                <div className="relative mx-auto flex h-40 w-40 items-center justify-center sm:h-44 sm:w-44">
+                                  <div className="absolute inset-0 rounded-full border border-sky-200/80 bg-[radial-gradient(circle,_rgba(255,255,255,1)_38%,rgba(224,242,254,0.88)_100%)] shadow-[0_18px_44px_rgba(14,165,233,0.16)]" />
+                                  <div className="absolute inset-3 rounded-full border border-sky-200/80" />
+                                  <div className="absolute inset-6 rounded-full border border-dashed border-violet-300 animate-spin [animation-duration:8s]" />
+                                  <div className="absolute -top-1 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full bg-sky-500 shadow-[0_0_16px_rgba(14,165,233,0.5)]" />
+                                  <div className="relative flex flex-col items-center justify-center">
+                                    <span className="text-[3.2rem] font-black leading-none text-slate-950 sm:text-[3.6rem]">
+                                      {currentRetryTaskCountdownValue}
+                                    </span>
+                                    <span className="mt-1 text-[11px] font-bold uppercase tracking-[0.24em] text-sky-700">
+                                      segundos
+                                    </span>
+                                  </div>
                                 </div>
-                                <p className="mt-3 text-sm font-semibold text-slate-700">Aguarde, sua chance já será liberada...</p>
-                                <div className="mt-3 flex items-center justify-center">
-                                  <span className="font-mono text-2xl font-bold text-sky-600">{currentRetryTaskRemainingSeconds}s</span>
-                                </div>
-                                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                                  <div
-                                    className="h-full rounded-full bg-sky-500 transition-all duration-300"
-                                    style={{
-                                      width: `${Math.min(
-                                        100,
-                                        ((retryTaskNow - currentRetryTaskProgress.startedAt) / RETRY_TASK_MIN_WAIT_MS) * 100,
-                                      )}%`,
-                                    }}
-                                  />
+                                <p className="mt-5 text-base font-black text-slate-950 sm:text-lg">
+                                  Sua roleta será liberada em instantes.
+                                </p>
+                                <p className="mx-auto mt-2 max-w-[24rem] text-sm leading-6 text-slate-600">
+                                  Continue nesta tela. Assim que a contagem terminar, sua nova chance será ativada automaticamente.
+                                </p>
+                                <div className="mt-4 flex items-center justify-center">
+                                  <span className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-sky-700 shadow-sm">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Preparando roleta
+                                  </span>
                                 </div>
                               </div>
                             )}
 
-                            {!currentRetryTaskReturned ? (
-                              <div className="mt-5 flex items-center justify-center">
-                                <button
-                                  type="button"
-                                  disabled={currentRetryTaskIsLoading || Boolean(currentRetryTaskProgress)}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    if (currentRetryTaskProgress) {
-                                      openRetryTaskLink(currentRetryTask)
-                                      return
-                                    }
-                                    startRetryTask(currentRetryTask)
-                                  }}
-                                  className="inline-flex items-center justify-center gap-2 rounded-[14px] border border-slate-300 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                  {currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
-                                </button>
-                              </div>
-                            ) : null}
+                            <div className="mt-5 flex items-center justify-center">
+                              <button
+                                type="button"
+                                disabled={currentRetryTaskIsLoading || (!currentRetryTaskReturned && Boolean(currentRetryTaskProgress))}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  if (currentRetryTaskProgress) {
+                                    openRetryTaskLink(currentRetryTask)
+                                    return
+                                  }
+                                  startRetryTask(currentRetryTask)
+                                }}
+                                className={`inline-flex items-center justify-center gap-2 rounded-[16px] px-6 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  currentRetryTaskReturned
+                                    ? 'border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-sky-300 hover:text-sky-700'
+                                    : 'bg-[linear-gradient(135deg,#0ea5e9,#2563eb)] text-white shadow-[0_16px_34px_rgba(37,99,235,0.28)] hover:-translate-y-0.5 hover:shadow-[0_20px_40px_rgba(37,99,235,0.34)]'
+                                }`}
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                {currentRetryTaskReturned ? 'Ir para a tarefa novamente' : currentRetryTaskProgress ? 'Reabrir tarefa' : 'Ir para a tarefa'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       ) : null}
