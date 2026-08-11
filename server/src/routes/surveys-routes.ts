@@ -253,6 +253,71 @@ async function loadSurveyPreview(surveyId: string) {
 
 type SurveyQuestionPayload = z.infer<typeof surveySchema>['questions'][number]
 
+function remapQuestionReference(
+  value: string | null | undefined,
+  questionIdMap: Map<string, string>,
+) {
+  if (!value) {
+    return value ?? null
+  }
+
+  if (value === '__end__') {
+    return value
+  }
+
+  return questionIdMap.get(value) ?? value
+}
+
+function remapSurveyQuestionsForImport(questions: SurveyQuestionPayload[]) {
+  const questionIdMap = new Map<string, string>()
+
+  for (const question of questions) {
+    if (question.id) {
+      questionIdMap.set(question.id, makeId())
+    }
+  }
+
+  const remappedQuestions = questions.map((question) => {
+    const nextQuestionId = question.id ? questionIdMap.get(question.id) ?? makeId() : makeId()
+
+    if (question.id) {
+      questionIdMap.set(question.id, nextQuestionId)
+    }
+
+    return {
+      ...question,
+      id: nextQuestionId,
+      flowRules: (question.flowRules ?? []).map((rule) => ({
+        ...rule,
+        nextQuestionId: remapQuestionReference(rule.nextQuestionId, questionIdMap) ?? rule.nextQuestionId,
+      })),
+      linkedQuestionId: remapQuestionReference(question.linkedQuestionId ?? null, questionIdMap),
+    }
+  })
+
+  return {
+    questions: remappedQuestions,
+    questionIdMap,
+  }
+}
+
+function remapSurveyFlowLayoutForImport(
+  flowLayout: z.infer<typeof surveySchema>['flowLayout'] | undefined,
+  questionIdMap: Map<string, string>,
+) {
+  if (!flowLayout) {
+    return { version: 1, nodes: [] }
+  }
+
+  return {
+    ...flowLayout,
+    nodes: (flowLayout.nodes ?? []).map((node) => ({
+      ...node,
+      id: questionIdMap.get(node.id) ?? node.id,
+    })),
+  }
+}
+
 function buildQuestionSettings(question: SurveyQuestionPayload) {
   return {
     flowRules: question.flowRules ?? [],
@@ -554,7 +619,13 @@ surveysRouter.get('/:id/preview-link', async (request: AuthenticatedRequest, res
 })
 
 surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
-  const payload = surveySchema.parse(request.body)
+  const parsedPayload = surveySchema.parse(request.body)
+  const { questions: importedQuestions, questionIdMap } = remapSurveyQuestionsForImport(parsedPayload.questions)
+  const payload = {
+    ...parsedPayload,
+    questions: importedQuestions,
+    flowLayout: remapSurveyFlowLayoutForImport(parsedPayload.flowLayout, questionIdMap),
+  }
   const flowValidationMessage = validateSurveyQuestionFlows(payload.questions)
 
   if (flowValidationMessage) {
