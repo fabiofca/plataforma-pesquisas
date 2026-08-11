@@ -806,6 +806,27 @@ export function PublicSurveyPage() {
   }, [survey?.slug, previewMode])
 
   function clearPersistedSurveySession() {
+    // #region debug-point A:clear-persisted-session
+    fetch('http://192.168.1.67:7777/event', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId: 'mobile-survey-resume',
+        runId: 'pre-fix',
+        hypothesisId: 'A',
+        location: 'PublicSurveyPage.tsx:clearPersistedSurveySession',
+        msg: '[DEBUG] clearing persisted public survey session',
+        data: {
+          storageKey: surveySessionStorageKey,
+          submitted,
+          responseId,
+          activeRetryTaskId,
+          visibleQuestionIds: visibleQuestions.map((question) => question.id),
+          answerCount: Object.keys(answers).length,
+        },
+        ts: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
     removePersistedSurveySessionSnapshot(surveySessionStorageKey)
   }
 
@@ -853,10 +874,54 @@ export function PublicSurveyPage() {
       Object.keys(snapshot.retryTaskProgressMap).length > 0
 
     if (!hasMeaningfulSession) {
+      // #region debug-point A:no-meaningful-session
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'A',
+          location: 'PublicSurveyPage.tsx:persistSurveySessionSnapshot:noMeaningfulSession',
+          msg: '[DEBUG] session deemed non-meaningful before persistence',
+          data: {
+            storageKey: surveySessionStorageKey,
+            hasParticipantDraft,
+            hasDraftAnswers,
+            submitted: snapshot.submitted,
+            responseId: snapshot.responseId,
+            activeRetryTaskId: snapshot.activeRetryTaskId,
+            visibleQuestionIds: visibleQuestions.map((question) => question.id),
+            answerCount: Object.keys(snapshot.answers).length,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
       clearPersistedSurveySession()
       return
     }
 
+    // #region debug-point A:write-persisted-session
+    fetch('http://192.168.1.67:7777/event', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId: 'mobile-survey-resume',
+        runId: 'pre-fix',
+        hypothesisId: 'A',
+        location: 'PublicSurveyPage.tsx:persistSurveySessionSnapshot:write',
+        msg: '[DEBUG] writing persisted public survey session',
+        data: {
+          storageKey: surveySessionStorageKey,
+          submitted: snapshot.submitted,
+          responseId: snapshot.responseId,
+          activeRetryTaskId: snapshot.activeRetryTaskId,
+          visibleQuestionIds: visibleQuestions.map((question) => question.id),
+          answerCount: Object.keys(snapshot.answers).length,
+        },
+        ts: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
     writePersistedSurveySessionSnapshot(surveySessionStorageKey, JSON.stringify(snapshot))
   }
 
@@ -880,6 +945,26 @@ export function PublicSurveyPage() {
     sessionHydratedRef.current = true
 
     const rawSession = readPersistedSurveySessionSnapshot(surveySessionStorageKey)
+
+    // #region debug-point A:hydrate-read-session
+    fetch('http://192.168.1.67:7777/event', {
+      method: 'POST',
+      body: JSON.stringify({
+        sessionId: 'mobile-survey-resume',
+        runId: 'pre-fix',
+        hypothesisId: 'A',
+        location: 'PublicSurveyPage.tsx:hydrate:read',
+        msg: '[DEBUG] reading persisted public survey session',
+        data: {
+          storageKey: surveySessionStorageKey,
+          hasRawSession: Boolean(rawSession),
+          rawLength: rawSession?.length ?? 0,
+          shouldStartFresh,
+        },
+        ts: Date.now(),
+      }),
+    }).catch(() => {})
+    // #endregion
 
     if (!rawSession) {
       restoredPersistedSessionRef.current = false
@@ -921,6 +1006,26 @@ export function PublicSurveyPage() {
       setRetryTaskProgressMap(nextRetryTaskProgressMap)
       setActiveRetryTaskId(nextActiveRetryTaskId)
       setRetryTaskNow(Date.now())
+      // #region debug-point A:hydrate-apply-session
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'A',
+          location: 'PublicSurveyPage.tsx:hydrate:apply',
+          msg: '[DEBUG] applied persisted public survey session',
+          data: {
+            submitted: Boolean(parsed.submitted),
+            responseId: parsed.responseId ?? '',
+            activeRetryTaskId: nextActiveRetryTaskId,
+            restoredAnswerCount: Object.keys(parsed.answers ?? {}).length,
+            restoredVisibleQuestionIds: visibleQuestions.map((question) => question.id),
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
     } catch {
       clearPersistedSurveySession()
     } finally {
@@ -1132,6 +1237,29 @@ export function PublicSurveyPage() {
     const currentVisibleQuestionIds = visibleQuestions.map((question) => question.id)
     const previousVisibleQuestionIds = previousVisibleQuestionIdsRef.current
 
+    // #region debug-point B:visible-questions-change
+    if (sessionStateReady) {
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'B',
+          location: 'PublicSurveyPage.tsx:visibleQuestions:change',
+          msg: '[DEBUG] visible questions changed',
+          data: {
+            previousVisibleQuestionIds,
+            currentVisibleQuestionIds,
+            answerCount: Object.keys(answers).length,
+            submitted,
+            responseId,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+    }
+    // #endregion
+
     if (!previousVisibleQuestionIds.length) {
       previousVisibleQuestionIdsRef.current = currentVisibleQuestionIds
       return
@@ -1163,7 +1291,7 @@ export function PublicSurveyPage() {
 
       element.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
-  }, [visibleQuestions])
+  }, [answers, responseId, sessionStateReady, submitted, visibleQuestions])
 
   useEffect(() => {
     if (previewMode || !slug || !trackedSource) {
@@ -1236,6 +1364,23 @@ export function PublicSurveyPage() {
     }
 
     const handleVisibilityChange = () => {
+      // #region debug-point E:retry-visibility-change
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'E',
+          location: 'PublicSurveyPage.tsx:retryTask:visibilitychange',
+          msg: '[DEBUG] retry task visibility changed',
+          data: {
+            activeRetryTaskId,
+            visibilityState: document.visibilityState,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
       if (document.visibilityState === 'visible') {
         markTaskAsReturned()
       }
@@ -1249,6 +1394,91 @@ export function PublicSurveyPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [activeRetryTaskId])
+
+  useEffect(() => {
+    const handlePageHide = () => {
+      // #region debug-point E:pagehide
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'E',
+          location: 'PublicSurveyPage.tsx:lifecycle:pagehide',
+          msg: '[DEBUG] pagehide fired on public survey',
+          data: {
+            visibilityState: document.visibilityState,
+            submitted,
+            responseId,
+            activeRetryTaskId,
+            visibleQuestionIds: visibleQuestions.map((question) => question.id),
+            answerCount: Object.keys(answers).length,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+    }
+
+    const handlePageShow = (event: PageTransitionEvent) => {
+      // #region debug-point E:pageshow
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'E',
+          location: 'PublicSurveyPage.tsx:lifecycle:pageshow',
+          msg: '[DEBUG] pageshow fired on public survey',
+          data: {
+            persisted: event.persisted,
+            visibilityState: document.visibilityState,
+            submitted,
+            responseId,
+            activeRetryTaskId,
+            visibleQuestionIds: visibleQuestions.map((question) => question.id),
+            answerCount: Object.keys(answers).length,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+    }
+
+    const handleVisibilitySnapshot = () => {
+      // #region debug-point E:page-visibility
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'E',
+          location: 'PublicSurveyPage.tsx:lifecycle:visibilitychange',
+          msg: '[DEBUG] page visibility changed',
+          data: {
+            visibilityState: document.visibilityState,
+            submitted,
+            responseId,
+            activeRetryTaskId,
+            visibleQuestionIds: visibleQuestions.map((question) => question.id),
+            answerCount: Object.keys(answers).length,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+    }
+
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('pageshow', handlePageShow)
+    document.addEventListener('visibilitychange', handleVisibilitySnapshot)
+
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('pageshow', handlePageShow)
+      document.removeEventListener('visibilitychange', handleVisibilitySnapshot)
+    }
+  }, [activeRetryTaskId, answers, responseId, submitted, visibleQuestions])
 
   useEffect(() => {
     if (!wheelModalOpen) {
@@ -1669,6 +1899,24 @@ export function PublicSurveyPage() {
     }
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // #region debug-point C:beforeunload
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'C',
+          location: 'PublicSurveyPage.tsx:retryExitGuard:beforeunload',
+          msg: '[DEBUG] beforeunload fired while retry exit guard active',
+          data: {
+            bypass: retryExitGuardBypassRef.current,
+            retryExitGuardActive,
+            activeRetryTaskId,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
       if (retryExitGuardBypassRef.current) {
         return
       }
@@ -1691,11 +1939,46 @@ export function PublicSurveyPage() {
     }
 
     if (!retryExitGuardArmedRef.current) {
+      // #region debug-point C:pushstate-arm
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'C',
+          location: 'PublicSurveyPage.tsx:retryExitGuard:arm',
+          msg: '[DEBUG] arming retry exit guard pushState entry',
+          data: {
+            retryExitGuardActive,
+            activeRetryTaskId,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
       window.history.pushState({ publicSurveyRetryGuard: true }, '', window.location.href)
       retryExitGuardArmedRef.current = true
     }
 
     const handlePopState = () => {
+      // #region debug-point C:popstate
+      fetch('http://192.168.1.67:7777/event', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: 'mobile-survey-resume',
+          runId: 'pre-fix',
+          hypothesisId: 'C',
+          location: 'PublicSurveyPage.tsx:retryExitGuard:popstate',
+          msg: '[DEBUG] popstate fired while retry exit guard active',
+          data: {
+            bypass: retryExitGuardBypassRef.current,
+            retryExitGuardActive,
+            activeRetryTaskId,
+          },
+          ts: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
       if (retryExitGuardBypassRef.current) {
         return
       }
