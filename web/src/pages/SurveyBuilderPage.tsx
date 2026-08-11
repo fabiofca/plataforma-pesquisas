@@ -80,6 +80,10 @@ type BuilderState = {
 }
 
 type FlowDraftState = Pick<BuilderState, 'questions' | 'flowLayout'>
+type ImportedAttendantDraft = {
+  name: string
+  isActive: boolean
+}
 type BuilderDraftState = Pick<
   BuilderState,
   | 'title'
@@ -221,6 +225,52 @@ function normalizeFlowDraft(state: FlowDraftState): FlowDraftState {
   }
 }
 
+function remapImportedFlowDraft(state: FlowDraftState): FlowDraftState {
+  const questionIdMap = new Map<string, string>()
+
+  for (const question of state.questions) {
+    questionIdMap.set(question.id, crypto.randomUUID())
+  }
+
+  const remapQuestionReference = (value: string | null | undefined) => {
+    if (!value) {
+      return value ?? null
+    }
+
+    if (value === '__end__') {
+      return value
+    }
+
+    return questionIdMap.get(value) ?? value
+  }
+
+  const questions = state.questions.map((question) => ({
+    ...question,
+    id: questionIdMap.get(question.id) ?? question.id,
+    options: [...question.options],
+    flowRules: question.flowRules.map((rule) => ({
+      ...rule,
+      nextQuestionId: remapQuestionReference(rule.nextQuestionId) ?? rule.nextQuestionId,
+    })),
+    linkedQuestionId: remapQuestionReference(question.linkedQuestionId ?? null),
+  }))
+
+  return {
+    questions,
+    flowLayout: mergeFlowLayout(
+      questions.map((question) => question.id),
+      {
+        ...state.flowLayout,
+        nodes: state.flowLayout.nodes.map((node) => ({
+          ...node,
+          id: questionIdMap.get(node.id) ?? node.id,
+        })),
+        viewport: state.flowLayout.viewport ? { ...state.flowLayout.viewport } : undefined,
+      },
+    ),
+  }
+}
+
 function getFlowDraftSignature(state: FlowDraftState) {
   return JSON.stringify(normalizeFlowDraft(state))
 }
@@ -299,6 +349,7 @@ export function SurveyBuilderPage() {
   const [savedBuilderSnapshot, setSavedBuilderSnapshot] = useState<BuilderDraftState | null>(null)
   const [selectedVisualQuestionId, setSelectedVisualQuestionId] = useState('')
   const [feedback, setFeedback] = useState('')
+  const [pendingImportedAttendants, setPendingImportedAttendants] = useState<ImportedAttendantDraft[] | null>(null)
   const [centeredFeedback, setCenteredFeedback] = useState<{ message: string; key: number } | null>(null)
   const [uploadingKey, setUploadingKey] = useState<SurveyUploadTarget | ''>('')
   const [removingKey, setRemovingKey] = useState<SurveyUploadTarget | ''>('')
@@ -368,6 +419,7 @@ export function SurveyBuilderPage() {
       setForm(nextForm)
       setSavedFlowSnapshot(extractFlowDraft(nextForm))
       setSavedBuilderSnapshot(extractBuilderDraft(nextForm))
+      setPendingImportedAttendants(null)
       setUploadErrors({ logo: '', banner: '' })
       return
     }
@@ -377,6 +429,7 @@ export function SurveyBuilderPage() {
       setForm(nextForm)
       setSavedFlowSnapshot(extractFlowDraft(nextForm))
       setSavedBuilderSnapshot(extractBuilderDraft(nextForm))
+      setPendingImportedAttendants(null)
       setFeedback('')
       setUploadErrors({ logo: '', banner: '' })
     }
@@ -606,10 +659,19 @@ export function SurveyBuilderPage() {
       return { surveyId, published: shouldPublish, flowSnapshot, builderSnapshot: extractBuilderDraft(draft) }
     },
     onSuccess: async ({ surveyId, published, flowSnapshot, builderSnapshot }) => {
+      if (pendingImportedAttendants) {
+        await apiRequest<{ ok: boolean }>(`/surveys/${surveyId}/attendants/import`, {
+          method: 'PUT',
+          body: JSON.stringify({ attendants: pendingImportedAttendants }),
+        })
+        setPendingImportedAttendants(null)
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['survey', surveyId] }),
+        queryClient.invalidateQueries({ queryKey: ['attendants', surveyId] }),
       ])
 
       setSavedFlowSnapshot(flowSnapshot)
@@ -664,15 +726,91 @@ export function SurveyBuilderPage() {
       if (!parsed.data || typeof parsed.data !== 'object') {
         throw new Error('Arquivo de importação inválido.')
       }
-      const payload = parsed.data
-      payload.slug = `imported-${Date.now()}`
-      const result = await apiRequest<{ id: string }>('/surveys', {
-        method: 'POST',
-        body: JSON.stringify(payload),
+
+      const rawQuestions = Array.isArray(parsed.data.questions) ? parsed.data.questions : []
+      if (!rawQuestions.length) {
+        throw new Error('Esse arquivo não traz um fluxo de perguntas válido para importar.')
+      }
+
+      const importedQuestions = rawQuestions.map((question) => ({
+        id: typeof question.id === 'string' ? question.id : crypto.randomUUID(),
+        title: typeof question.title === 'string' ? question.title : '',
+        description: typeof question.description === 'string' ? question.description : '',
+        type: (question.type as QuestionType) ?? 'short_text',
+        required: Boolean(question.isRequired),
+        options:
+          Array.isArray(question.options) && (question.type === 'single_choice' || question.type === 'multiple_choice')
+            ? question.options.filter((option): option is string => typeof option === 'string')
+            : [],
+        flowRules: Array.isArray(question.flowRules)
+          ? question.flowRules
+              .filter(
+                (rule): rule is SurveyQuestionFlowRule =>
+                  Boolean(
+                    rule &&
+                      typeof rule === 'object' &&
+                      typeof rule.value === 'string' &&
+                      typeof rule.nextQuestionId === 'string',
+                  ),
+              )
+              .map((rule) => ({ ...rule }))
+          : [],
+        businessMetric:
+          question.businessMetric === 'missing_product' ||
+          question.businessMetric === 'attendant_name' ||
+          question.businessMetric === 'attendant_rating'
+            ? question.businessMetric
+            : null,
+        linkedQuestionId: typeof question.linkedQuestionId === 'string' ? question.linkedQuestionId : null,
+      }))
+
+      const importedFlowLayout =
+        parsed.data.flowLayout && typeof parsed.data.flowLayout === 'object'
+          ? (parsed.data.flowLayout as SurveyFlowLayout)
+          : { version: 1, nodes: [] }
+      const importedAttendants = Array.isArray(parsed.data.attendants)
+        ? parsed.data.attendants
+            .filter(
+              (attendant): attendant is { name: string; isActive?: boolean } =>
+                Boolean(attendant && typeof attendant === 'object' && typeof attendant.name === 'string'),
+            )
+            .map((attendant) => ({
+              name: attendant.name.trim(),
+              isActive: attendant.isActive ?? true,
+            }))
+            .filter((attendant) => attendant.name.length > 0)
+        : []
+
+      const remappedFlowDraft = remapImportedFlowDraft({
+        questions: importedQuestions,
+        flowLayout: importedFlowLayout,
       })
-      await queryClient.invalidateQueries({ queryKey: ['surveys'] })
-      setFeedback('Pesquisa importada com sucesso! Redirecionando...')
-      navigate(`/surveys/${result.id}/builder`)
+
+      setForm((current) => ({
+        ...current,
+        questions: remappedFlowDraft.questions,
+        flowLayout: remappedFlowDraft.flowLayout,
+      }))
+      setSelectedVisualQuestionId(remappedFlowDraft.questions[0]?.id ?? '')
+      if (importedAttendants.length) {
+        if (isEditing && params.id) {
+          await apiRequest<{ ok: boolean }>(`/surveys/${params.id}/attendants/import`, {
+            method: 'PUT',
+            body: JSON.stringify({ attendants: importedAttendants }),
+          })
+          await queryClient.invalidateQueries({ queryKey: ['attendants', params.id] })
+          setPendingImportedAttendants(null)
+        } else {
+          setPendingImportedAttendants(importedAttendants)
+        }
+      } else {
+        setPendingImportedAttendants(null)
+      }
+      setFeedback(
+        isEditing
+          ? 'Fluxo importado para esta pesquisa. Os atendentes vinculados tambem foram copiados.'
+          : 'Fluxo importado com sucesso. Os atendentes serao copiados quando a pesquisa for salva.',
+      )
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível importar a pesquisa.')
     } finally {

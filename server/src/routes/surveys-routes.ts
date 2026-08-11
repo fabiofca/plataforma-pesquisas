@@ -897,6 +897,16 @@ surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response)
   })
 
   const flowLayout = survey.flow_json ?? { version: 1, nodes: [] }
+  const attendantsResult = await query<{
+    name: string
+    is_active: boolean
+  }>(
+    `select name, is_active
+     from survey_attendants
+     where survey_id = $1
+     order by created_at asc, name asc`,
+    [surveyId],
+  )
 
   response.json({
     version: 1,
@@ -918,6 +928,10 @@ surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response)
       builderMode: survey.builder_mode,
       flowLayout,
       questions: exportedQuestions,
+      attendants: attendantsResult.rows.map((attendant) => ({
+        name: attendant.name,
+        isActive: attendant.is_active,
+      })),
     },
   })
 })
@@ -932,6 +946,35 @@ surveysRouter.post('/:id/publish', async (request: AuthenticatedRequest, respons
   }
 
   await query(`update surveys set status = 'published', published_at = now(), updated_at = now() where id = $1`, [surveyId])
+
+  response.json({ ok: true })
+})
+
+surveysRouter.delete('/:id', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const surveyResult = await query<{ logo_url: string | null; banner_url: string | null }>(
+    'select logo_url, banner_url from surveys where id = $1 limit 1',
+    [surveyId],
+  )
+
+  const survey = surveyResult.rows[0]
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa não encontrada.' })
+    return
+  }
+
+  removeManagedSurveyFile(survey.logo_url)
+  removeManagedSurveyFile(survey.banner_url)
+
+  await query('delete from surveys where id = $1', [surveyId])
 
   response.json({ ok: true })
 })
@@ -1016,6 +1059,15 @@ const attendantUpdateSchema = z.object({
   isActive: z.boolean().optional(),
 })
 
+const attendantImportSchema = z.object({
+  attendants: z.array(
+    z.object({
+      name: z.string().min(1, 'Informe o nome do atendente.').max(255),
+      isActive: z.boolean().optional(),
+    }),
+  ),
+})
+
 surveysRouter.get('/:id/attendants', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
@@ -1097,6 +1149,73 @@ surveysRouter.post('/:id/attendants', async (request: AuthenticatedRequest, resp
 
     throw error
   }
+})
+
+surveysRouter.put('/:id/attendants/import', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const parsed = attendantImportSchema.safeParse(request.body)
+
+  if (!parsed.success) {
+    response.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos.' })
+    return
+  }
+
+  const attendants = parsed.data.attendants
+    .map((attendant) => ({
+      name: attendant.name.trim(),
+      isActive: attendant.isActive ?? true,
+    }))
+    .filter((attendant) => attendant.name.length > 0)
+
+  const seenNames = new Set<string>()
+
+  for (const attendant of attendants) {
+    const normalizedKey = attendant.name.toLocaleLowerCase('pt-BR')
+
+    if (seenNames.has(normalizedKey)) {
+      response.status(400).json({ message: `O atendente "${attendant.name}" está duplicado no arquivo importado.` })
+      return
+    }
+
+    seenNames.add(normalizedKey)
+  }
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+    await client.query('delete from survey_attendants where survey_id = $1', [surveyId])
+
+    for (const attendant of attendants) {
+      await client.query(
+        `insert into survey_attendants (survey_id, name, is_active)
+         values ($1, $2, $3)`,
+        [surveyId, attendant.name, attendant.isActive],
+      )
+    }
+
+    await client.query('commit')
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+
+  response.json({
+    ok: true,
+    attendants: attendants.map((attendant) => ({
+      name: attendant.name,
+      isActive: attendant.isActive,
+    })),
+  })
 })
 
 surveysRouter.put('/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {

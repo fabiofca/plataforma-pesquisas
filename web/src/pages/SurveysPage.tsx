@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Trash2 } from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { AdminModal } from '@/components/ui/AdminModal'
@@ -76,6 +76,24 @@ export function SurveysPage() {
     },
   })
 
+  const deleteSurveyMutation = useMutation({
+    mutationFn: async (surveyId: string) => {
+      await apiRequest<{ ok: boolean }>(`/surveys/${surveyId}`, {
+        method: 'DELETE',
+      })
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
+      ])
+      setFeedback('Pesquisa excluída com sucesso.')
+    },
+    onError: (error) => {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível excluir a pesquisa.')
+    },
+  })
+
   const data = (surveysQuery.data ?? []).filter((survey) => survey.kind === 'custom')
 
   function handleOpenCreateModal() {
@@ -89,6 +107,15 @@ export function SurveysPage() {
     setIsCreateModalOpen(false)
     setIsSlugDirty(false)
     setCreateForm(emptySurveyForm)
+  }
+
+  function handleDeleteSurvey(surveyId: string, surveyTitle: string) {
+    if (!window.confirm(`Deseja excluir a pesquisa "${surveyTitle}"? Essa ação remove campanha, perguntas e resultados vinculados.`)) {
+      return
+    }
+
+    setFeedback('')
+    void deleteSurveyMutation.mutateAsync(surveyId)
   }
 
   return (
@@ -247,27 +274,40 @@ export function SurveysPage() {
 
         <div className="space-y-3">
           {data.map((survey, index) => (
-            <Link
+            <div
               key={survey.id}
-              to={`/app/pesquisas/${survey.id}`}
-              className={`admin-panel block overflow-hidden transition hover:border-slate-300 hover:bg-white animate-fade-in-up delay-${Math.min(index * 50, 350)}`}>
+              className={`admin-panel overflow-hidden transition hover:border-slate-300 hover:bg-white animate-fade-in-up delay-${Math.min(index * 50, 350)}`}>
               <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
+                <Link to={`/app/pesquisas/${survey.id}`} className="min-w-0 flex-1">
                   <div className="mb-2 h-2 w-14" style={{ backgroundColor: survey.primaryColor, borderRadius: 2 }} />
                   <p className="truncate font-display text-xl text-slate-950">{survey.title}</p>
                   <p className="mt-1 truncate text-sm text-slate-500">/{survey.slug}</p>
-                </div>
+                </Link>
 
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   <span className="admin-badge bg-white">{survey.responses} resposta(s)</span>
                   <span className="admin-badge bg-white">{survey.participationMode}</span>
                   <span className="admin-badge border-slate-900 bg-slate-950 text-white">{survey.status}</span>
-                  <span className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600" style={{ borderRadius: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteSurvey(survey.id, survey.title)}
+                    disabled={deleteSurveyMutation.isPending}
+                    className="inline-flex h-9 items-center justify-center gap-2 border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    style={{ borderRadius: 8 }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deleteSurveyMutation.isPending ? 'Excluindo...' : 'Excluir'}
+                  </button>
+                  <Link
+                    to={`/app/pesquisas/${survey.id}`}
+                    className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600"
+                    style={{ borderRadius: 8 }}
+                  >
                     <ChevronRight className="h-4 w-4" />
-                  </span>
+                  </Link>
                 </div>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       </SectionCard>
