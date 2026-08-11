@@ -131,6 +131,13 @@ type PersistedPublicSurveySession = {
   activeRetryTaskId: string | null
 }
 
+type PersistedPublicSurveyRecovery = {
+  participantPhone: string
+  responseId: string
+  browserCookieId: string
+  fingerprint: string
+}
+
 type PublicRewardPreviewItem = {
   id: string
   title: string
@@ -147,6 +154,7 @@ const RETRY_TASK_MIN_WAIT_MS = 5000
 const PUBLIC_SURVEY_LEGACY_SESSION_KEY_PREFIX = 'public-survey-session'
 const PUBLIC_SURVEY_DRAFT_SESSION_KEY_PREFIX = 'public-survey-draft-session'
 const PUBLIC_SURVEY_PARTICIPATION_SESSION_KEY_PREFIX = 'public-survey-participation-session'
+const PUBLIC_SURVEY_RECOVERY_KEY_PREFIX = 'public-survey-recovery'
 
 function getPublicSurveySessionStorageKey(prefix: string, previewVariant: string, surveyStorageId: string) {
   return `${prefix}:${previewVariant}:${surveyStorageId}`
@@ -195,6 +203,21 @@ function removePersistedSurveySessionSnapshot(storageKey: string) {
     window.sessionStorage.removeItem(storageKey)
   } catch {
     // Ignore sessionStorage access issues.
+  }
+}
+
+function readPersistedSurveyRecoverySnapshot(storageKey: string) {
+  const rawRecovery = readPersistedSurveySessionSnapshot(storageKey)
+
+  if (!rawRecovery) {
+    return null
+  }
+
+  try {
+    return JSON.parse(rawRecovery) as PersistedPublicSurveyRecovery
+  } catch {
+    removePersistedSurveySessionSnapshot(storageKey)
+    return null
   }
 }
 
@@ -653,6 +676,7 @@ export function PublicSurveyPage() {
   const legacySurveySessionStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_LEGACY_SESSION_KEY_PREFIX, previewVariant, surveyStorageId)
   const surveyDraftStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_DRAFT_SESSION_KEY_PREFIX, previewVariant, surveyStorageId)
   const surveyParticipationStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_PARTICIPATION_SESSION_KEY_PREFIX, previewVariant, surveyStorageId)
+  const surveyRecoveryStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_RECOVERY_KEY_PREFIX, previewVariant, surveyStorageId)
   const [searchParams] = useSearchParams()
   const [sessionStateReady, setSessionStateReady] = useState(false)
   const [participantName, setParticipantName] = useState('')
@@ -688,6 +712,7 @@ export function PublicSurveyPage() {
   const surveyExitGuardBypassRef = useRef(false)
   const surveyExitGuardArmedRef = useRef(false)
   const rewardSessionRestoreKeyRef = useRef('')
+  const participationRecoveryKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
   const validationElementRefs = useRef<Record<string, HTMLElement | null>>({})
@@ -856,10 +881,40 @@ export function PublicSurveyPage() {
     }
   }, [survey?.slug, previewMode])
 
-  function clearPersistedSurveySession() {
+  function clearPersistedSurveySnapshots() {
     removePersistedSurveySessionSnapshot(surveyDraftStorageKey)
     removePersistedSurveySessionSnapshot(surveyParticipationStorageKey)
     removePersistedSurveySessionSnapshot(legacySurveySessionStorageKey)
+  }
+
+  function clearPersistedSurveyRecovery() {
+    removePersistedSurveySessionSnapshot(surveyRecoveryStorageKey)
+  }
+
+  function clearPersistedSurveySession() {
+    clearPersistedSurveySnapshots()
+    clearPersistedSurveyRecovery()
+  }
+
+  function persistSurveyRecoverySnapshot(overrides?: Partial<PersistedPublicSurveyRecovery>) {
+    if (previewMode || isTestResponseSession) {
+      clearPersistedSurveyRecovery()
+      return
+    }
+
+    const snapshot: PersistedPublicSurveyRecovery = {
+      participantPhone: sanitizePhone(participantPhone),
+      responseId,
+      browserCookieId: getBrowserCookieId(),
+      fingerprint: getBrowserFingerprint(),
+      ...overrides,
+    }
+
+    if (!snapshot.participantPhone && !snapshot.responseId) {
+      return
+    }
+
+    writePersistedSurveySessionSnapshot(surveyRecoveryStorageKey, JSON.stringify(snapshot))
   }
 
   function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
@@ -891,7 +946,7 @@ export function PublicSurveyPage() {
     }
 
     if (!hasMeaningfulPersistedSurveySession(snapshot)) {
-      clearPersistedSurveySession()
+      clearPersistedSurveySnapshots()
       return
     }
 
@@ -921,7 +976,7 @@ export function PublicSurveyPage() {
     pendingScrollRestoreRef.current = null
     rewardSessionRestoreKeyRef.current = ''
     navigate({ search: '' }, { replace: true })
-  }, [legacySurveySessionStorageKey, navigate, shouldStartFresh, surveyDraftStorageKey, surveyParticipationStorageKey])
+  }, [legacySurveySessionStorageKey, navigate, shouldStartFresh, surveyDraftStorageKey, surveyParticipationStorageKey, surveyRecoveryStorageKey])
 
   useEffect(() => {
     if (sessionHydratedRef.current) {
@@ -933,9 +988,18 @@ export function PublicSurveyPage() {
     const rawParticipationSession = readPersistedSurveySessionSnapshot(surveyParticipationStorageKey)
     const rawDraftSession = readPersistedSurveySessionSnapshot(surveyDraftStorageKey)
     const rawLegacySession = readPersistedSurveySessionSnapshot(legacySurveySessionStorageKey)
+    const recoverySnapshot = readPersistedSurveyRecoverySnapshot(surveyRecoveryStorageKey)
     const rawSession = rawParticipationSession || rawLegacySession || rawDraftSession
 
     if (!rawSession) {
+      if (recoverySnapshot?.participantPhone) {
+        setParticipantPhone(recoverySnapshot.participantPhone)
+      }
+
+      if (recoverySnapshot?.responseId) {
+        setResponseId(recoverySnapshot.responseId)
+      }
+
       restoredPersistedSessionRef.current = false
       setSessionStateReady(true)
       return
@@ -956,7 +1020,7 @@ export function PublicSurveyPage() {
       }
 
       setParticipantName(parsed.participantName ?? '')
-      setParticipantPhone(parsed.participantPhone ?? '')
+      setParticipantPhone(parsed.participantPhone ?? recoverySnapshot?.participantPhone ?? '')
       setParticipantEmail(parsed.participantEmail ?? '')
       setBirthDay(parsed.birthDay ?? '')
       setBirthMonth(parsed.birthMonth ?? '')
@@ -964,7 +1028,7 @@ export function PublicSurveyPage() {
       pendingScrollRestoreRef.current = typeof parsed.scrollY === 'number' ? parsed.scrollY : 0
       setSubmitted(Boolean(parsed.submitted))
       setSubmitMessage(parsed.submitMessage ?? '')
-      setResponseId(parsed.responseId ?? '')
+      setResponseId(parsed.responseId ?? recoverySnapshot?.responseId ?? '')
       setCanSpinReward(Boolean(parsed.canSpinReward))
       setIsTestResponseSession(false)
       setRewardResult(parsed.rewardResult ?? null)
@@ -981,7 +1045,7 @@ export function PublicSurveyPage() {
     } finally {
       setSessionStateReady(true)
     }
-  }, [legacySurveySessionStorageKey, shouldStartFresh, surveyDraftStorageKey, surveyParticipationStorageKey])
+  }, [legacySurveySessionStorageKey, shouldStartFresh, surveyDraftStorageKey, surveyParticipationStorageKey, surveyRecoveryStorageKey])
 
   useEffect(() => {
     if (!sessionStateReady || !survey) {
@@ -1059,6 +1123,91 @@ export function PublicSurveyPage() {
   ])
 
   useEffect(() => {
+    if (!sessionStateReady) {
+      return
+    }
+
+    persistSurveyRecoverySnapshot()
+  }, [isTestResponseSession, participantPhone, previewMode, responseId, sessionStateReady, surveyRecoveryStorageKey])
+
+  function applyRecoveredRewardSessionState(session: {
+    responseId: string
+    participantName: string
+    participantPhone: string
+    submitMessage?: string | null
+    canSpinReward: boolean
+    isTestResponse: boolean
+    completedTaskIds: string[]
+    rewardResult: RewardResultState | null
+  }) {
+    const nextCompletedTaskIds = session.completedTaskIds ?? []
+    const restoredSegment = session.rewardResult?.landedSegmentId
+      ? wheelSegments.find((segment) => segment.id === session.rewardResult?.landedSegmentId)
+      : session.rewardResult?.landedLabel
+        ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
+        : wheelSegments.find((segment) => segment.kind === 'neutral')
+          ?? null
+
+    setParticipantName((current) => current || session.participantName || '')
+    setParticipantPhone((current) => current || session.participantPhone || '')
+    setResponseId(session.responseId)
+    setSubmitted(true)
+    setIsTestResponseSession(Boolean(session.isTestResponse))
+
+    const nextSubmitMessage =
+      session.submitMessage ??
+      (session.canSpinReward
+        ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
+        : 'Sua resposta foi registrada com sucesso.')
+
+    const nextRewardResult =
+      session.rewardResult ??
+      (!session.canSpinReward && session.submitMessage
+        ? { won: false, message: session.submitMessage }
+        : null)
+
+    setSubmitMessage(nextSubmitMessage)
+    setWheelSpinning(false)
+    setCompletedRetryTaskIds(nextCompletedTaskIds)
+    setCanSpinReward(Boolean(session.canSpinReward))
+    setRewardResult(nextRewardResult)
+    setWheelModalOpen(Boolean(survey?.rewardEnabled && session.canSpinReward))
+    setRetryTaskProgressMap((current) => {
+      if (!session.rewardResult?.retryAvailable) {
+        return {}
+      }
+
+      return Object.fromEntries(
+        Object.entries(current).filter(([taskId]) => !nextCompletedTaskIds.includes(taskId)),
+      )
+    })
+
+    if (restoredSegment) {
+      setActiveWheelSegmentId(restoredSegment.id)
+    }
+
+    if (!session.rewardResult?.retryAvailable) {
+      setActiveRetryTaskId(null)
+    }
+
+    setRetryTaskNow(Date.now())
+    persistSurveyRecoverySnapshot({
+      participantPhone: sanitizePhone(session.participantPhone || participantPhone),
+      responseId: session.responseId,
+    })
+    persistSurveySessionSnapshot({
+      submitted: true,
+      submitMessage: nextSubmitMessage,
+      responseId: session.responseId,
+      canSpinReward: Boolean(session.canSpinReward),
+      rewardResult: nextRewardResult,
+      completedRetryTaskIds: nextCompletedTaskIds,
+      activeRetryTaskId: session.rewardResult?.retryAvailable ? activeRetryTaskId : null,
+      wheelModalOpen: Boolean(survey?.rewardEnabled && session.canSpinReward),
+    })
+  }
+
+  useEffect(() => {
     if (previewMode || !survey || !sessionStateReady || !responseId) {
       return
     }
@@ -1108,59 +1257,7 @@ export function PublicSurveyPage() {
         }
 
         restoredPersistedSessionRef.current = false
-
-        const nextCompletedTaskIds = session.completedTaskIds ?? []
-        const restoredSegment = session.rewardResult?.landedSegmentId
-          ? wheelSegments.find((segment) => segment.id === session.rewardResult?.landedSegmentId)
-          : session.rewardResult?.landedLabel
-            ? wheelSegments.find((segment) => segment.label === session.rewardResult?.landedLabel)
-            : wheelSegments.find((segment) => segment.kind === 'neutral')
-            ?? null
-
-        setParticipantName((current) => current || session.participantName || '')
-        setParticipantPhone((current) => current || session.participantPhone || '')
-        setSubmitted(true)
-        setIsTestResponseSession(Boolean(session.isTestResponse))
-        setSubmitMessage(
-          session.submitMessage ??
-            (session.canSpinReward
-              ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
-              : 'Sua resposta foi registrada com sucesso.'),
-        )
-        setWheelSpinning(false)
-        setCompletedRetryTaskIds(nextCompletedTaskIds)
-        setCanSpinReward(Boolean(session.canSpinReward))
-        setRewardResult(
-          session.rewardResult ??
-            (!session.canSpinReward && session.submitMessage
-              ? { won: false, message: session.submitMessage }
-              : null),
-        )
-        setWheelModalOpen(
-          Boolean(
-            survey.rewardEnabled &&
-              session.canSpinReward,
-          ),
-        )
-        setRetryTaskProgressMap((current) => {
-          if (!session.rewardResult?.retryAvailable) {
-            return {}
-          }
-
-          return Object.fromEntries(
-            Object.entries(current).filter(([taskId]) => !nextCompletedTaskIds.includes(taskId)),
-          )
-        })
-
-        if (restoredSegment) {
-          setActiveWheelSegmentId(restoredSegment.id)
-        }
-
-        if (!session.rewardResult?.retryAvailable) {
-          setActiveRetryTaskId(null)
-        }
-
-        setRetryTaskNow(Date.now())
+        applyRecoveredRewardSessionState(session)
       })
       .catch((error) => {
         if (cancelled) {
@@ -1173,7 +1270,8 @@ export function PublicSurveyPage() {
           return
         }
 
-        clearPersistedSurveySession()
+        clearPersistedSurveySnapshots()
+        clearPersistedSurveyRecovery()
         setSubmitted(false)
         setSubmitMessage('')
         setResponseId('')
@@ -1192,7 +1290,71 @@ export function PublicSurveyPage() {
     return () => {
       cancelled = true
     }
-  }, [previewMode, responseId, sessionStateReady, survey, wheelSegments])
+  }, [activeRetryTaskId, participantPhone, previewMode, responseId, sessionStateReady, survey, wheelSegments])
+
+  useEffect(() => {
+    if (previewMode || !survey || !sessionStateReady || responseId) {
+      return
+    }
+
+    const recoverySnapshot = readPersistedSurveyRecoverySnapshot(surveyRecoveryStorageKey)
+    const recoveryPhone = sanitizePhone(participantPhone || recoverySnapshot?.participantPhone || '')
+    const shouldAttemptParticipationRecovery = Boolean(
+      recoverySnapshot?.responseId ||
+        submitted ||
+        canSpinReward ||
+        Boolean(rewardResult) ||
+        Boolean(activeRetryTaskId) ||
+        Object.keys(retryTaskProgressMap).length > 0,
+    )
+
+    if (!recoveryPhone || !shouldAttemptParticipationRecovery) {
+      return
+    }
+
+    const browserCookieId = recoverySnapshot?.browserCookieId || getBrowserCookieId()
+    const fingerprint = recoverySnapshot?.fingerprint || getBrowserFingerprint()
+    const recoveryKey = `${survey.slug}:${recoveryPhone}:${browserCookieId}:${fingerprint}`
+
+    if (participationRecoveryKeyRef.current === recoveryKey) {
+      return
+    }
+
+    participationRecoveryKeyRef.current = recoveryKey
+    let cancelled = false
+
+    void apiRequest<{
+      responseId: string
+      participantName: string
+      participantPhone: string
+      submitMessage?: string | null
+      canSpinReward: boolean
+      isTestResponse: boolean
+      completedTaskIds: string[]
+      rewardResult: RewardResultState | null
+    }>(
+      `/public/surveys/${survey.slug}/participation-session?phone=${encodeURIComponent(recoveryPhone)}&browserCookieId=${encodeURIComponent(browserCookieId)}&fingerprint=${encodeURIComponent(fingerprint)}`,
+    )
+      .then((session) => {
+        if (cancelled) {
+          return
+        }
+
+        rewardSessionRestoreKeyRef.current = `${survey.slug}:${session.responseId}`
+        applyRecoveredRewardSessionState(session)
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+
+        participationRecoveryKeyRef.current = ''
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeRetryTaskId, canSpinReward, participantPhone, previewMode, responseId, retryTaskProgressMap, rewardResult, sessionStateReady, submitted, survey, surveyRecoveryStorageKey, wheelSegments])
 
   useEffect(() => {
     if (!survey) {
@@ -1300,6 +1462,8 @@ export function PublicSurveyPage() {
         return
       }
 
+      const returnedAt = Date.now()
+
       setRetryTaskProgressMap((current) => {
         const currentTask = current[activeRetryTaskId]
 
@@ -1311,12 +1475,23 @@ export function PublicSurveyPage() {
           ...current,
           [activeRetryTaskId]: {
             ...currentTask,
-            returnedAt: Date.now(),
+            returnedAt,
           },
         }
       })
-      setRetryTaskNow(Date.now())
+      setRetryTaskNow(returnedAt)
       setActiveRetryTaskId(null)
+      persistSurveySessionSnapshot({
+        retryTaskProgressMap: {
+          ...retryTaskProgressMap,
+          [activeRetryTaskId]: {
+            ...(retryTaskProgressMap[activeRetryTaskId] ?? { startedAt: returnedAt, returnedAt: null }),
+            returnedAt,
+          },
+        },
+        activeRetryTaskId: null,
+      })
+      persistSurveyRecoverySnapshot()
     }
 
     const handleVisibilityChange = () => {
@@ -1332,16 +1507,18 @@ export function PublicSurveyPage() {
       window.removeEventListener('focus', markTaskAsReturned)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [activeRetryTaskId])
+  }, [activeRetryTaskId, retryTaskProgressMap])
 
   useEffect(() => {
     const handlePageHide = () => {
       persistSurveySessionSnapshot({ scrollY: window.scrollY })
+      persistSurveyRecoverySnapshot()
     }
 
     const handleVisibilitySnapshot = () => {
       if (document.visibilityState === 'hidden') {
         persistSurveySessionSnapshot({ scrollY: window.scrollY })
+        persistSurveyRecoverySnapshot()
       }
     }
 
@@ -1519,25 +1696,42 @@ export function PublicSurveyPage() {
       })
     },
     onSuccess: (result) => {
+      const nextCanSpinReward = result.rewardEnabled && result.rewardEligible
+      const nextSubmitMessage =
+        result.rewardMessage ||
+        (result.rewardEligible
+          ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
+          : 'Sua resposta foi registrada com sucesso.')
+
       setEligibilityMessage('')
       setValidationState(null)
       setResponseId(result.responseId)
-      setCanSpinReward(result.rewardEnabled && result.rewardEligible)
-        setIsTestResponseSession(Boolean(result.isTestResponse))
+      setCanSpinReward(nextCanSpinReward)
+      setIsTestResponseSession(Boolean(result.isTestResponse))
       setCompletedRetryTaskIds([])
       setRewardResult(null)
       setActiveWheelSegmentId('')
       setWheelRotation(0)
       setRetryTaskProgressMap({})
       setActiveRetryTaskId(null)
-      setSubmitMessage(
-        result.rewardMessage ||
-          (result.rewardEligible
-            ? 'Sua resposta foi registrada. Agora a roleta pode mostrar o resultado desta campanha.'
-            : 'Sua resposta foi registrada com sucesso.'),
-      )
+      setSubmitMessage(nextSubmitMessage)
       setSubmitted(true)
-      setWheelModalOpen(result.rewardEnabled && result.rewardEligible)
+      setWheelModalOpen(nextCanSpinReward)
+      persistSurveyRecoverySnapshot({
+        participantPhone: sanitizePhone(participantPhone),
+        responseId: result.responseId,
+      })
+      persistSurveySessionSnapshot({
+        submitted: true,
+        submitMessage: nextSubmitMessage,
+        responseId: result.responseId,
+        canSpinReward: nextCanSpinReward,
+        rewardResult: null,
+        completedRetryTaskIds: [],
+        retryTaskProgressMap: {},
+        activeRetryTaskId: null,
+        wheelModalOpen: nextCanSpinReward,
+      })
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Não foi possível registrar sua resposta agora.'
@@ -1726,6 +1920,19 @@ export function PublicSurveyPage() {
       return result
     },
     onSuccess: (result, task) => {
+      const nextRetryTaskProgressMap = { ...retryTaskProgressMap }
+      delete nextRetryTaskProgressMap[task.id]
+      const nextRewardResult = rewardResult
+        ? {
+            ...rewardResult,
+            retryUnlocked: result.unlocked,
+            completedTaskIds: result.completedTaskIds,
+            message: result.unlocked
+              ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
+              : rewardResult.message,
+          }
+        : rewardResult
+
       delete autoConfirmTriggeredRef.current[task.id]
       setCompletedRetryTaskIds(result.completedTaskIds)
       setCanSpinReward(result.unlocked)
@@ -1746,6 +1953,14 @@ export function PublicSurveyPage() {
             }
           : current,
       )
+      persistSurveySessionSnapshot({
+        completedRetryTaskIds: result.completedTaskIds,
+        canSpinReward: result.unlocked,
+        retryTaskProgressMap: nextRetryTaskProgressMap,
+        rewardResult: nextRewardResult,
+        activeRetryTaskId: null,
+      })
+      persistSurveyRecoverySnapshot()
     },
     onError: (_error, task) => {
       delete autoConfirmTriggeredRef.current[task.id]
@@ -1796,6 +2011,7 @@ export function PublicSurveyPage() {
       }
 
       persistSurveySessionSnapshot({ scrollY: window.scrollY })
+      persistSurveyRecoverySnapshot()
       event.preventDefault()
       event.returnValue = ''
     }
@@ -1813,8 +2029,13 @@ export function PublicSurveyPage() {
       return
     }
 
-    if (!surveyExitGuardArmedRef.current) {
+    const pushExitGuardState = () => {
       window.history.pushState({ publicSurveyExitGuard: true }, '', window.location.href)
+      window.history.pushState({ publicSurveyExitGuard: true }, '', window.location.href)
+    }
+
+    if (!surveyExitGuardArmedRef.current) {
+      pushExitGuardState()
       surveyExitGuardArmedRef.current = true
     }
 
@@ -1824,7 +2045,8 @@ export function PublicSurveyPage() {
       }
 
       persistSurveySessionSnapshot({ scrollY: window.scrollY })
-      window.history.pushState({ publicSurveyExitGuard: true }, '', window.location.href)
+      persistSurveyRecoverySnapshot()
+      pushExitGuardState()
       window.alert(surveyExitGuardMessage)
     }
 

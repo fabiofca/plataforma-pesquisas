@@ -861,6 +861,44 @@ async function getRewardSessionState(
   }
 }
 
+async function findLatestSurveyResponseIdByIdentity(
+  client: Pick<typeof pool, 'query'>,
+  input: {
+    surveyId: string
+    phone?: string | null
+    browserCookieId?: string | null
+    fingerprint?: string | null
+  },
+) {
+  const normalizedPhone = input.phone?.trim()
+
+  if (!normalizedPhone) {
+    return null
+  }
+
+  const normalizedBrowserCookieId = input.browserCookieId?.trim() || null
+  const normalizedFingerprint = input.fingerprint?.trim() || null
+
+  const result = await client.query<{ id: string }>(
+    `select id
+     from survey_responses
+     where survey_id = $1
+       and participant_phone = $2
+     order by
+       case
+         when $3::text is not null and browser_cookie_id = $3 then 1
+         when $4::text is not null and browser_fingerprint = $4 then 2
+         else 3
+       end asc,
+       submitted_at desc nulls last,
+       created_at desc nulls last
+     limit 1`,
+    [input.surveyId, normalizedPhone, normalizedBrowserCookieId, normalizedFingerprint],
+  )
+
+  return result.rows[0]?.id ?? null
+}
+
 publicRouter.get('/surveys/:slug', async (request, response) => {
   const survey = await getSurveyBySlug(request.params.slug)
 
@@ -1068,6 +1106,50 @@ publicRouter.get('/surveys/:slug/reward-session', async (request, response) => {
   const client = await pool.connect()
 
   try {
+    const sessionState = await getRewardSessionState(client, survey, responseId)
+
+    if (!sessionState) {
+      response.status(404).json({ message: 'Participação não encontrada para esta pesquisa.' })
+      return
+    }
+
+    response.json(sessionState)
+  } finally {
+    client.release()
+  }
+})
+
+publicRouter.get('/surveys/:slug/participation-session', async (request, response) => {
+  const survey = await getSurveyBySlug(request.params.slug)
+  const participantPhone = String(request.query.phone ?? '').trim()
+  const browserCookieId = String(request.query.browserCookieId ?? '').trim()
+  const fingerprint = String(request.query.fingerprint ?? '').trim()
+
+  if (!survey) {
+    response.status(404).json({ message: 'Pesquisa pública não encontrada.' })
+    return
+  }
+
+  if (!participantPhone) {
+    response.status(400).json({ message: 'Informe o telefone para recuperar a participação.' })
+    return
+  }
+
+  const client = await pool.connect()
+
+  try {
+    const responseId = await findLatestSurveyResponseIdByIdentity(client, {
+      surveyId: survey.id,
+      phone: participantPhone,
+      browserCookieId: browserCookieId || null,
+      fingerprint: fingerprint || null,
+    })
+
+    if (!responseId) {
+      response.status(404).json({ message: 'Nenhuma participação em andamento foi encontrada para esta pesquisa.' })
+      return
+    }
+
     const sessionState = await getRewardSessionState(client, survey, responseId)
 
     if (!sessionState) {
