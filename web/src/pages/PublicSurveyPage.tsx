@@ -917,7 +917,7 @@ export function PublicSurveyPage() {
           ? 'Continuar desbloqueio'
           : 'Ver resultado'
   const canSubmitAnotherResponse = Boolean(
-    survey?.allowMultipleResponses && !canSpinReward && !wheelSpinning && !rewardResult?.won,
+    survey?.allowMultipleResponses && !canSpinReward && !wheelSpinning,
   )
   const hasDraftInProgress = Boolean(
     !previewMode &&
@@ -3100,6 +3100,15 @@ export function PublicSurveyPage() {
                     <Download className="h-4 w-4" />
                     {savingRewardProof ? 'Gerando comprovante...' : 'Salvar comprovante'}
                   </button>
+                  {canSubmitAnotherResponse ? (
+                    <button
+                      type="button"
+                      onClick={restartSurveyResponse}
+                      className="inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50"
+                    >
+                      Enviar outra resposta
+                    </button>
+                  ) : null}
                 </div>
               </div>
             </div>
