@@ -85,7 +85,15 @@ type RewardSessionResult = {
   maxAttempts?: number
   finalAttempt?: boolean
   message?: string
+  retryReturnedAt?: string
 }
+
+type RewardSessionPhase =
+  | 'survey_submitted'
+  | 'spin_available'
+  | 'retry_task_pending'
+  | 'retry_task_returned_waiting'
+  | 'final_result'
 
 type RewardPreviewItemRecord = {
   id: string
@@ -626,6 +634,7 @@ async function getRewardSessionState(
     reward_retry_count: number
     reward_retry_unlock_pending: boolean
     reward_retry_unlocked_at: string | null
+    reward_retry_returned_at: string | null
     is_test_response: boolean
   }>(
     `select
@@ -639,6 +648,7 @@ async function getRewardSessionState(
         reward_retry_count,
         reward_retry_unlock_pending,
         cast(reward_retry_unlocked_at as text) as reward_retry_unlocked_at,
+        cast(reward_retry_returned_at as text) as reward_retry_returned_at,
         is_test_response
      from survey_responses
      where id = $1 and survey_id = $2
@@ -770,7 +780,10 @@ async function getRewardSessionState(
         finalAttempt,
         message: retryUnlocked
           ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
-          : 'Conclua a próxima tarefa para liberar um novo giro.',
+          : surveyResponse.reward_retry_returned_at
+            ? 'Estamos liberando sua nova chance na roleta.'
+            : 'Conclua a próxima tarefa para liberar um novo giro.',
+        retryReturnedAt: surveyResponse.reward_retry_returned_at ?? undefined,
       }
     } else {
       rewardResult = {
@@ -847,6 +860,16 @@ async function getRewardSessionState(
     }
   }
 
+  const phase: RewardSessionPhase = canSpinReward
+    ? 'spin_available'
+    : rewardResult?.retryAvailable
+      ? rewardResult.retryReturnedAt
+        ? 'retry_task_returned_waiting'
+        : 'retry_task_pending'
+      : rewardResult
+        ? 'final_result'
+        : 'survey_submitted'
+
   return {
     responseId,
     participantName: surveyResponse.participant_name ?? '',
@@ -858,6 +881,7 @@ async function getRewardSessionState(
     completedTaskIds,
     rewardResult,
     isTestResponse: surveyResponse.is_test_response ?? false,
+    phase,
   }
 }
 
@@ -1163,6 +1187,92 @@ publicRouter.get('/surveys/:slug/participation-session', async (request, respons
   }
 })
 
+publicRouter.post('/surveys/:slug/retry-task-return', async (request, response) => {
+  const survey = await getSurveyBySlug(request.params.slug)
+
+  if (!survey || !survey.reward_enabled || !survey.reward_campaign_id) {
+    response.status(404).json({ message: 'Campanha de prêmios não encontrada.' })
+    return
+  }
+
+  const responseId = String(request.body.responseId ?? '').trim()
+
+  if (!responseId) {
+    response.status(400).json({ message: 'A participação não foi encontrada para registrar o retorno da tarefa.' })
+    return
+  }
+
+  const retryTasks = survey.reward_retry_unlock_enabled ? survey.reward_retry_tasks ?? [] : []
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+
+    const surveyResponseResult = await client.query<{
+      id: string
+      reward_retry_unlock_pending: boolean
+      reward_retry_returned_at: string | null
+      reward_retry_count: number
+    }>(
+      `select
+          id,
+          reward_retry_unlock_pending,
+          cast(reward_retry_returned_at as text) as reward_retry_returned_at,
+          reward_retry_count
+       from survey_responses
+       where id = $1 and survey_id = $2
+       limit 1
+       for update`,
+      [responseId, survey.id],
+    )
+
+    const surveyResponse = surveyResponseResult.rows[0]
+
+    if (!surveyResponse) {
+      await client.query('rollback')
+      response.status(404).json({ message: 'Participação não encontrada.' })
+      return
+    }
+
+    if (!surveyResponse.reward_retry_unlock_pending) {
+      await client.query('rollback')
+      response.status(409).json({ message: 'Esta participação não está aguardando desbloqueio para mais um giro.' })
+      return
+    }
+
+    const completedTaskIds =
+      retryTasks.length > 0 ? await getCompletedRetryTaskIds(client, responseId, survey.reward_campaign_id) : []
+    const nextPendingTask = retryTasks.find((task) => !completedTaskIds.includes(task.id))
+
+    if (!nextPendingTask) {
+      await client.query('rollback')
+      response.status(409).json({ message: 'Não há tarefa pendente para esta participação.' })
+      return
+    }
+
+    const returnResult = await client.query<{ reward_retry_returned_at: string }>(
+      `update survey_responses
+       set reward_retry_returned_at = coalesce(reward_retry_returned_at, now())
+       where id = $1
+       returning cast(reward_retry_returned_at as text) as reward_retry_returned_at`,
+      [responseId],
+    )
+
+    await client.query('commit')
+
+    response.json({
+      ok: true,
+      returnedAt: returnResult.rows[0]?.reward_retry_returned_at,
+      taskId: nextPendingTask.id,
+    })
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+})
+
 publicRouter.post('/surveys/:slug/retry-task-click', async (request, response) => {
   const payload = rewardRetryTaskClickSchema.parse(request.body)
   const survey = await getSurveyBySlug(request.params.slug)
@@ -1239,7 +1349,15 @@ publicRouter.post('/surveys/:slug/retry-task-click', async (request, response) =
     if (unlocked && !surveyResponse.reward_retry_unlocked_at) {
       await client.query(
         `update survey_responses
-         set reward_retry_unlocked_at = now()
+         set reward_retry_unlocked_at = now(),
+             reward_retry_returned_at = null
+         where id = $1`,
+        [payload.responseId],
+      )
+    } else if (surveyResponse.reward_retry_unlocked_at) {
+      await client.query(
+        `update survey_responses
+         set reward_retry_returned_at = null
          where id = $1`,
         [payload.responseId],
       )
@@ -1576,6 +1694,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
              reward_spin_item_id = null,
              reward_retry_unlock_pending = $2,
              reward_retry_unlocked_at = null,
+             reward_retry_returned_at = null,
              reward_retry_count = $3
          where id = $1`,
         [responseId, Boolean(nextPendingTask), currentAttempt - 1],
@@ -1725,6 +1844,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
                reward_spin_item_id = null,
                reward_retry_unlock_pending = true,
                reward_retry_unlocked_at = null,
+               reward_retry_returned_at = null,
                reward_retry_count = $2
            where id = $1`,
           [responseId, nextRetryCount],
@@ -1753,6 +1873,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
              reward_spin_completed = true,
              reward_spin_item_id = null,
              reward_retry_unlock_pending = false,
+             reward_retry_returned_at = null,
              reward_retry_count = $2
          where id = $1`,
         [responseId, nextRetryCount],
@@ -1816,6 +1937,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
                reward_spin_item_id = null,
                reward_retry_unlock_pending = true,
                reward_retry_unlocked_at = null,
+               reward_retry_returned_at = null,
                reward_retry_count = $2
            where id = $1`,
           [responseId, nextRetryCount],
@@ -1844,6 +1966,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
              reward_spin_completed = true,
              reward_spin_item_id = null,
              reward_retry_unlock_pending = false,
+             reward_retry_returned_at = null,
              reward_retry_count = $2
          where id = $1`,
         [responseId, nextRetryCount],
@@ -1895,6 +2018,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
            reward_spin_completed = true,
            reward_spin_item_id = $2,
            reward_retry_unlock_pending = false,
+           reward_retry_returned_at = null,
            reward_retry_count = $3
        where id = $1`,
       [responseId, selectedItem.id, currentAttempt > 1 ? surveyResponse.reward_retry_count + 1 : surveyResponse.reward_retry_count],

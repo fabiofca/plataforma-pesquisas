@@ -100,7 +100,15 @@ type RewardResultState = {
   maxAttempts?: number
   finalAttempt?: boolean
   message?: string
+  retryReturnedAt?: string
 }
+
+type RewardSessionPhase =
+  | 'survey_submitted'
+  | 'spin_available'
+  | 'retry_task_pending'
+  | 'retry_task_returned_waiting'
+  | 'final_result'
 
 type RetryTaskProgressMap = Record<
   string,
@@ -155,6 +163,31 @@ const PUBLIC_SURVEY_LEGACY_SESSION_KEY_PREFIX = 'public-survey-session'
 const PUBLIC_SURVEY_DRAFT_SESSION_KEY_PREFIX = 'public-survey-draft-session'
 const PUBLIC_SURVEY_PARTICIPATION_SESSION_KEY_PREFIX = 'public-survey-participation-session'
 const PUBLIC_SURVEY_RECOVERY_KEY_PREFIX = 'public-survey-recovery'
+
+function deriveRewardPhase(input: {
+  submitted: boolean
+  rewardEnabled: boolean
+  canSpinReward: boolean
+  rewardResult: RewardResultState | null
+}): RewardSessionPhase | null {
+  if (!input.submitted || !input.rewardEnabled) {
+    return null
+  }
+
+  if (input.canSpinReward) {
+    return 'spin_available'
+  }
+
+  if (input.rewardResult?.retryAvailable) {
+    return input.rewardResult.retryReturnedAt ? 'retry_task_returned_waiting' : 'retry_task_pending'
+  }
+
+  if (input.rewardResult) {
+    return 'final_result'
+  }
+
+  return 'survey_submitted'
+}
 
 function getPublicSurveySessionStorageKey(prefix: string, previewVariant: string, surveyStorageId: string) {
   return `${prefix}:${previewVariant}:${surveyStorageId}`
@@ -718,6 +751,7 @@ export function PublicSurveyPage() {
   const validationElementRefs = useRef<Record<string, HTMLElement | null>>({})
   const autoConfirmTriggeredRef = useRef<Record<string, boolean>>({})
   const previousVisibleQuestionIdsRef = useRef<string[]>([])
+  const retryTaskReturnRequestRef = useRef('')
   const source = searchParams.get('src')
   const trackedSource: SurveyShareSource | null = source === 'link' || source === 'qr' ? source : null
   const shouldStartFresh = previewVariant === 'internal' && searchParams.get('fresh') === '1'
@@ -840,6 +874,48 @@ export function PublicSurveyPage() {
     const completedIds = rewardResult.completedTaskIds ?? completedRetryTaskIds
     return retryTasks.find((task) => !completedIds.includes(task.id)) ?? null
   }, [completedRetryTaskIds, retryTasks, rewardResult?.completedTaskIds, rewardResult?.retryAvailable])
+  const rewardPhase = useMemo(
+    () =>
+      deriveRewardPhase({
+        submitted,
+        rewardEnabled: Boolean(survey?.rewardEnabled),
+        canSpinReward,
+        rewardResult,
+      }),
+    [canSpinReward, rewardResult, submitted, survey?.rewardEnabled],
+  )
+  const rewardSummaryTitle =
+    rewardPhase === 'spin_available'
+      ? 'Sua vez de girar a roleta!'
+      : rewardResult?.won
+        ? 'Você ganhou um prêmio!'
+        : rewardPhase === 'retry_task_pending'
+          ? 'Você tem mais uma chance.'
+          : rewardPhase === 'retry_task_returned_waiting'
+            ? 'Estamos liberando sua nova chance.'
+            : rewardPhase === 'final_result'
+              ? 'Você já participou desta campanha.'
+              : 'A roleta não está disponível no momento.'
+  const rewardSummaryDescription =
+    rewardPhase === 'spin_available'
+      ? 'Toque abaixo para descobrir se ganhou.'
+      : rewardResult?.won
+        ? 'Toque abaixo para ver os detalhes do prêmio.'
+        : rewardPhase === 'retry_task_pending'
+          ? 'Conclua a tarefa para liberar sua próxima chance na roleta.'
+          : rewardPhase === 'retry_task_returned_waiting'
+            ? 'Seu retorno foi reconhecido. Continue para acompanhar o desbloqueio da nova chance.'
+            : rewardPhase === 'final_result'
+              ? 'Obrigado por participar! Seu giro já foi registrado nesta campanha.'
+              : submitMessage || 'Sua resposta foi registrada com sucesso.'
+  const rewardSummaryButtonLabel =
+    rewardPhase === 'spin_available'
+      ? 'Girar roleta'
+      : rewardResult?.won
+        ? 'Ver meu prêmio'
+        : rewardPhase === 'retry_task_pending' || rewardPhase === 'retry_task_returned_waiting'
+          ? 'Continuar desbloqueio'
+          : 'Ver resultado'
   const canSubmitAnotherResponse = Boolean(
     survey?.allowMultipleResponses && !canSpinReward && !wheelSpinning && !rewardResult?.won,
   )
@@ -1139,8 +1215,13 @@ export function PublicSurveyPage() {
     isTestResponse: boolean
     completedTaskIds: string[]
     rewardResult: RewardResultState | null
+    phase?: RewardSessionPhase
   }) {
     const nextCompletedTaskIds = session.completedTaskIds ?? []
+    const pendingRetryTask = session.rewardResult?.retryAvailable
+      ? (session.rewardResult.retryTasks ?? []).find((task) => !nextCompletedTaskIds.includes(task.id)) ?? null
+      : null
+    const recoveredRetryReturnedAt = session.rewardResult?.retryReturnedAt ? Date.parse(session.rewardResult.retryReturnedAt) : Number.NaN
     const restoredSegment = session.rewardResult?.landedSegmentId
       ? wheelSegments.find((segment) => segment.id === session.rewardResult?.landedSegmentId)
       : session.rewardResult?.landedLabel
@@ -1177,18 +1258,25 @@ export function PublicSurveyPage() {
         return {}
       }
 
-      return Object.fromEntries(
+      const nextState = Object.fromEntries(
         Object.entries(current).filter(([taskId]) => !nextCompletedTaskIds.includes(taskId)),
       )
+
+      if (pendingRetryTask && Number.isFinite(recoveredRetryReturnedAt)) {
+        nextState[pendingRetryTask.id] = {
+          startedAt: nextState[pendingRetryTask.id]?.startedAt ?? recoveredRetryReturnedAt,
+          returnedAt: nextState[pendingRetryTask.id]?.returnedAt ?? recoveredRetryReturnedAt,
+        }
+      }
+
+      return nextState
     })
 
     if (restoredSegment) {
       setActiveWheelSegmentId(restoredSegment.id)
     }
 
-    if (!session.rewardResult?.retryAvailable) {
-      setActiveRetryTaskId(null)
-    }
+    setActiveRetryTaskId(null)
 
     setRetryTaskNow(Date.now())
     persistSurveyRecoverySnapshot({
@@ -1202,7 +1290,7 @@ export function PublicSurveyPage() {
       canSpinReward: Boolean(session.canSpinReward),
       rewardResult: nextRewardResult,
       completedRetryTaskIds: nextCompletedTaskIds,
-      activeRetryTaskId: session.rewardResult?.retryAvailable ? activeRetryTaskId : null,
+      activeRetryTaskId: null,
       wheelModalOpen: Boolean(survey?.rewardEnabled && session.canSpinReward),
     })
   }
@@ -1230,6 +1318,7 @@ export function PublicSurveyPage() {
       isTestResponse: boolean
       completedTaskIds: string[]
       rewardResult: RewardResultState | null
+      phase?: RewardSessionPhase
     }>(`/public/surveys/${survey.slug}/reward-session?responseId=${encodeURIComponent(responseId)}`)
       .then((session) => {
         if (cancelled) {
@@ -1332,6 +1421,7 @@ export function PublicSurveyPage() {
       isTestResponse: boolean
       completedTaskIds: string[]
       rewardResult: RewardResultState | null
+      phase?: RewardSessionPhase
     }>(
       `/public/surveys/${survey.slug}/participation-session?phone=${encodeURIComponent(recoveryPhone)}&browserCookieId=${encodeURIComponent(browserCookieId)}&fingerprint=${encodeURIComponent(fingerprint)}`,
     )
@@ -1462,36 +1552,59 @@ export function PublicSurveyPage() {
         return
       }
 
-      const returnedAt = Date.now()
+      if (retryTaskReturnRequestRef.current === activeRetryTaskId) {
+        return
+      }
 
-      setRetryTaskProgressMap((current) => {
-        const currentTask = current[activeRetryTaskId]
+      const applyReturnState = (returnedAt: number, returnedAtIso?: string) => {
+        const nextRewardResult = rewardResult?.retryAvailable
+          ? {
+              ...rewardResult,
+              retryReturnedAt: returnedAtIso ?? new Date(returnedAt).toISOString(),
+              message: 'Estamos liberando sua nova chance na roleta.',
+            }
+          : rewardResult
 
-        if (!currentTask || currentTask.returnedAt) {
-          return current
-        }
-
-        return {
-          ...current,
-          [activeRetryTaskId]: {
-            ...currentTask,
-            returnedAt,
-          },
-        }
-      })
-      setRetryTaskNow(returnedAt)
-      setActiveRetryTaskId(null)
-      persistSurveySessionSnapshot({
-        retryTaskProgressMap: {
+        const nextRetryTaskProgressMap = {
           ...retryTaskProgressMap,
           [activeRetryTaskId]: {
             ...(retryTaskProgressMap[activeRetryTaskId] ?? { startedAt: returnedAt, returnedAt: null }),
             returnedAt,
           },
-        },
-        activeRetryTaskId: null,
+        }
+
+        setRetryTaskProgressMap(nextRetryTaskProgressMap)
+        setRetryTaskNow(returnedAt)
+        setActiveRetryTaskId(null)
+        setRewardResult(nextRewardResult)
+        persistSurveySessionSnapshot({
+          retryTaskProgressMap: nextRetryTaskProgressMap,
+          rewardResult: nextRewardResult,
+          activeRetryTaskId: null,
+        })
+        persistSurveyRecoverySnapshot()
+      }
+
+      if (previewMode || !survey?.slug || !responseId) {
+        applyReturnState(Date.now())
+        return
+      }
+
+      retryTaskReturnRequestRef.current = activeRetryTaskId
+      void apiRequest<{ ok: boolean; returnedAt?: string }>(`/public/surveys/${survey.slug}/retry-task-return`, {
+        method: 'POST',
+        body: JSON.stringify({ responseId }),
       })
-      persistSurveyRecoverySnapshot()
+        .then((result) => {
+          const returnedAt = result.returnedAt ? Date.parse(result.returnedAt) : Date.now()
+          applyReturnState(Number.isFinite(returnedAt) ? returnedAt : Date.now(), result.returnedAt)
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (retryTaskReturnRequestRef.current === activeRetryTaskId) {
+            retryTaskReturnRequestRef.current = ''
+          }
+        })
     }
 
     const handleVisibilityChange = () => {
@@ -1926,6 +2039,7 @@ export function PublicSurveyPage() {
         ? {
             ...rewardResult,
             retryUnlocked: result.unlocked,
+            retryReturnedAt: undefined,
             completedTaskIds: result.completedTaskIds,
             message: result.unlocked
               ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
@@ -1946,6 +2060,7 @@ export function PublicSurveyPage() {
           ? {
               ...current,
               retryUnlocked: result.unlocked,
+              retryReturnedAt: undefined,
               completedTaskIds: result.completedTaskIds,
               message: result.unlocked
                 ? 'A tarefa foi registrada. Sua próxima chance já está liberada.'
@@ -2109,7 +2224,26 @@ export function PublicSurveyPage() {
   }
 
   function getRetryTaskProgress(taskId: string) {
-    return retryTaskProgressMap[taskId]
+    const localProgress = retryTaskProgressMap[taskId]
+
+    if (localProgress) {
+      return localProgress
+    }
+
+    if (!currentRetryTask || currentRetryTask.id !== taskId || !rewardResult?.retryReturnedAt) {
+      return undefined
+    }
+
+    const returnedAt = Date.parse(rewardResult.retryReturnedAt)
+
+    if (!Number.isFinite(returnedAt)) {
+      return undefined
+    }
+
+    return {
+      startedAt: returnedAt,
+      returnedAt,
+    }
   }
 
   function getRetryTaskRemainingSeconds(taskId: string) {
@@ -2821,22 +2955,10 @@ export function PublicSurveyPage() {
                     {canSpinReward ? <Gift className="h-6 w-6" /> : rewardResult?.won ? <Trophy className="h-6 w-6" /> : <CheckCircle2 className="h-6 w-6" />}
                   </div>
                   <p className="mt-3 text-base font-semibold text-slate-900">
-                    {canSpinReward
-                      ? 'Sua vez de girar a roleta!'
-                      : rewardResult?.won
-                        ? 'Você ganhou um prêmio!'
-                        : rewardResult
-                          ? 'Você já participou desta campanha.'
-                          : 'A roleta não está disponível no momento.'}
+                    {rewardSummaryTitle}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {canSpinReward
-                      ? 'Toque abaixo para descobrir se ganhou.'
-                      : rewardResult?.won
-                        ? 'Toque abaixo para ver os detalhes do prêmio.'
-                        : rewardResult
-                          ? 'Obrigado por participar! Seu giro já foi registrado nesta campanha.'
-                          : submitMessage || 'Sua resposta foi registrada com sucesso.'}
+                    {rewardSummaryDescription}
                   </p>
                   {(canSpinReward || rewardResult) ? (
                     <div className="mt-4">
@@ -2846,7 +2968,7 @@ export function PublicSurveyPage() {
                         className="admin-button-primary w-full justify-center px-6"
                         style={{ backgroundColor: survey.primaryColor || '#0f172a' }}
                       >
-                        {canSpinReward ? 'Girar roleta' : rewardResult?.won ? 'Ver meu prêmio' : 'Ver resultado'}
+                        {rewardSummaryButtonLabel}
                       </button>
                     </div>
                   ) : null}
@@ -3252,7 +3374,7 @@ export function PublicSurveyPage() {
                                   : currentRetryTaskReadyToUnlock
                                     ? 'Liberar roleta'
                                     : currentRetryTaskReturned
-                                      ? 'Ir para a tarefa novamente'
+                                      ? 'Reabrir tarefa'
                                       : currentRetryTaskProgress
                                         ? 'Reabrir tarefa'
                                         : 'Ir para a tarefa'}
