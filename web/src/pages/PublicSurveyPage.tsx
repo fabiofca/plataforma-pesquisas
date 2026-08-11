@@ -117,6 +117,7 @@ type PersistedPublicSurveySession = {
   birthDay: string
   birthMonth: string
   answers: SurveyAnswerMap
+  scrollY: number
   submitted: boolean
   submitMessage: string
   responseId: string
@@ -647,6 +648,7 @@ export function PublicSurveyPage() {
   const trackedVisitKeyRef = useRef('')
   const sessionHydratedRef = useRef(false)
   const restoredPersistedSessionRef = useRef(false)
+  const pendingScrollRestoreRef = useRef<number | null>(null)
   const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
@@ -811,7 +813,7 @@ export function PublicSurveyPage() {
       method: 'POST',
       body: JSON.stringify({
         sessionId: 'mobile-survey-resume',
-        runId: 'pre-fix',
+        runId: 'post-fix',
         hypothesisId: 'A',
         location: 'PublicSurveyPage.tsx:clearPersistedSurveySession',
         msg: '[DEBUG] clearing persisted public survey session',
@@ -843,6 +845,7 @@ export function PublicSurveyPage() {
       birthDay,
       birthMonth,
       answers,
+      scrollY: window.scrollY,
       submitted,
       submitMessage,
       responseId,
@@ -879,7 +882,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'A',
           location: 'PublicSurveyPage.tsx:persistSurveySessionSnapshot:noMeaningfulSession',
           msg: '[DEBUG] session deemed non-meaningful before persistence',
@@ -906,7 +909,7 @@ export function PublicSurveyPage() {
       method: 'POST',
       body: JSON.stringify({
         sessionId: 'mobile-survey-resume',
-        runId: 'pre-fix',
+        runId: 'post-fix',
         hypothesisId: 'A',
         location: 'PublicSurveyPage.tsx:persistSurveySessionSnapshot:write',
         msg: '[DEBUG] writing persisted public survey session',
@@ -933,6 +936,7 @@ export function PublicSurveyPage() {
     clearPersistedSurveySession()
     sessionHydratedRef.current = false
     restoredPersistedSessionRef.current = false
+    pendingScrollRestoreRef.current = null
     rewardSessionRestoreKeyRef.current = ''
     navigate({ search: '' }, { replace: true })
   }, [navigate, shouldStartFresh, surveySessionStorageKey])
@@ -951,7 +955,7 @@ export function PublicSurveyPage() {
       method: 'POST',
       body: JSON.stringify({
         sessionId: 'mobile-survey-resume',
-        runId: 'pre-fix',
+        runId: 'post-fix',
         hypothesisId: 'A',
         location: 'PublicSurveyPage.tsx:hydrate:read',
         msg: '[DEBUG] reading persisted public survey session',
@@ -992,6 +996,7 @@ export function PublicSurveyPage() {
       setBirthDay(parsed.birthDay ?? '')
       setBirthMonth(parsed.birthMonth ?? '')
       setAnswers(parsed.answers ?? {})
+      pendingScrollRestoreRef.current = typeof parsed.scrollY === 'number' ? parsed.scrollY : 0
       setSubmitted(Boolean(parsed.submitted))
       setSubmitMessage(parsed.submitMessage ?? '')
       setResponseId(parsed.responseId ?? '')
@@ -1011,7 +1016,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'A',
           location: 'PublicSurveyPage.tsx:hydrate:apply',
           msg: '[DEBUG] applied persisted public survey session',
@@ -1032,6 +1037,33 @@ export function PublicSurveyPage() {
       setSessionStateReady(true)
     }
   }, [surveySessionStorageKey, shouldStartFresh])
+
+  useEffect(() => {
+    if (!sessionStateReady || !survey) {
+      return
+    }
+
+    if (pendingScrollRestoreRef.current === null) {
+      return
+    }
+
+    if (!submitted && visibleQuestions.length === 0) {
+      return
+    }
+
+    const targetScrollY = Math.max(0, pendingScrollRestoreRef.current)
+    pendingScrollRestoreRef.current = null
+
+    const timeoutId = window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: targetScrollY, behavior: 'auto' })
+      })
+    }, 80)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [sessionStateReady, submitted, survey, visibleQuestions])
 
   useEffect(() => {
     if (!sessionStateReady) {
@@ -1243,7 +1275,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'B',
           location: 'PublicSurveyPage.tsx:visibleQuestions:change',
           msg: '[DEBUG] visible questions changed',
@@ -1369,7 +1401,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'E',
           location: 'PublicSurveyPage.tsx:retryTask:visibilitychange',
           msg: '[DEBUG] retry task visibility changed',
@@ -1397,12 +1429,13 @@ export function PublicSurveyPage() {
 
   useEffect(() => {
     const handlePageHide = () => {
+      persistSurveySessionSnapshot({ scrollY: window.scrollY })
       // #region debug-point E:pagehide
       fetch('http://192.168.1.67:7777/event', {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'E',
           location: 'PublicSurveyPage.tsx:lifecycle:pagehide',
           msg: '[DEBUG] pagehide fired on public survey',
@@ -1426,7 +1459,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'E',
           location: 'PublicSurveyPage.tsx:lifecycle:pageshow',
           msg: '[DEBUG] pageshow fired on public survey',
@@ -1446,12 +1479,15 @@ export function PublicSurveyPage() {
     }
 
     const handleVisibilitySnapshot = () => {
+      if (document.visibilityState === 'hidden') {
+        persistSurveySessionSnapshot({ scrollY: window.scrollY })
+      }
       // #region debug-point E:page-visibility
       fetch('http://192.168.1.67:7777/event', {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'E',
           location: 'PublicSurveyPage.tsx:lifecycle:visibilitychange',
           msg: '[DEBUG] page visibility changed',
@@ -1553,6 +1589,7 @@ export function PublicSurveyPage() {
     setWheelModalOpen(false)
     setRetryTaskProgressMap({})
     setActiveRetryTaskId(null)
+    pendingScrollRestoreRef.current = null
     rewardSessionRestoreKeyRef.current = ''
     clearPersistedSurveySession()
     window.requestAnimationFrame(() => {
@@ -1904,7 +1941,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'C',
           location: 'PublicSurveyPage.tsx:retryExitGuard:beforeunload',
           msg: '[DEBUG] beforeunload fired while retry exit guard active',
@@ -1944,7 +1981,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'C',
           location: 'PublicSurveyPage.tsx:retryExitGuard:arm',
           msg: '[DEBUG] arming retry exit guard pushState entry',
@@ -1966,7 +2003,7 @@ export function PublicSurveyPage() {
         method: 'POST',
         body: JSON.stringify({
           sessionId: 'mobile-survey-resume',
-          runId: 'pre-fix',
+          runId: 'post-fix',
           hypothesisId: 'C',
           location: 'PublicSurveyPage.tsx:retryExitGuard:popstate',
           msg: '[DEBUG] popstate fired while retry exit guard active',
