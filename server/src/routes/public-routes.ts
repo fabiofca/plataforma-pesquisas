@@ -473,9 +473,10 @@ async function hasRecentSpinByPhone(input: {
   fingerprint?: string | null
   cooldownDays: number
   excludeResponseId?: string
+  includeTestResponses?: boolean
 }) {
   const conditions: string[] = []
-  const values: Array<string | number> = [input.campaignId]
+  const values: Array<string | number | boolean> = [input.campaignId]
   let nextIndex = 2
 
   if (input.phone) {
@@ -509,14 +510,18 @@ async function hasRecentSpinByPhone(input: {
   if (input.excludeResponseId) {
     excludeResponseClause = ` and reward_spin_logs.response_id <> $${nextIndex}`
     values.push(input.excludeResponseId)
+    nextIndex += 1
   }
+
+  const includeTestResponsesIndex = nextIndex
+  values.push(Boolean(input.includeTestResponses))
 
   const result = await input.client.query<{ count: string }>(
     `select cast(count(*) as text) as count
      from reward_spin_logs
      join survey_responses on survey_responses.id = reward_spin_logs.response_id
      where reward_spin_logs.campaign_id = $1
-       and survey_responses.is_test_response = false
+       and ($${includeTestResponsesIndex}::boolean = true or survey_responses.is_test_response = false)
        and (${conditions.join(' or ')})
        and reward_spin_logs.created_at > now() - make_interval(days => $${cooldownIndex})${excludeResponseClause}`,
     values,
@@ -728,16 +733,15 @@ async function getRewardSessionState(
       fingerprint: surveyResponse.browser_fingerprint,
       cooldownDays: wheelCooldownDays,
       excludeResponseId: responseId,
+      includeTestResponses: surveyResponse.is_test_response,
     })
   }
 
-  const canSpinReward = surveyResponse.is_test_response
-    ? true
-    : isInCooldown
-      ? false
-      : latestSpin
-        ? latestSpin.outcome_type !== 'win' && retryUnlocked
-        : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
+  const canSpinReward = isInCooldown
+    ? false
+    : latestSpin
+      ? latestSpin.outcome_type !== 'win' && retryUnlocked
+      : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
 
   let rewardResult: RewardSessionResult | null = null
 
@@ -1036,7 +1040,6 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
   const testPhone = isTestPhone(payload.participant.phone, survey.test_phones)
   const wheelCooldownDays = survey.duplicate_response_cooldown_days
   const blockedByRecentUsage =
-    !testPhone &&
     campaignAvailable &&
     wheelCooldownDays > 0 &&
     Boolean(survey.reward_campaign_id) &&
@@ -1048,10 +1051,11 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
           browserCookieId: payload.browserCookieId ?? null,
           fingerprint: payload.fingerprint ?? null,
           cooldownDays: wheelCooldownDays,
+          includeTestResponses: testPhone,
         })
       : false
 
-  if (!survey.allow_multiple_responses && !testPhone) {
+  if (!survey.allow_multiple_responses) {
     const hasDuplicate = await hasPermanentDuplicateResponse({
       surveyId: survey.id,
       phone: payload.participant.phone,
@@ -1063,7 +1067,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     }
   }
 
-  const rewardEligible = testPhone || (campaignAvailable && !blockedByRecentUsage)
+  const rewardEligible = campaignAvailable && !blockedByRecentUsage
   const responseId = makeId()
 
   await query(
@@ -1627,13 +1631,13 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       }
     }
 
-    if (currentAttempt === 1 && surveyResponse.reward_spin_completed && !surveyResponse.is_test_response) {
+    if (currentAttempt === 1 && surveyResponse.reward_spin_completed) {
       await client.query('commit')
       response.status(409).json({ message: 'Esta participação já utilizou a roleta.' })
       return
     }
 
-    if (currentAttempt === 1 && !surveyResponse.reward_eligible && !surveyResponse.is_test_response) {
+    if (currentAttempt === 1 && !surveyResponse.reward_eligible) {
       await client.query('commit')
       response.status(409).json({ message: 'A roleta não está disponível para esta participação.' })
       return
@@ -1642,7 +1646,6 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     const wheelCooldownDays = survey.duplicate_response_cooldown_days
     if (
       wheelCooldownDays > 0 &&
-      !surveyResponse.is_test_response &&
       (surveyResponse.participant_phone || surveyResponse.browser_cookie_id || surveyResponse.browser_fingerprint)
     ) {
       const hasRecentSpin = await hasRecentSpinByPhone({
@@ -1653,6 +1656,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         fingerprint: surveyResponse.browser_fingerprint ?? null,
         cooldownDays: wheelCooldownDays,
         excludeResponseId: responseId,
+        includeTestResponses: surveyResponse.is_test_response,
       })
 
       if (hasRecentSpin) {

@@ -973,7 +973,7 @@ export function PublicSurveyPage() {
   }
 
   function persistSurveyRecoverySnapshot(overrides?: Partial<PersistedPublicSurveyRecovery>) {
-    if (previewMode || isTestResponseSession) {
+    if (previewMode) {
       clearPersistedSurveyRecovery()
       return
     }
@@ -994,11 +994,6 @@ export function PublicSurveyPage() {
   }
 
   function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
-    if (isTestResponseSession) {
-      clearPersistedSurveySession()
-      return
-    }
-
     const snapshot: PersistedPublicSurveySession = {
       participantName,
       participantPhone,
@@ -1322,26 +1317,6 @@ export function PublicSurveyPage() {
     }>(`/public/surveys/${survey.slug}/reward-session?responseId=${encodeURIComponent(responseId)}`)
       .then((session) => {
         if (cancelled) {
-          return
-        }
-
-        if (session.isTestResponse && restoredPersistedSessionRef.current) {
-          restoredPersistedSessionRef.current = false
-          clearPersistedSurveySession()
-          setSubmitted(false)
-          setSubmitMessage('')
-          setResponseId('')
-          setCanSpinReward(false)
-          setIsTestResponseSession(false)
-          setRewardResult(null)
-          setWheelRotation(0)
-          setWheelSpinning(false)
-          setActiveWheelSegmentId('')
-          setCompletedRetryTaskIds([])
-          setWheelModalOpen(false)
-          setRetryTaskProgressMap({})
-          setActiveRetryTaskId(null)
-          setRetryTaskNow(Date.now())
           return
         }
 
