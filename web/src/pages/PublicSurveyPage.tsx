@@ -196,6 +196,28 @@ function removePersistedSurveySessionSnapshot(storageKey: string) {
   }
 }
 
+function hasParticipantDraft(snapshot: PersistedPublicSurveySession) {
+  return (
+    Boolean(snapshot.participantName.trim()) ||
+    Boolean(snapshot.participantPhone.trim()) ||
+    Boolean(snapshot.participantEmail.trim()) ||
+    Boolean(snapshot.birthDay) ||
+    Boolean(snapshot.birthMonth)
+  )
+}
+
+function hasMeaningfulPersistedSurveySession(snapshot: PersistedPublicSurveySession) {
+  return (
+    hasParticipantDraft(snapshot) ||
+    Object.keys(snapshot.answers).length > 0 ||
+    snapshot.submitted ||
+    Boolean(snapshot.responseId) ||
+    Boolean(snapshot.rewardResult) ||
+    Boolean(snapshot.canSpinReward) ||
+    Object.keys(snapshot.retryTaskProgressMap).length > 0
+  )
+}
+
 function buildVisibleQuestionSet(questions: SurveyQuestion[], answers: SurveyAnswerMap) {
   return new Set(getVisibleSurveyQuestions(questions, answers).map((question) => question.id))
 }
@@ -649,6 +671,7 @@ export function PublicSurveyPage() {
   const sessionHydratedRef = useRef(false)
   const restoredPersistedSessionRef = useRef(false)
   const pendingScrollRestoreRef = useRef<number | null>(null)
+  const draftExitGuardArmedRef = useRef(false)
   const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
@@ -780,6 +803,17 @@ export function PublicSurveyPage() {
   const canSubmitAnotherResponse = Boolean(
     survey?.allowMultipleResponses && !canSpinReward && !wheelSpinning && !rewardResult?.won,
   )
+  const hasDraftInProgress = Boolean(
+    !previewMode &&
+      sessionStateReady &&
+      !submitted &&
+      (participantName.trim() ||
+        participantPhone.trim() ||
+        participantEmail.trim() ||
+        birthDay ||
+        birthMonth ||
+        Object.keys(answers).length > 0),
+  )
 
   // Fetch attendant suggestions when survey loads
   useEffect(() => {
@@ -860,23 +894,7 @@ export function PublicSurveyPage() {
       ...overrides,
     }
 
-    const hasParticipantDraft =
-      Boolean(snapshot.participantName.trim()) ||
-      Boolean(snapshot.participantPhone.trim()) ||
-      Boolean(snapshot.participantEmail.trim()) ||
-      Boolean(snapshot.birthDay) ||
-      Boolean(snapshot.birthMonth)
-    const hasDraftAnswers = Object.keys(snapshot.answers).length > 0
-    const hasMeaningfulSession =
-      hasParticipantDraft ||
-      hasDraftAnswers ||
-      snapshot.submitted ||
-      Boolean(snapshot.responseId) ||
-      Boolean(snapshot.rewardResult) ||
-      Boolean(snapshot.canSpinReward) ||
-      Object.keys(snapshot.retryTaskProgressMap).length > 0
-
-    if (!hasMeaningfulSession) {
+    if (!hasMeaningfulPersistedSurveySession(snapshot)) {
       // #region debug-point A:no-meaningful-session
       fetch('http://192.168.1.67:7777/event', {
         method: 'POST',
@@ -888,8 +906,8 @@ export function PublicSurveyPage() {
           msg: '[DEBUG] session deemed non-meaningful before persistence',
           data: {
             storageKey: surveySessionStorageKey,
-            hasParticipantDraft,
-            hasDraftAnswers,
+            hasParticipantDraft: hasParticipantDraft(snapshot),
+            hasDraftAnswers: Object.keys(snapshot.answers).length > 0,
             submitted: snapshot.submitted,
             responseId: snapshot.responseId,
             activeRetryTaskId: snapshot.activeRetryTaskId,
@@ -1110,6 +1128,38 @@ export function PublicSurveyPage() {
     wheelModalOpen,
     wheelRotation,
   ])
+
+  useEffect(() => {
+    if (!hasDraftInProgress) {
+      draftExitGuardArmedRef.current = false
+      return
+    }
+
+    if (!draftExitGuardArmedRef.current) {
+      window.history.pushState({ publicSurveyDraftGuard: true }, '', window.location.href)
+      draftExitGuardArmedRef.current = true
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      persistSurveySessionSnapshot({ scrollY: window.scrollY })
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    const handlePopState = () => {
+      persistSurveySessionSnapshot({ scrollY: window.scrollY })
+      window.history.pushState({ publicSurveyDraftGuard: true }, '', window.location.href)
+      window.alert('Sua pesquisa ainda nao foi enviada. Continue de onde parou para nao perder o preenchimento.')
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('popstate', handlePopState)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [hasDraftInProgress])
 
   useEffect(() => {
     if (previewMode || !survey || !sessionStateReady || !responseId) {
@@ -2368,7 +2418,11 @@ export function PublicSurveyPage() {
 
   function setSingleAnswer(questionId: string, value: string | number) {
     clearValidationTarget(`question:${questionId}`)
-    setAnswers((current) => pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, value))
+    setAnswers((current) => {
+      const nextAnswers = pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, value)
+      persistSurveySessionSnapshot({ answers: nextAnswers })
+      return nextAnswers
+    })
   }
 
   function toggleOption(questionId: string, value: string) {
@@ -2377,8 +2431,9 @@ export function PublicSurveyPage() {
       const existing = current[questionId]
       const list = Array.isArray(existing) ? existing : []
       const nextList = list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
-
-      return pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, nextList)
+      const nextAnswers = pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, nextList)
+      persistSurveySessionSnapshot({ answers: nextAnswers })
+      return nextAnswers
     })
   }
 
@@ -2482,7 +2537,9 @@ export function PublicSurveyPage() {
                     value={participantName}
                     onChange={(event) => {
                       clearValidationTarget('participant-name')
-                      setParticipantName(event.target.value)
+                      const nextValue = event.target.value
+                      setParticipantName(nextValue)
+                      persistSurveySessionSnapshot({ participantName: nextValue })
                     }}
                   />
                   {validationState?.target === 'participant-name' ? (
@@ -2504,7 +2561,9 @@ export function PublicSurveyPage() {
                     value={participantPhone}
                     onChange={(event) => {
                       clearValidationTarget('participant-phone')
-                      setParticipantPhone(sanitizePhone(event.target.value))
+                      const nextValue = sanitizePhone(event.target.value)
+                      setParticipantPhone(nextValue)
+                      persistSurveySessionSnapshot({ participantPhone: nextValue })
                     }}
                   />
                   {validationState?.target === 'participant-phone' ? (
@@ -2525,7 +2584,9 @@ export function PublicSurveyPage() {
                     value={participantEmail}
                     onChange={(event) => {
                       clearValidationTarget('participant-email')
-                      setParticipantEmail(event.target.value)
+                      const nextValue = event.target.value
+                      setParticipantEmail(nextValue)
+                      persistSurveySessionSnapshot({ participantEmail: nextValue })
                     }}
                   />
                   {validationState?.target === 'participant-email' ? (
@@ -2554,13 +2615,16 @@ export function PublicSurveyPage() {
                         onChange={(event) => {
                           clearValidationTarget('participant-birth-month')
                           const nextMonth = event.target.value
+                          let nextBirthDay = birthDay
                           setBirthMonth(nextMonth)
                           if (birthDay) {
                             const maxDay = getDaysInBirthMonth(Number(nextMonth))
                             if (Number(birthDay) > maxDay) {
+                              nextBirthDay = ''
                               setBirthDay('')
                             }
                           }
+                          persistSurveySessionSnapshot({ birthMonth: nextMonth, birthDay: nextBirthDay })
                         }}
                       >
                         <option value="">Selecione o mês</option>
@@ -2587,7 +2651,9 @@ export function PublicSurveyPage() {
                         disabled={!birthMonth}
                         onChange={(event) => {
                           clearValidationTarget('participant-birth-day')
-                          setBirthDay(event.target.value)
+                          const nextValue = event.target.value
+                          setBirthDay(nextValue)
+                          persistSurveySessionSnapshot({ birthDay: nextValue })
                         }}
                       >
                         <option value="">{birthMonth ? 'Selecione o dia' : 'Escolha o mês primeiro'}</option>
