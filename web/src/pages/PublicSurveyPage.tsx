@@ -144,10 +144,12 @@ type PublicRewardPreviewItem = {
 }
 
 const RETRY_TASK_MIN_WAIT_MS = 5000
-const PUBLIC_SURVEY_SESSION_KEY_PREFIX = 'public-survey-session'
+const PUBLIC_SURVEY_LEGACY_SESSION_KEY_PREFIX = 'public-survey-session'
+const PUBLIC_SURVEY_DRAFT_SESSION_KEY_PREFIX = 'public-survey-draft-session'
+const PUBLIC_SURVEY_PARTICIPATION_SESSION_KEY_PREFIX = 'public-survey-participation-session'
 
-function getPublicSurveySessionStorageKey(previewVariant: string, surveyStorageId: string) {
-  return `${PUBLIC_SURVEY_SESSION_KEY_PREFIX}:${previewVariant}:${surveyStorageId}`
+function getPublicSurveySessionStorageKey(prefix: string, previewVariant: string, surveyStorageId: string) {
+  return `${prefix}:${previewVariant}:${surveyStorageId}`
 }
 
 function readPersistedSurveySessionSnapshot(storageKey: string) {
@@ -210,6 +212,16 @@ function hasMeaningfulPersistedSurveySession(snapshot: PersistedPublicSurveySess
   return (
     hasParticipantDraft(snapshot) ||
     Object.keys(snapshot.answers).length > 0 ||
+    snapshot.submitted ||
+    Boolean(snapshot.responseId) ||
+    Boolean(snapshot.rewardResult) ||
+    Boolean(snapshot.canSpinReward) ||
+    Object.keys(snapshot.retryTaskProgressMap).length > 0
+  )
+}
+
+function hasOfficialParticipationSession(snapshot: PersistedPublicSurveySession) {
+  return (
     snapshot.submitted ||
     Boolean(snapshot.responseId) ||
     Boolean(snapshot.rewardResult) ||
@@ -638,7 +650,9 @@ export function PublicSurveyPage() {
   const previewMode = previewVariant !== 'public'
   const sharedPreviewMode = previewVariant === 'shared'
   const surveyStorageId = id ?? token ?? slug ?? 'unknown'
-  const surveySessionStorageKey = getPublicSurveySessionStorageKey(previewVariant, surveyStorageId)
+  const legacySurveySessionStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_LEGACY_SESSION_KEY_PREFIX, previewVariant, surveyStorageId)
+  const surveyDraftStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_DRAFT_SESSION_KEY_PREFIX, previewVariant, surveyStorageId)
+  const surveyParticipationStorageKey = getPublicSurveySessionStorageKey(PUBLIC_SURVEY_PARTICIPATION_SESSION_KEY_PREFIX, previewVariant, surveyStorageId)
   const [searchParams] = useSearchParams()
   const [sessionStateReady, setSessionStateReady] = useState(false)
   const [participantName, setParticipantName] = useState('')
@@ -671,7 +685,8 @@ export function PublicSurveyPage() {
   const sessionHydratedRef = useRef(false)
   const restoredPersistedSessionRef = useRef(false)
   const pendingScrollRestoreRef = useRef<number | null>(null)
-  const draftExitGuardArmedRef = useRef(false)
+  const surveyExitGuardBypassRef = useRef(false)
+  const surveyExitGuardArmedRef = useRef(false)
   const rewardSessionRestoreKeyRef = useRef('')
   const spinTimeoutRef = useRef<number | null>(null)
   const rewardProofRef = useRef<HTMLDivElement | null>(null)
@@ -852,7 +867,9 @@ export function PublicSurveyPage() {
         location: 'PublicSurveyPage.tsx:clearPersistedSurveySession',
         msg: '[DEBUG] clearing persisted public survey session',
         data: {
-          storageKey: surveySessionStorageKey,
+          draftStorageKey: surveyDraftStorageKey,
+          participationStorageKey: surveyParticipationStorageKey,
+          legacyStorageKey: legacySurveySessionStorageKey,
           submitted,
           responseId,
           activeRetryTaskId,
@@ -863,7 +880,9 @@ export function PublicSurveyPage() {
       }),
     }).catch(() => {})
     // #endregion
-    removePersistedSurveySessionSnapshot(surveySessionStorageKey)
+    removePersistedSurveySessionSnapshot(surveyDraftStorageKey)
+    removePersistedSurveySessionSnapshot(surveyParticipationStorageKey)
+    removePersistedSurveySessionSnapshot(legacySurveySessionStorageKey)
   }
 
   function persistSurveySessionSnapshot(overrides?: Partial<PersistedPublicSurveySession>) {
@@ -905,7 +924,9 @@ export function PublicSurveyPage() {
           location: 'PublicSurveyPage.tsx:persistSurveySessionSnapshot:noMeaningfulSession',
           msg: '[DEBUG] session deemed non-meaningful before persistence',
           data: {
-            storageKey: surveySessionStorageKey,
+            draftStorageKey: surveyDraftStorageKey,
+            participationStorageKey: surveyParticipationStorageKey,
+            legacyStorageKey: legacySurveySessionStorageKey,
             hasParticipantDraft: hasParticipantDraft(snapshot),
             hasDraftAnswers: Object.keys(snapshot.answers).length > 0,
             submitted: snapshot.submitted,
@@ -922,6 +943,10 @@ export function PublicSurveyPage() {
       return
     }
 
+    const targetStorageKey = hasOfficialParticipationSession(snapshot)
+      ? surveyParticipationStorageKey
+      : surveyDraftStorageKey
+
     // #region debug-point A:write-persisted-session
     fetch('http://192.168.1.67:7777/event', {
       method: 'POST',
@@ -932,7 +957,7 @@ export function PublicSurveyPage() {
         location: 'PublicSurveyPage.tsx:persistSurveySessionSnapshot:write',
         msg: '[DEBUG] writing persisted public survey session',
         data: {
-          storageKey: surveySessionStorageKey,
+          targetStorageKey,
           submitted: snapshot.submitted,
           responseId: snapshot.responseId,
           activeRetryTaskId: snapshot.activeRetryTaskId,
@@ -943,7 +968,15 @@ export function PublicSurveyPage() {
       }),
     }).catch(() => {})
     // #endregion
-    writePersistedSurveySessionSnapshot(surveySessionStorageKey, JSON.stringify(snapshot))
+    if (targetStorageKey === surveyParticipationStorageKey) {
+      writePersistedSurveySessionSnapshot(surveyParticipationStorageKey, JSON.stringify(snapshot))
+      removePersistedSurveySessionSnapshot(surveyDraftStorageKey)
+      removePersistedSurveySessionSnapshot(legacySurveySessionStorageKey)
+      return
+    }
+
+    writePersistedSurveySessionSnapshot(surveyDraftStorageKey, JSON.stringify(snapshot))
+    removePersistedSurveySessionSnapshot(legacySurveySessionStorageKey)
   }
 
   useEffect(() => {
@@ -957,7 +990,7 @@ export function PublicSurveyPage() {
     pendingScrollRestoreRef.current = null
     rewardSessionRestoreKeyRef.current = ''
     navigate({ search: '' }, { replace: true })
-  }, [navigate, shouldStartFresh, surveySessionStorageKey])
+  }, [legacySurveySessionStorageKey, navigate, shouldStartFresh, surveyDraftStorageKey, surveyParticipationStorageKey])
 
   useEffect(() => {
     if (sessionHydratedRef.current) {
@@ -966,7 +999,11 @@ export function PublicSurveyPage() {
 
     sessionHydratedRef.current = true
 
-    const rawSession = readPersistedSurveySessionSnapshot(surveySessionStorageKey)
+    const rawParticipationSession = readPersistedSurveySessionSnapshot(surveyParticipationStorageKey)
+    const rawDraftSession = readPersistedSurveySessionSnapshot(surveyDraftStorageKey)
+    const rawLegacySession = readPersistedSurveySessionSnapshot(legacySurveySessionStorageKey)
+    const rawSession = rawParticipationSession || rawLegacySession || rawDraftSession
+    const sessionSource = rawParticipationSession ? 'participation' : rawLegacySession ? 'legacy' : rawDraftSession ? 'draft' : 'none'
 
     // #region debug-point A:hydrate-read-session
     fetch('http://192.168.1.67:7777/event', {
@@ -978,9 +1015,12 @@ export function PublicSurveyPage() {
         location: 'PublicSurveyPage.tsx:hydrate:read',
         msg: '[DEBUG] reading persisted public survey session',
         data: {
-          storageKey: surveySessionStorageKey,
+          draftStorageKey: surveyDraftStorageKey,
+          participationStorageKey: surveyParticipationStorageKey,
+          legacyStorageKey: legacySurveySessionStorageKey,
           hasRawSession: Boolean(rawSession),
           rawLength: rawSession?.length ?? 0,
+          sessionSource,
           shouldStartFresh,
         },
         ts: Date.now(),
@@ -1039,6 +1079,7 @@ export function PublicSurveyPage() {
           location: 'PublicSurveyPage.tsx:hydrate:apply',
           msg: '[DEBUG] applied persisted public survey session',
           data: {
+            sessionSource,
             submitted: Boolean(parsed.submitted),
             responseId: parsed.responseId ?? '',
             activeRetryTaskId: nextActiveRetryTaskId,
@@ -1054,7 +1095,7 @@ export function PublicSurveyPage() {
     } finally {
       setSessionStateReady(true)
     }
-  }, [surveySessionStorageKey, shouldStartFresh])
+  }, [legacySurveySessionStorageKey, shouldStartFresh, surveyDraftStorageKey, surveyParticipationStorageKey])
 
   useEffect(() => {
     if (!sessionStateReady || !survey) {
@@ -1124,42 +1165,12 @@ export function PublicSurveyPage() {
     sessionStateReady,
     submitted,
     submitMessage,
-    surveySessionStorageKey,
+    legacySurveySessionStorageKey,
+    surveyDraftStorageKey,
+    surveyParticipationStorageKey,
     wheelModalOpen,
     wheelRotation,
   ])
-
-  useEffect(() => {
-    if (!hasDraftInProgress) {
-      draftExitGuardArmedRef.current = false
-      return
-    }
-
-    if (!draftExitGuardArmedRef.current) {
-      window.history.pushState({ publicSurveyDraftGuard: true }, '', window.location.href)
-      draftExitGuardArmedRef.current = true
-    }
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      persistSurveySessionSnapshot({ scrollY: window.scrollY })
-      event.preventDefault()
-      event.returnValue = ''
-    }
-
-    const handlePopState = () => {
-      persistSurveySessionSnapshot({ scrollY: window.scrollY })
-      window.history.pushState({ publicSurveyDraftGuard: true }, '', window.location.href)
-      window.alert('Sua pesquisa ainda nao foi enviada. Continue de onde parou para nao perder o preenchimento.')
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    window.addEventListener('popstate', handlePopState)
-
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      window.removeEventListener('popstate', handlePopState)
-    }
-  }, [hasDraftInProgress])
 
   useEffect(() => {
     if (previewMode || !survey || !sessionStateReady || !responseId) {
@@ -1972,16 +1983,33 @@ export function PublicSurveyPage() {
   const currentRetryTaskCountdownValue =
     currentRetryTask && currentRetryTaskReturned && !currentRetryTaskCanConfirm ? Math.max(1, currentRetryTaskRemainingSeconds) : 0
   const retryExitGuardActive = Boolean((currentRetryTaskReturned && !currentRetryTaskCanConfirm) || retryTaskClickMutation.isPending)
+  const participationFlowCompleted = Boolean(
+    submitted &&
+      (!survey?.rewardEnabled || rewardResult?.won || (rewardResult?.finalAttempt && !rewardResult.retryAvailable && !canSpinReward)),
+  )
+  const surveyExitGuardActive = Boolean(
+    !previewMode &&
+      !participationFlowCompleted &&
+      (hasDraftInProgress ||
+        submitted ||
+        Boolean(responseId) ||
+        Boolean(canSpinReward) ||
+        wheelSpinning ||
+        Boolean(activeRetryTaskId) ||
+        Boolean(rewardResult?.retryAvailable) ||
+        retryExitGuardActive),
+  )
+  const surveyExitGuardMessage = retryExitGuardActive
+    ? 'Sua nova chance ainda nao foi liberada. Conclua a tarefa e aguarde o desbloqueio para continuar.'
+    : 'Sua pesquisa ainda esta em andamento. Continue para nao perder esta participacao.'
   const currentRetryTaskIsLoading = currentRetryTask
     ? retryTaskClickMutation.isPending && retryTaskClickMutation.variables?.id === currentRetryTask.id
     : false
   const showRetryTaskOverlay = Boolean(rewardResult?.retryAvailable && currentRetryTask && !canSpinReward && !wheelSpinning)
-  const retryExitGuardBypassRef = useRef(false)
-  const retryExitGuardArmedRef = useRef(false)
 
   useEffect(() => {
-    if (!retryExitGuardActive) {
-      retryExitGuardArmedRef.current = false
+    if (!surveyExitGuardActive) {
+      surveyExitGuardArmedRef.current = false
       return
     }
 
@@ -1993,21 +2021,25 @@ export function PublicSurveyPage() {
           sessionId: 'mobile-survey-resume',
           runId: 'post-fix',
           hypothesisId: 'C',
-          location: 'PublicSurveyPage.tsx:retryExitGuard:beforeunload',
-          msg: '[DEBUG] beforeunload fired while retry exit guard active',
+          location: 'PublicSurveyPage.tsx:surveyExitGuard:beforeunload',
+          msg: '[DEBUG] beforeunload fired while survey exit guard active',
           data: {
-            bypass: retryExitGuardBypassRef.current,
+            bypass: surveyExitGuardBypassRef.current,
+            surveyExitGuardActive,
             retryExitGuardActive,
+            responseId,
             activeRetryTaskId,
+            submitted,
           },
           ts: Date.now(),
         }),
       }).catch(() => {})
       // #endregion
-      if (retryExitGuardBypassRef.current) {
+      if (surveyExitGuardBypassRef.current) {
         return
       }
 
+      persistSurveySessionSnapshot({ scrollY: window.scrollY })
       event.preventDefault()
       event.returnValue = ''
     }
@@ -2017,15 +2049,15 @@ export function PublicSurveyPage() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [retryExitGuardActive])
+  }, [activeRetryTaskId, responseId, retryExitGuardActive, submitted, surveyExitGuardActive])
 
   useEffect(() => {
-    if (!retryExitGuardActive) {
-      retryExitGuardArmedRef.current = false
+    if (!surveyExitGuardActive) {
+      surveyExitGuardArmedRef.current = false
       return
     }
 
-    if (!retryExitGuardArmedRef.current) {
+    if (!surveyExitGuardArmedRef.current) {
       // #region debug-point C:pushstate-arm
       fetch('http://192.168.1.67:7777/event', {
         method: 'POST',
@@ -2033,18 +2065,21 @@ export function PublicSurveyPage() {
           sessionId: 'mobile-survey-resume',
           runId: 'post-fix',
           hypothesisId: 'C',
-          location: 'PublicSurveyPage.tsx:retryExitGuard:arm',
-          msg: '[DEBUG] arming retry exit guard pushState entry',
+          location: 'PublicSurveyPage.tsx:surveyExitGuard:arm',
+          msg: '[DEBUG] arming survey exit guard pushState entry',
           data: {
+            surveyExitGuardActive,
             retryExitGuardActive,
+            responseId,
             activeRetryTaskId,
+            submitted,
           },
           ts: Date.now(),
         }),
       }).catch(() => {})
       // #endregion
-      window.history.pushState({ publicSurveyRetryGuard: true }, '', window.location.href)
-      retryExitGuardArmedRef.current = true
+      window.history.pushState({ publicSurveyExitGuard: true }, '', window.location.href)
+      surveyExitGuardArmedRef.current = true
     }
 
     const handlePopState = () => {
@@ -2055,33 +2090,27 @@ export function PublicSurveyPage() {
           sessionId: 'mobile-survey-resume',
           runId: 'post-fix',
           hypothesisId: 'C',
-          location: 'PublicSurveyPage.tsx:retryExitGuard:popstate',
-          msg: '[DEBUG] popstate fired while retry exit guard active',
+          location: 'PublicSurveyPage.tsx:surveyExitGuard:popstate',
+          msg: '[DEBUG] popstate fired while survey exit guard active',
           data: {
-            bypass: retryExitGuardBypassRef.current,
+            bypass: surveyExitGuardBypassRef.current,
+            surveyExitGuardActive,
             retryExitGuardActive,
+            responseId,
             activeRetryTaskId,
+            submitted,
           },
           ts: Date.now(),
         }),
       }).catch(() => {})
       // #endregion
-      if (retryExitGuardBypassRef.current) {
+      if (surveyExitGuardBypassRef.current) {
         return
       }
 
-      const shouldLeave = window.confirm('Sua nova chance ainda não foi liberada. Deseja sair mesmo assim?')
-
-      if (shouldLeave) {
-        retryExitGuardBypassRef.current = true
-        window.history.back()
-        window.setTimeout(() => {
-          retryExitGuardBypassRef.current = false
-        }, 0)
-        return
-      }
-
-      window.history.pushState({ publicSurveyRetryGuard: true }, '', window.location.href)
+      persistSurveySessionSnapshot({ scrollY: window.scrollY })
+      window.history.pushState({ publicSurveyExitGuard: true }, '', window.location.href)
+      window.alert(surveyExitGuardMessage)
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -2089,7 +2118,7 @@ export function PublicSurveyPage() {
     return () => {
       window.removeEventListener('popstate', handlePopState)
     }
-  }, [retryExitGuardActive])
+  }, [activeRetryTaskId, responseId, retryExitGuardActive, submitted, surveyExitGuardActive, surveyExitGuardMessage])
 
   useEffect(() => {
     if (!currentRetryTask || !currentRetryTaskReturned || !currentRetryTaskCanConfirm) {
@@ -2114,9 +2143,9 @@ export function PublicSurveyPage() {
   ])
 
   function openRetryTaskLink(task: RewardRetryTask) {
-    retryExitGuardBypassRef.current = true
+    surveyExitGuardBypassRef.current = true
     window.setTimeout(() => {
-      retryExitGuardBypassRef.current = false
+      surveyExitGuardBypassRef.current = false
     }, 1500)
     window.location.assign(task.url)
   }
@@ -2418,11 +2447,7 @@ export function PublicSurveyPage() {
 
   function setSingleAnswer(questionId: string, value: string | number) {
     clearValidationTarget(`question:${questionId}`)
-    setAnswers((current) => {
-      const nextAnswers = pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, value)
-      persistSurveySessionSnapshot({ answers: nextAnswers })
-      return nextAnswers
-    })
+    setAnswers((current) => pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, value))
   }
 
   function toggleOption(questionId: string, value: string) {
@@ -2431,9 +2456,7 @@ export function PublicSurveyPage() {
       const existing = current[questionId]
       const list = Array.isArray(existing) ? existing : []
       const nextList = list.includes(value) ? list.filter((item) => item !== value) : [...list, value]
-      const nextAnswers = pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, nextList)
-      persistSurveySessionSnapshot({ answers: nextAnswers })
-      return nextAnswers
+      return pruneAnswersForCurrentFlow(survey?.questions ?? [], current, questionId, nextList)
     })
   }
 
@@ -2537,9 +2560,7 @@ export function PublicSurveyPage() {
                     value={participantName}
                     onChange={(event) => {
                       clearValidationTarget('participant-name')
-                      const nextValue = event.target.value
-                      setParticipantName(nextValue)
-                      persistSurveySessionSnapshot({ participantName: nextValue })
+                      setParticipantName(event.target.value)
                     }}
                   />
                   {validationState?.target === 'participant-name' ? (
@@ -2561,9 +2582,7 @@ export function PublicSurveyPage() {
                     value={participantPhone}
                     onChange={(event) => {
                       clearValidationTarget('participant-phone')
-                      const nextValue = sanitizePhone(event.target.value)
-                      setParticipantPhone(nextValue)
-                      persistSurveySessionSnapshot({ participantPhone: nextValue })
+                      setParticipantPhone(sanitizePhone(event.target.value))
                     }}
                   />
                   {validationState?.target === 'participant-phone' ? (
@@ -2584,9 +2603,7 @@ export function PublicSurveyPage() {
                     value={participantEmail}
                     onChange={(event) => {
                       clearValidationTarget('participant-email')
-                      const nextValue = event.target.value
-                      setParticipantEmail(nextValue)
-                      persistSurveySessionSnapshot({ participantEmail: nextValue })
+                      setParticipantEmail(event.target.value)
                     }}
                   />
                   {validationState?.target === 'participant-email' ? (
@@ -2615,16 +2632,13 @@ export function PublicSurveyPage() {
                         onChange={(event) => {
                           clearValidationTarget('participant-birth-month')
                           const nextMonth = event.target.value
-                          let nextBirthDay = birthDay
                           setBirthMonth(nextMonth)
                           if (birthDay) {
                             const maxDay = getDaysInBirthMonth(Number(nextMonth))
                             if (Number(birthDay) > maxDay) {
-                              nextBirthDay = ''
                               setBirthDay('')
                             }
                           }
-                          persistSurveySessionSnapshot({ birthMonth: nextMonth, birthDay: nextBirthDay })
                         }}
                       >
                         <option value="">Selecione o mês</option>
@@ -2651,9 +2665,7 @@ export function PublicSurveyPage() {
                         disabled={!birthMonth}
                         onChange={(event) => {
                           clearValidationTarget('participant-birth-day')
-                          const nextValue = event.target.value
-                          setBirthDay(nextValue)
-                          persistSurveySessionSnapshot({ birthDay: nextValue })
+                          setBirthDay(event.target.value)
                         }}
                       >
                         <option value="">{birthMonth ? 'Selecione o dia' : 'Escolha o mês primeiro'}</option>
