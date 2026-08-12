@@ -916,6 +916,7 @@ export function PublicSurveyPage() {
         : rewardPhase === 'retry_task_pending' || rewardPhase === 'retry_task_returned_waiting'
           ? 'Continuar desbloqueio'
           : 'Ver resultado'
+  const showTestSessionBadge = Boolean(isTestResponseSession && !previewMode)
   const canSubmitAnotherResponse = Boolean(
     survey?.allowMultipleResponses && !canSpinReward && !wheelSpinning,
   )
@@ -2586,6 +2587,22 @@ export function PublicSurveyPage() {
             <div className="admin-alert mt-6 border-amber-200 bg-amber-50 text-amber-900">{eligibilityMessage}</div>
           ) : null}
 
+          {showTestSessionBadge ? (
+            <div className="mt-6">
+              <div className="inline-flex max-w-xl items-start gap-3 rounded-full border border-violet-200 bg-violet-50 px-4 py-2.5 text-left text-violet-950 shadow-sm">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white text-violet-600">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">Telefone de teste</p>
+                  <p className="mt-0.5 text-sm text-violet-900">
+                    Esta sessao esta em modo de teste e nao entra nos relatorios de producao.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {!submitted ? (
             <form
               className="mt-5 space-y-4 sm:mt-6 sm:space-y-5"
@@ -2923,6 +2940,21 @@ export function PublicSurveyPage() {
               <p className="mx-auto mt-3 max-w-lg text-sm text-slate-600 sm:text-base">
                 {submitMessage || 'Sua resposta foi registrada com sucesso.'}
               </p>
+              {showTestSessionBadge ? (
+                <div className="mx-auto mt-4 max-w-xl rounded-[18px] border border-violet-200 bg-violet-50 px-4 py-3 text-left shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-violet-600 shadow-sm">
+                      <AlertTriangle className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-violet-700">Telefone de teste</p>
+                      <p className="mt-1 text-sm text-violet-900">
+                        Esta participacao esta em modo de teste. Os dados ficam separados da visao de producao.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {survey.rewardEnabled ? (
                 <div className="mt-7 overflow-hidden rounded-[20px] border border-amber-200 bg-amber-50 p-5 text-center shadow-[0_12px_32px_rgba(245,158,11,0.12)] sm:p-6">
