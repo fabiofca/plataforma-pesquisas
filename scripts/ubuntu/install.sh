@@ -15,6 +15,7 @@ SOURCE_DIR="${SOURCE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 REMOVE_DATABASE="${REMOVE_DATABASE:-false}"
 REMOVE_SOURCE_DIR="${REMOVE_SOURCE_DIR:-false}"
 REMOVE_BACKUPS="${REMOVE_BACKUPS:-false}"
+APP_GIT_COMMIT_SHA="${APP_GIT_COMMIT_SHA:-}"
 
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-5432}"
@@ -1147,7 +1148,13 @@ install_dependencies_and_build() {
 }
 
 install_frontend_and_build() {
-  sudo -u "${APP_USER}" bash -lc "cd '${APP_ROOT}/web' && npm install && npm run build"
+  local build_commit_sha="${APP_GIT_COMMIT_SHA}"
+
+  if [[ -z "${build_commit_sha}" ]] && command -v git >/dev/null 2>&1 && [[ -d "${SOURCE_DIR}/.git" ]]; then
+    build_commit_sha="$(git -C "${SOURCE_DIR}" rev-parse --short HEAD 2>/dev/null || true)"
+  fi
+
+  sudo -u "${APP_USER}" bash -lc "cd '${APP_ROOT}/web' && npm install && APP_GIT_COMMIT_SHA='${build_commit_sha}' npm run build"
 }
 
 configure_pm2() {
@@ -1198,6 +1205,32 @@ server {
 
     root ${APP_ROOT}/web/dist;
     index index.html;
+
+    location = /index.html {
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header Expires "0" always;
+        try_files \$uri =404;
+    }
+
+    location = /favicon.svg {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        expires -1;
+        try_files \$uri =404;
+    }
+
+    location = /favicon.ico {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        expires -1;
+        try_files \$uri =404;
+    }
+
+    location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files \$uri =404;
+    }
 
     location /api/ {
         proxy_pass http://127.0.0.1:${APP_PORT}/api/;

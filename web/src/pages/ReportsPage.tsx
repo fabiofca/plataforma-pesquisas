@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChartColumnBig, Download, Trophy, Users } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ChartColumnBig, Download, FileSpreadsheet, Medal, Trophy, Users } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
+import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiRequest, downloadApiFile } from '@/lib/api-client'
 import { hasFeatureAccess } from '@/lib/features'
 import { useAuthStore } from '@/store/use-auth-store'
 
-type PeriodPreset = 'today' | '7d' | '30d' | 'custom'
+type PeriodPreset = 'today' | '7d' | '30d' | 'all_time' | 'custom'
+type ReportScope = 'production' | 'test' | 'all'
 
 type PaginationMeta = {
   page: number
@@ -99,6 +101,7 @@ type RewardsResponse = {
     cancelled_redemptions: string
   }
   pickupAddress?: string | null
+  requireReceiverIdentity?: boolean
   stock: Array<{
     id: string
     title: string
@@ -107,19 +110,6 @@ type RewardsResponse = {
     remainingStock: number
     winsInRange: number
   }>
-  winners: Array<{
-    id: string
-    awardedAt: string
-    deliveredAt?: string | null
-    name?: string | null
-    phone?: string | null
-    email?: string | null
-    itemTitle: string
-    couponCode: string
-    redemptionStatus: 'pending' | 'delivered' | 'cancelled'
-    redemptionNotes?: string | null
-  }>
-  winnersPagination: PaginationMeta
   noPrizeBreakdown: Array<{
     label: string
     count: number
@@ -130,9 +120,59 @@ type RewardsResponse = {
   }
 }
 
-type WinnerSortField = 'awardedAt' | 'name' | 'itemTitle'
-type WinnerSortDirection = 'asc' | 'desc'
-type WinnerStatusFilter = 'all' | 'pending' | 'delivered' | 'cancelled'
+type MissingProductsResponse = Array<{
+  questionId: string
+  questionTitle: string
+  totalResponses: number
+  items: Array<{
+    product: string
+    count: number
+    percentage: number
+  }>
+}>
+
+type AttendantPerformanceResponse = Array<{
+  nameQuestionId: string
+  nameQuestionTitle: string
+  ratingQuestionId: string
+  ratingQuestionTitle: string
+  totalEvaluations: number
+  attendants: Array<{
+    name: string
+    averageRating: number
+    ratingCount: number
+    minRating: number
+    maxRating: number
+  }>
+}>
+
+type InsightCategory = 'responses' | 'access' | 'contacts' | 'rewards' | 'wheel' | 'business'
+
+type InsightItem = {
+  category: InsightCategory
+  title: string
+  value: string
+}
+
+const insightCategoryStyles: Record<InsightCategory, { bar: string; label: string }> = {
+  responses: { bar: 'bg-blue-500', label: 'Respostas' },
+  access: { bar: 'bg-teal-500', label: 'Acessos' },
+  contacts: { bar: 'bg-violet-500', label: 'Contatos' },
+  rewards: { bar: 'bg-emerald-500', label: 'Prêmios' },
+  wheel: { bar: 'bg-amber-500', label: 'Roleta' },
+  business: { bar: 'bg-indigo-500', label: 'Negócio' },
+}
+
+function formatPeriodDate(value: string) {
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return value
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parsed)
+}
+
+function getDistributionBarColor(index: number) {
+  const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500', 'bg-teal-500', 'bg-sky-500', 'bg-orange-500']
+  return colors[index % colors.length]
+}
 
 function formatDateInput(date: Date) {
   const year = date.getFullYear()
@@ -140,6 +180,20 @@ function formatDateInput(date: Date) {
   const day = String(date.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
+}
+
+function formatApiDateToInput(value?: string | null) {
+  if (!value) {
+    return ''
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return ''
+  }
+
+  return formatDateInput(parsed)
 }
 
 function getDateDaysAgo(daysAgo: number) {
@@ -163,6 +217,44 @@ function getQuestionTypeLabel(type: string) {
   return labels[type] ?? type
 }
 
+function formatDateTimeLabel(value?: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
+function formatDateLabel(value?: string | null) {
+  if (!value) {
+    return '-'
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
+}
+
 function buildReportParams(
   range: { startDate: string; endDate: string },
   extra?: Record<string, string | number | undefined>,
@@ -181,6 +273,26 @@ function buildReportParams(
   }
 
   return params
+}
+
+function getReportScopeLabel(scope: ReportScope) {
+  const labels: Record<ReportScope, string> = {
+    production: 'Somente produção',
+    test: 'Somente teste',
+    all: 'Produção + teste',
+  }
+
+  return labels[scope]
+}
+
+function getReportScopeFileSlug(scope: ReportScope) {
+  const labels: Record<ReportScope, string> = {
+    production: 'producao',
+    test: 'teste',
+    all: 'todos',
+  }
+
+  return labels[scope]
 }
 
 function getPaginationWindow(pagination: PaginationMeta) {
@@ -254,30 +366,69 @@ function PaginationControls({
   )
 }
 
+function TextSamplesList({ samples, questionId }: { samples: string[]; questionId: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? samples : samples.slice(0, 3)
+  const canExpand = samples.length > 3
+
+  return (
+    <div className="mt-3 grid gap-2">
+      {visible.map((sample, sampleIndex) => (
+        <div
+          key={`${questionId}-sample-${sampleIndex}`}
+          className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
+          style={{ borderRadius: 8 }}
+        >
+          {sample}
+        </div>
+      ))}
+      {canExpand ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+        >
+          {expanded ? 'Ver menos' : `Ver todas (${samples.length})`}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function ReportsPage() {
   const { id } = useParams()
   const user = useAuthStore((state) => state.user)
-  const queryClient = useQueryClient()
+  const [showAdvancedScope, setShowAdvancedScope] = useState(false)
+
+  const surveyMetaQuery = useQuery({
+    queryKey: ['survey-meta', id],
+    queryFn: async () => {
+      const response = await apiRequest<{ survey: { title: string; created_at?: string | null } }>(`/surveys/${id}`)
+      return response.survey
+    },
+    enabled: Boolean(id),
+  })
   const defaultEndDate = formatDateInput(getDateDaysAgo(0))
   const defaultStartDate = formatDateInput(getDateDaysAgo(29))
-  const [preset, setPreset] = useState<PeriodPreset>('30d')
+  const [preset, setPreset] = useState<PeriodPreset>('all_time')
   const [customStartDate, setCustomStartDate] = useState(defaultStartDate)
   const [customEndDate, setCustomEndDate] = useState(defaultEndDate)
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'pdf' | null>(null)
   const [exportFeedback, setExportFeedback] = useState('')
+  const [respondentSearchInput, setRespondentSearchInput] = useState('')
+  const [respondentSearch, setRespondentSearch] = useState('')
+  const [exportingParticipants, setExportingParticipants] = useState<'csv' | 'pdf' | 'txt' | null>(null)
+  const [participantsExportFeedback, setParticipantsExportFeedback] = useState('')
+  const [exportingQuestionKey, setExportingQuestionKey] = useState<string | null>(null)
+  const [questionExportFeedback, setQuestionExportFeedback] = useState('')
+  const [exportingBusinessCardKey, setExportingBusinessCardKey] = useState<string | null>(null)
+  const [businessExportFeedback, setBusinessExportFeedback] = useState('')
+  const [reportScope, setReportScope] = useState<ReportScope>('production')
   const [respondentsPage, setRespondentsPage] = useState(1)
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
-  const [winnerNameFilter, setWinnerNameFilter] = useState('')
-  const [winnerPhoneFilter, setWinnerPhoneFilter] = useState('')
-  const [winnerPrizeFilter, setWinnerPrizeFilter] = useState('')
-  const [winnerCouponFilter, setWinnerCouponFilter] = useState('')
-  const [winnerStatusFilter, setWinnerStatusFilter] = useState<WinnerStatusFilter>('all')
-  const [winnerSortField, setWinnerSortField] = useState<WinnerSortField>('awardedAt')
-  const [winnerSortDirection, setWinnerSortDirection] = useState<WinnerSortDirection>('desc')
-  const [winnersPage, setWinnersPage] = useState(1)
-  const [winnersPageSize, setWinnersPageSize] = useState(20)
   const canExportCsv = hasFeatureAccess(user, 'reports_export_csv')
   const canExportPdf = hasFeatureAccess(user, 'reports_export_pdf')
+  const surveyCreatedDate = formatApiDateToInput(surveyMetaQuery.data?.created_at)
 
   const activeRange = useMemo(() => {
     if (preset === 'today') {
@@ -299,11 +450,18 @@ export function ReportsPage() {
       }
     }
 
+    if (preset === 'all_time') {
+      return {
+        startDate: surveyCreatedDate || defaultStartDate,
+        endDate: formatDateInput(getDateDaysAgo(0)),
+      }
+    }
+
     return {
       startDate: customStartDate,
       endDate: customEndDate,
     }
-  }, [customEndDate, customStartDate, preset])
+  }, [customEndDate, customStartDate, defaultStartDate, preset, surveyCreatedDate])
 
   const isInvalidCustomRange =
     preset === 'custom' &&
@@ -311,31 +469,20 @@ export function ReportsPage() {
 
   useEffect(() => {
     setExportFeedback('')
+    setParticipantsExportFeedback('')
+    setQuestionExportFeedback('')
+    setBusinessExportFeedback('')
     setRespondentsPage(1)
-    setWinnersPage(1)
-  }, [activeRange.endDate, activeRange.startDate, preset])
+  }, [activeRange.endDate, activeRange.startDate, preset, reportScope, respondentSearch])
 
   useEffect(() => {
     setRespondentsPage(1)
   }, [respondentsPageSize])
 
-  useEffect(() => {
-    setWinnersPage(1)
-  }, [
-    winnerCouponFilter,
-    winnerNameFilter,
-    winnerPhoneFilter,
-    winnerPrizeFilter,
-    winnerStatusFilter,
-    winnerSortDirection,
-    winnerSortField,
-    winnersPageSize,
-  ])
-
   const summaryQuery = useQuery({
-    queryKey: ['reports-summary', id, activeRange.startDate, activeRange.endDate],
+    queryKey: ['reports-summary', id, activeRange.startDate, activeRange.endDate, reportScope],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<SummaryResponse>(`/surveys/${id}/reports/summary?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -343,9 +490,9 @@ export function ReportsPage() {
   })
 
   const questionsQuery = useQuery({
-    queryKey: ['reports-questions', id, activeRange.startDate, activeRange.endDate],
+    queryKey: ['reports-questions', id, activeRange.startDate, activeRange.endDate, reportScope],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<QuestionsResponse>(`/surveys/${id}/reports/questions?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -353,9 +500,11 @@ export function ReportsPage() {
   })
 
   const respondentsQuery = useQuery({
-    queryKey: ['reports-respondents', id, activeRange.startDate, activeRange.endDate, respondentsPage, respondentsPageSize],
+    queryKey: ['reports-respondents', id, activeRange.startDate, activeRange.endDate, reportScope, respondentSearch, respondentsPage, respondentsPageSize],
     queryFn: async () => {
       const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        search: respondentSearch,
         page: respondentsPage,
         pageSize: respondentsPageSize,
       })
@@ -372,47 +521,34 @@ export function ReportsPage() {
       id,
       activeRange.startDate,
       activeRange.endDate,
-      winnerNameFilter,
-      winnerPhoneFilter,
-      winnerPrizeFilter,
-      winnerCouponFilter,
-      winnerStatusFilter,
-      winnerSortField,
-      winnerSortDirection,
-      winnersPage,
-      winnersPageSize,
+      reportScope,
     ],
     queryFn: async () => {
-      const params = buildReportParams(activeRange, {
-        name: winnerNameFilter.trim(),
-        phone: winnerPhoneFilter.trim(),
-        prize: winnerPrizeFilter.trim(),
-        coupon: winnerCouponFilter.trim(),
-        status: winnerStatusFilter,
-        sortField: winnerSortField,
-        sortDirection: winnerSortDirection,
-        page: winnersPage,
-        pageSize: winnersPageSize,
-      })
-
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<RewardsResponse>(`/surveys/${id}/reports/rewards?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
     retry: 0,
   })
 
-  const updateRedemptionMutation = useMutation({
-    mutationFn: async (payload: { winId: string; status: 'pending' | 'delivered' | 'cancelled' }) =>
-      apiRequest<{ ok: boolean }>(`/rewards/wins/${payload.winId}/redemption`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: payload.status,
-          redemptionNotes: '',
-        }),
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['reports-rewards', id] })
+  const missingProductsQuery = useQuery({
+    queryKey: ['reports-missing-products', id, activeRange.startDate, activeRange.endDate, reportScope],
+    queryFn: async () => {
+      const params = buildReportParams(activeRange, { scope: reportScope })
+      return apiRequest<MissingProductsResponse>(`/surveys/${id}/reports/missing-products?${params.toString()}`)
     },
+    enabled: Boolean(id) && !isInvalidCustomRange,
+    retry: 0,
+  })
+
+  const attendantPerformanceQuery = useQuery({
+    queryKey: ['reports-attendant-performance', id, activeRange.startDate, activeRange.endDate, reportScope],
+    queryFn: async () => {
+      const params = buildReportParams(activeRange, { scope: reportScope })
+      return apiRequest<AttendantPerformanceResponse>(`/surveys/${id}/reports/attendant-performance?${params.toString()}`)
+    },
+    enabled: Boolean(id) && !isInvalidCustomRange,
+    retry: 0,
   })
 
   const periodData =
@@ -422,29 +558,29 @@ export function ReportsPage() {
       visits: Number(item.visits),
     })) ?? []
 
-  const insights =
+  const insights: InsightItem[] =
     summaryQuery.data && rewardsQuery.data
       ? [
-          ['Total de respostas', `${summaryQuery.data.summary.total_responses} respostas válidas registradas`],
-          ['Taxa de conversão', `${summaryQuery.data.summary.conversion_rate}% das visitas viraram respostas`],
-          ['Acessos totais', `${summaryQuery.data.summary.total_visits} visitas rastreadas na pesquisa`],
-          ['Participação identificada', `${summaryQuery.data.summary.identified_responses} respostas com identificação`],
-          ['E-mails coletados', `${summaryQuery.data.summary.emails_collected} participantes informaram e-mail`],
-          ['Aniversários coletados', `${summaryQuery.data.summary.birthdays_collected} aniversários ficaram salvos para campanhas futuras`],
-          ['Cliques no link', `${summaryQuery.data.summary.link_clicks} acessos vieram pelo link divulgado`],
-          ['Leituras do QR code', `${summaryQuery.data.summary.qr_scans} acessos vieram pelo QR code`],
-          ['Prêmios entregues', `${summaryQuery.data.summary.reward_wins} prêmios realmente sorteados`],
-          ['Giros da roleta', `${rewardsQuery.data.summary.total_spins} giros registrados no período`],
-          ['Sem prêmio', `${rewardsQuery.data.summary.total_no_prize} giros terminaram em opção sem prêmio`],
-          ['Resgates pendentes', `${rewardsQuery.data.summary.pending_redemptions} prêmios ainda aguardam retirada`],
-          ['Prêmios entregues ao cliente', `${rewardsQuery.data.summary.delivered_redemptions} resgates já foram concluídos`],
+          { category: 'responses', title: 'Total de respostas', value: `${summaryQuery.data.summary.total_responses} respostas válidas registradas` },
+          { category: 'responses', title: 'Taxa de conversão', value: `${summaryQuery.data.summary.conversion_rate}% das visitas viraram respostas` },
+          { category: 'responses', title: 'Participação identificada', value: `${summaryQuery.data.summary.identified_responses} respostas com identificação` },
+          { category: 'access', title: 'Acessos totais', value: `${summaryQuery.data.summary.total_visits} visitas rastreadas na pesquisa` },
+          { category: 'access', title: 'Cliques no link', value: `${summaryQuery.data.summary.link_clicks} acessos vieram pelo link divulgado` },
+          { category: 'access', title: 'Leituras do QR code', value: `${summaryQuery.data.summary.qr_scans} acessos vieram pelo QR code` },
+          { category: 'contacts', title: 'E-mails coletados', value: `${summaryQuery.data.summary.emails_collected} participantes informaram e-mail` },
+          { category: 'contacts', title: 'Aniversários coletados', value: `${summaryQuery.data.summary.birthdays_collected} aniversários ficaram salvos para campanhas futuras` },
+          { category: 'rewards', title: 'Prêmios sorteados', value: `${summaryQuery.data.summary.reward_wins} prêmios realmente sorteados` },
+          { category: 'rewards', title: 'Resgates pendentes', value: `${rewardsQuery.data.summary.pending_redemptions} prêmios ainda aguardam retirada` },
+          { category: 'rewards', title: 'Entregues ao cliente', value: `${rewardsQuery.data.summary.delivered_redemptions} resgates já foram concluídos` },
+          { category: 'rewards', title: 'Cancelados', value: `${rewardsQuery.data.summary.cancelled_redemptions} resgates foram cancelados` },
+          { category: 'wheel', title: 'Giros da roleta', value: `${rewardsQuery.data.summary.total_spins} giros registrados no período` },
+          { category: 'wheel', title: 'Sem prêmio', value: `${rewardsQuery.data.summary.total_no_prize} giros terminaram em opção sem prêmio` },
         ]
       : []
 
   const hasAnyError =
     summaryQuery.isError || questionsQuery.isError || respondentsQuery.isError || rewardsQuery.isError
   const hasReportData = Boolean(summaryQuery.data)
-  const totalWinnersInRange = Number(rewardsQuery.data?.summary.total_wins ?? 0)
 
   async function handleExport(format: 'csv' | 'pdf') {
     if (!id || isInvalidCustomRange || !hasReportData) {
@@ -455,11 +591,11 @@ export function ReportsPage() {
     setExportFeedback('')
 
     try {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
 
       await downloadApiFile(
         `/surveys/${id}/reports/export.${format}?${params.toString()}`,
-        `relatorio-pesquisa-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+        `relatorio-pesquisa-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
       )
     } catch (error) {
       const message =
@@ -471,30 +607,133 @@ export function ReportsPage() {
     }
   }
 
+  async function handleExportParticipants(format: 'csv' | 'pdf' | 'txt') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingParticipants(format)
+    setParticipantsExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        search: respondentSearch,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-participants.${format}?${params.toString()}`,
+        `participantes-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar os participantes agora.'
+
+      setParticipantsExportFeedback(message)
+    } finally {
+      setExportingParticipants(null)
+    }
+  }
+
+  async function handleExportQuestion(question: QuestionReport, questionIndex: number, format: 'csv' | 'pdf') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingQuestionKey(`${question.id}:${format}`)
+    setQuestionExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        questionId: question.id,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-question.${format}?${params.toString()}`,
+        `pergunta-${questionIndex + 1}-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar esta pergunta agora.'
+
+      setQuestionExportFeedback(message)
+    } finally {
+      setExportingQuestionKey(null)
+    }
+  }
+
+  async function handleExportMissingProducts(questionId: string, format: 'csv' | 'pdf') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingBusinessCardKey(`missing:${questionId}:${format}`)
+    setBusinessExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        questionId,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-missing-products.${format}?${params.toString()}`,
+        `produtos-em-falta-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar os produtos em falta agora.'
+
+      setBusinessExportFeedback(message)
+    } finally {
+      setExportingBusinessCardKey(null)
+    }
+  }
+
+  async function handleExportAttendantPerformance(nameQuestionId: string, format: 'csv' | 'pdf') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingBusinessCardKey(`attendant:${nameQuestionId}:${format}`)
+    setBusinessExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        nameQuestionId,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-attendant-performance.${format}?${params.toString()}`,
+        `desempenho-atendentes-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar o desempenho dos atendentes agora.'
+
+      setBusinessExportFeedback(message)
+    } finally {
+      setExportingBusinessCardKey(null)
+    }
+  }
+
   return (
     <AppShell
       title="Relatórios da pesquisa"
-      subtitle="Painel útil com acessos por dia, respostas, conversão e leitura detalhada por pergunta."
-      backHref={`/app/pesquisas/${id}`}
-      backLabel="Voltar para a pesquisa"
-      breadcrumbs={[
-        { label: 'Pesquisas', href: '/app/pesquisas' },
-        { label: 'Pesquisa', href: `/app/pesquisas/${id}` },
-        { label: 'Relatórios' },
-      ]}
+      subtitle=""
+      hideHeader
     >
-      <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Leitura operacional</p>
-          <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
-            Relatórios mais elegantes para bater o olho e entender rápido.
-          </h2>
-          <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
-            Acompanhe respostas, visitas, conversão, ganhadores, estoque e desempenho das perguntas em um painel mais claro.
-          </p>
-        </div>
+      <SurveyNavBar
+        surveyId={id!}
+        surveyTitle={surveyMetaQuery.data?.title}
+        activeTab="results"
+      />
 
-        <div className="grid gap-2 sm:grid-cols-3">
+      <div className="p-3 sm:p-4 lg:p-5">
+      <section className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="grid flex-1 gap-2 sm:grid-cols-3">
           <div className="admin-inline-stat">
             <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Respostas</p>
             <p className="mt-1 text-sm font-semibold text-slate-950">{summaryQuery.data?.summary.total_responses ?? '-'}</p>
@@ -513,13 +752,14 @@ export function ReportsPage() {
       <SectionCard
         eyebrow="Período"
         title="Filtro do relatório"
-        description="Escolha um recorte rápido ou defina um intervalo personalizado para comparar acessos, respostas e desempenho das perguntas."
+        description="Escolha o período do relatório. A tela abre por padrão mostrando somente os dados reais de produção."
       >
         <div className="flex flex-wrap gap-3">
           {[
             ['today', 'Hoje'],
             ['7d', '7 dias'],
             ['30d', '30 dias'],
+            ['all_time', 'Desde a criação'],
             ['custom', 'Personalizado'],
           ].map(([value, label]) => (
             <button
@@ -531,11 +771,50 @@ export function ReportsPage() {
                   ? 'bg-slate-950 text-white'
                   : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
-              style={{ borderRadius: 6 }}
+              style={{ borderRadius: 8 }}
             >
               {label}
             </button>
           ))}
+        </div>
+
+        <div className="mt-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-medium text-slate-700">Escopo dos dados</p>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedScope((current) => !current)}
+                className="admin-button self-start"
+              >
+                {showAdvancedScope ? 'Ocultar filtros avançados' : 'Mostrar filtros avançados'}
+              </button>
+            </div>
+
+            {showAdvancedScope ? (
+              <div className="flex flex-wrap gap-3">
+                {[
+                  ['production', 'Somente produção'],
+                  ['test', 'Somente teste'],
+                  ['all', 'Produção + teste'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setReportScope(value as ReportScope)}
+                    className={`px-4 py-2 text-sm font-semibold transition ${
+                      reportScope === value
+                        ? 'bg-slate-950 text-white'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                    style={{ borderRadius: 8 }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {preset === 'custom' ? (
@@ -563,8 +842,21 @@ export function ReportsPage() {
         ) : null}
 
         <div className="admin-alert mt-4 border-slate-200 bg-slate-50 text-slate-600">
-          Exibindo dados de <strong>{activeRange.startDate}</strong> até <strong>{activeRange.endDate}</strong>.
+          Exibindo dados de <strong>{formatPeriodDate(activeRange.startDate)}</strong> até <strong>{formatPeriodDate(activeRange.endDate)}</strong>
+          {reportScope === 'production' ? '.' : <> no escopo <strong>{getReportScopeLabel(reportScope)}</strong>.</>}
         </div>
+
+        {preset === 'all_time' && surveyCreatedDate ? (
+          <div className="admin-alert mt-4 border-sky-200 bg-sky-50 text-sky-900">
+            Este relatório está considerando todo o histórico da pesquisa desde <strong>{formatPeriodDate(surveyCreatedDate)}</strong>.
+          </div>
+        ) : null}
+
+        {reportScope === 'test' ? (
+          <div className="admin-alert mt-4 border-amber-200 bg-amber-50 text-amber-900">
+            No escopo de teste, as métricas de acesso ficam zeradas para não misturar visitas reais com uso interno.
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap gap-3">
           {canExportCsv ? (
@@ -660,13 +952,19 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando indicadores...</div>
           ) : insights.length ? (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {insights.map(([title, value]) => (
-                <div key={title} className="report-insight-card">
-                  <div className="mb-3 h-1.5 w-10 bg-blue-500" style={{ borderRadius: 999 }} />
-                  <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{title}</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{value}</p>
-                </div>
-              ))}
+              {insights.map((insight) => {
+                const style = insightCategoryStyles[insight.category]
+                return (
+                  <div key={insight.title} className="report-insight-card">
+                    <div className="mb-3 flex items-center gap-2">
+                      <div className={`h-1.5 w-10 ${style.bar}`} style={{ borderRadius: 999 }} />
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{style.label}</span>
+                    </div>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{insight.title}</p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-950">{insight.value}</p>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="admin-empty-state py-16">Nenhum resumo disponível para exibir neste momento.</div>
@@ -684,14 +982,15 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando dados da roleta...</div>
           ) : rewardsQuery.data ? (
             <div className="admin-table-shell">
-              <div className="report-table-head hidden grid-cols-3 gap-3 md:grid">
+              <div className="report-table-head hidden grid-cols-4 gap-3 md:grid">
                 <div>Giros</div>
                 <div>Prêmios</div>
                 <div>Sem prêmio</div>
+                <div>Cancelados</div>
               </div>
 
               <div className="divide-y divide-slate-200 md:divide-y-0">
-                <div className="grid gap-3 px-4 py-3 md:grid-cols-3">
+                <div className="grid gap-3 px-4 py-3 md:grid-cols-4">
                   <div className="flex items-center gap-3">
                     <div className="admin-icon-chip border-slate-200 bg-slate-50 text-slate-600">
                       <ChartColumnBig className="h-4 w-4" />
@@ -705,7 +1004,7 @@ export function ReportsPage() {
 
                   <div className="flex items-center gap-3">
                     <div className="admin-icon-chip border-emerald-100 bg-emerald-50 text-emerald-700">
-                      <Trophy className="h-4 w-4" />
+                      <ChartColumnBig className="h-4 w-4" />
                     </div>
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 md:hidden">Prêmios</p>
@@ -722,6 +1021,17 @@ export function ReportsPage() {
                       <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 md:hidden">Sem prêmio</p>
                       <p className="text-lg font-semibold text-amber-700">{rewardsQuery.data.summary.total_no_prize}</p>
                       <p className="text-sm text-slate-600">Mensagens neutras.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="admin-icon-chip border-rose-100 bg-rose-50 text-rose-700">
+                      <Download className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500 md:hidden">Cancelados</p>
+                      <p className="text-lg font-semibold text-rose-700">{rewardsQuery.data.summary.cancelled_redemptions}</p>
+                      <p className="text-sm text-slate-600">Resgates cancelados.</p>
                     </div>
                   </div>
                 </div>
@@ -843,35 +1153,115 @@ export function ReportsPage() {
           title="Dados coletados"
           description="Nome, WhatsApp, email e aniversário ficam disponíveis aqui para leitura operacional e futuras campanhas."
         >
-          {respondentsQuery.isPending ? (
-            <div className="admin-empty-state py-16">Carregando participantes...</div>
-          ) : respondentsQuery.data?.pagination.totalItems ? (
-            <div className="space-y-3">
-              <div className="report-summary-strip">
-                Total coletado no período: <strong>{respondentsQuery.data.pagination.totalItems}</strong> participante(s).
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-3">
+                <div className="report-summary-strip">
+                  Total coletado no período: <strong>{respondentsQuery.data?.pagination.totalItems ?? 0}</strong> participante(s).
+                </div>
+
+                <form
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    setRespondentSearch(respondentSearchInput.trim())
+                  }}
+                >
+                  <input
+                    type="search"
+                    value={respondentSearchInput}
+                    onChange={(event) => setRespondentSearchInput(event.target.value)}
+                    placeholder="Buscar por nome, WhatsApp ou e-mail"
+                    className="admin-input min-w-[280px]"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" className="admin-button-primary">
+                      Buscar
+                    </button>
+                    {respondentSearch || respondentSearchInput ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRespondentSearchInput('')
+                          setRespondentSearch('')
+                        }}
+                        className="admin-button"
+                      >
+                        Limpar
+                      </button>
+                    ) : null}
+                  </div>
+                </form>
               </div>
 
+              {(canExportCsv || canExportPdf) ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500">Exportar:</span>
+                  {canExportCsv ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportParticipants('csv')}
+                        disabled={exportingParticipants !== null}
+                        className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        {exportingParticipants === 'csv' ? 'Exportando...' : 'CSV'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportParticipants('txt')}
+                        disabled={exportingParticipants !== null}
+                        className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        {exportingParticipants === 'txt' ? 'Exportando...' : 'TXT'}
+                      </button>
+                    </>
+                  ) : null}
+                  {canExportPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportParticipants('pdf')}
+                      disabled={exportingParticipants !== null}
+                      className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportingParticipants === 'pdf' ? 'Exportando...' : 'PDF'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {participantsExportFeedback ? (
+              <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{participantsExportFeedback}</div>
+            ) : null}
+
+            {respondentsQuery.isPending ? (
+              <div className="admin-empty-state py-16">Carregando participantes...</div>
+            ) : respondentsQuery.data?.pagination.totalItems ? (
               <div className="admin-table-shell">
-                <div className="report-table-head hidden grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px_220px] gap-3 lg:grid">
+                <div className="report-table-head hidden grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_120px_minmax(0,1fr)_220px] gap-3 lg:grid">
                   <div>Participante</div>
                   <div>WhatsApp</div>
-                  <div>E-mail</div>
                   <div>Aniversário</div>
+                  <div>E-mail</div>
                   <div>Data</div>
                 </div>
 
                 <div className="divide-y divide-slate-200">
                   {respondentsQuery.data.respondents.map((respondent) => (
                     <article key={respondent.id} className="report-table-row">
-                      <div className="hidden items-center gap-3 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_minmax(0,1fr)_120px_220px]">
+                      <div className="hidden items-center gap-3 lg:grid lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_120px_minmax(0,1fr)_220px]">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-950">
                             {respondent.name || 'Sem nome informado'}
                           </p>
                         </div>
                         <div className="min-w-0 text-sm text-slate-700">{respondent.phone || '-'}</div>
-                        <div className="min-w-0 truncate text-sm text-slate-700">{respondent.email || '-'}</div>
                         <div className="text-sm text-slate-700">{respondent.birthdayLabel || '-'}</div>
+                        <div className="min-w-0 truncate text-sm text-slate-700">{respondent.email || '-'}</div>
                         <div className="text-sm text-slate-500">{respondent.submittedAt}</div>
                       </div>
 
@@ -915,295 +1305,14 @@ export function ReportsPage() {
                   onPageSizeChange={setRespondentsPageSize}
                 />
               </div>
-            </div>
-          ) : (
-            <div className="admin-empty-state py-16">
-              Nenhum participante disponível para o período selecionado.
-            </div>
-          )}
-        </SectionCard>
-      </div>
-
-      <div className="mt-6">
-        <SectionCard
-          eyebrow="Ganhadores"
-          title="Quem ganhou e o que ganhou"
-          description="Registro operacional da campanha com nome, WhatsApp, email, prêmio e protocolo entregue."
-        >
-          {rewardsQuery.isPending ? (
-            <div className="admin-empty-state py-16">Carregando ganhadores...</div>
-          ) : rewardsQuery.data ? (
-            <div className="space-y-3">
-              <div className="report-filter-panel grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_180px_220px_180px_auto]">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Nome</span>
-                  <input
-                    value={winnerNameFilter}
-                    onChange={(event) => setWinnerNameFilter(event.target.value)}
-                    placeholder="Ex: Maria"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">WhatsApp</span>
-                  <input
-                    value={winnerPhoneFilter}
-                    onChange={(event) => setWinnerPhoneFilter(event.target.value)}
-                    placeholder="Ex: 2199"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Prêmio</span>
-                  <input
-                    value={winnerPrizeFilter}
-                    onChange={(event) => setWinnerPrizeFilter(event.target.value)}
-                    placeholder="Ex: Vale-compras"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Protocolo</span>
-                  <input
-                    value={winnerCouponFilter}
-                    onChange={(event) => setWinnerCouponFilter(event.target.value)}
-                    placeholder="Ex: 202607281234567"
-                    className="admin-input"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Status</span>
-                  <select
-                    value={winnerStatusFilter}
-                    onChange={(event) => setWinnerStatusFilter(event.target.value as WinnerStatusFilter)}
-                    className="admin-select"
-                  >
-                    <option value="all">Todos</option>
-                    <option value="pending">Pendentes</option>
-                    <option value="delivered">Entregues</option>
-                    <option value="cancelled">Cancelados</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Ordenar por</span>
-                  <select
-                    value={winnerSortField}
-                    onChange={(event) => setWinnerSortField(event.target.value as WinnerSortField)}
-                    className="admin-select"
-                  >
-                    <option value="awardedAt">Data da premiação</option>
-                    <option value="name">Nome</option>
-                    <option value="itemTitle">Prêmio</option>
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Direção</span>
-                  <select
-                    value={winnerSortDirection}
-                    onChange={(event) => setWinnerSortDirection(event.target.value as WinnerSortDirection)}
-                    className="admin-select"
-                  >
-                    <option value="desc">Decrescente</option>
-                    <option value="asc">Crescente</option>
-                  </select>
-                </label>
-
-                <div className="flex items-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWinnerNameFilter('')
-                      setWinnerPhoneFilter('')
-                      setWinnerPrizeFilter('')
-                      setWinnerCouponFilter('')
-                      setWinnerStatusFilter('all')
-                      setWinnerSortField('awardedAt')
-                      setWinnerSortDirection('desc')
-                      setWinnersPageSize(20)
-                    }}
-                    className="admin-button w-full"
-                  >
-                    Limpar filtros
-                  </button>
-                </div>
+            ) : (
+              <div className="admin-empty-state py-16">
+                {respondentSearch
+                  ? 'Nenhum participante encontrado para a busca aplicada neste período.'
+                  : 'Nenhum participante disponível para o período selecionado.'}
               </div>
-
-              <div className="report-summary-strip">
-                Exibindo <strong>{rewardsQuery.data.winnersPagination.totalItems}</strong> ganhador(es) filtrado(s) no período.
-                {' '}Pendentes: <strong>{rewardsQuery.data.summary.pending_redemptions}</strong>. Entregues:{' '}
-                <strong>{rewardsQuery.data.summary.delivered_redemptions}</strong>. Local de retirada:{' '}
-                <strong>{rewardsQuery.data.pickupAddress || 'Não informado'}</strong>.
-              </div>
-
-              {rewardsQuery.data.winnersPagination.totalItems ? (
-                <div className="admin-table-shell">
-                  <div className="report-table-head hidden grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_220px] gap-3 xl:grid">
-                    <div>Ganhador</div>
-                    <div>WhatsApp</div>
-                    <div>E-mail</div>
-                    <div>Prêmio</div>
-                    <div>Protocolo</div>
-                    <div>Status</div>
-                    <div>Retirado em</div>
-                    <div>Ações</div>
-                  </div>
-
-                  <div className="divide-y divide-slate-200">
-                    {rewardsQuery.data.winners.map((winner) => {
-                      const isUpdating =
-                        updateRedemptionMutation.isPending &&
-                        updateRedemptionMutation.variables?.winId === winner.id
-
-                      const statusLabel =
-                        winner.redemptionStatus === 'delivered'
-                          ? 'Entregue'
-                          : winner.redemptionStatus === 'cancelled'
-                            ? 'Cancelado'
-                            : 'Pendente'
-
-                      const statusClass =
-                        winner.redemptionStatus === 'delivered'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                          : winner.redemptionStatus === 'cancelled'
-                            ? 'border-rose-200 bg-rose-50 text-rose-700'
-                            : 'bg-white'
-
-                      return (
-                        <article key={winner.id} className="report-table-row">
-                          <div className="hidden items-center gap-3 xl:grid xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,1fr)_minmax(0,0.8fr)_140px_180px_220px]">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
-                              <p className="truncate text-xs text-slate-500">{winner.awardedAt}</p>
-                            </div>
-                            <div className="min-w-0 text-sm text-slate-700">{winner.phone || '-'}</div>
-                            <div className="min-w-0 truncate text-sm text-slate-700">{winner.email || '-'}</div>
-                            <div className="min-w-0 truncate text-sm text-slate-700">{winner.itemTitle}</div>
-                            <div className="min-w-0 truncate text-sm font-medium text-slate-900">{winner.couponCode}</div>
-                            <div>
-                              <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
-                            </div>
-                            <div className="text-sm text-slate-500">{winner.deliveredAt || '-'}</div>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'pending' })}
-                                className="admin-button disabled:opacity-60"
-                              >
-                                Pendente
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })}
-                                className="admin-button-primary disabled:opacity-60"
-                              >
-                                Entregue
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'cancelled' })}
-                                className="admin-button-danger disabled:opacity-60"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="grid gap-2 xl:hidden">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Ganhador</p>
-                                <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
-                              </div>
-                              <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
-                            </div>
-
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p>
-                                <p className="text-sm text-slate-700">{winner.phone || '-'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">E-mail</p>
-                                <p className="truncate text-sm text-slate-700">{winner.email || '-'}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p>
-                                <p className="truncate text-sm text-slate-700">{winner.itemTitle}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p>
-                                <p className="text-sm font-medium text-slate-900">{winner.couponCode}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Premiação</p>
-                                <p className="text-sm text-slate-500">{winner.awardedAt}</p>
-                              </div>
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
-                                <p className="text-sm text-slate-500">{winner.deliveredAt || '-'}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'pending' })}
-                                className="admin-button disabled:opacity-60"
-                              >
-                                Pendente
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'delivered' })}
-                                className="admin-button-primary disabled:opacity-60"
-                              >
-                                Entregue
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isUpdating}
-                                onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'cancelled' })}
-                                className="admin-button-danger disabled:opacity-60"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-                        </article>
-                      )
-                    })}
-                  </div>
-
-                  <PaginationControls
-                    pagination={rewardsQuery.data.winnersPagination}
-                    onPageChange={setWinnersPage}
-                    onPageSizeChange={setWinnersPageSize}
-                  />
-                </div>
-              ) : (
-                <div className="admin-empty-state py-16">
-                  {totalWinnersInRange
-                    ? 'Nenhum ganhador encontrado com os filtros informados.'
-                    : 'Nenhum ganhador registrado para o período selecionado.'}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="admin-empty-state py-16">
-              Nenhum ganhador registrado para o período selecionado.
-            </div>
-          )}
+            )}
+          </div>
         </SectionCard>
       </div>
 
@@ -1217,6 +1326,10 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando desempenho por pergunta...</div>
           ) : questionsQuery.data?.questions.length ? (
             <div className="space-y-3">
+              {questionExportFeedback ? (
+                <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{questionExportFeedback}</div>
+              ) : null}
+
               {questionsQuery.data.questions.map((question, index) => (
                 <article key={question.id} className="report-filter-panel">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1231,27 +1344,56 @@ export function ReportsPage() {
                       {question.description ? <p className="mt-1 text-sm text-slate-600">{question.description}</p> : null}
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[420px] xl:grid-cols-4">
-                      <div className="admin-subcard px-3 py-2">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Respostas</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-950">{question.totalAnswers}</p>
-                      </div>
-                      <div className="admin-subcard px-3 py-2">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Conclusão</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-950">{question.completionRate}%</p>
-                      </div>
-                      {question.averageScore !== undefined ? (
-                        <div className="admin-subcard px-3 py-2">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Média</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.averageScore}</p>
+                    <div className="space-y-2 xl:min-w-[420px]">
+                      {canExportCsv || canExportPdf ? (
+                        <div className="flex justify-end gap-2">
+                          {canExportCsv ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleExportQuestion(question, index, 'csv')}
+                              disabled={exportingQuestionKey !== null}
+                              className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                              {exportingQuestionKey === `${question.id}:csv` ? 'Exportando CSV...' : 'CSV'}
+                            </button>
+                          ) : null}
+                          {canExportPdf ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleExportQuestion(question, index, 'pdf')}
+                              disabled={exportingQuestionKey !== null}
+                              className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              {exportingQuestionKey === `${question.id}:pdf` ? 'Exportando PDF...' : 'PDF'}
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
-                      {question.nps ? (
+
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="admin-subcard px-3 py-2">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">NPS</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.nps.score}</p>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Respostas</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.totalAnswers}</p>
                         </div>
-                      ) : null}
+                        <div className="admin-subcard px-3 py-2">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Conclusão</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.completionRate}%</p>
+                        </div>
+                        {question.averageScore !== undefined ? (
+                          <div className="admin-subcard px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Média</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-950">{question.averageScore}</p>
+                          </div>
+                        ) : null}
+                        {question.nps ? (
+                          <div className="admin-subcard px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">NPS</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-950">{question.nps.score}</p>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
@@ -1274,7 +1416,7 @@ export function ReportsPage() {
 
                   {question.distribution?.length ? (
                     <div className="mt-3 space-y-2">
-                      {question.distribution.slice(0, 5).map((item) => (
+                      {question.distribution.slice(0, 8).map((item, barIndex) => (
                         <div key={`${question.id}-${item.label}`}>
                           <div className="mb-1 flex items-center justify-between gap-3 text-sm">
                             <span className="truncate font-medium text-slate-700">{item.label}</span>
@@ -1284,7 +1426,7 @@ export function ReportsPage() {
                           </div>
                           <div className="h-2 overflow-hidden bg-slate-100" style={{ borderRadius: 999 }}>
                             <div
-                              className="h-full bg-slate-900"
+                              className={`h-full ${getDistributionBarColor(barIndex)}`}
                               style={{ width: `${Math.max(item.percentage, item.count > 0 ? 2 : 0)}%`, borderRadius: 999 }}
                             />
                           </div>
@@ -1294,17 +1436,7 @@ export function ReportsPage() {
                   ) : null}
 
                   {question.textSamples?.length ? (
-                    <div className="mt-3 grid gap-2">
-                      {question.textSamples.slice(0, 3).map((sample, sampleIndex) => (
-                        <div
-                          key={`${question.id}-sample-${sampleIndex}`}
-                          className="border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700"
-                          style={{ borderRadius: 6 }}
-                        >
-                          {sample}
-                        </div>
-                      ))}
-                    </div>
+                    <TextSamplesList samples={question.textSamples} questionId={question.id} />
                   ) : null}
                 </article>
               ))}
@@ -1315,6 +1447,300 @@ export function ReportsPage() {
             </div>
           )}
         </SectionCard>
+      </div>
+
+      {/* Missing Products Report */}
+      {missingProductsQuery.isError ? (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Produtos em falta"
+            description="Leitura das menções de produtos que os clientes procuraram e não encontraram."
+          >
+            <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">
+              Não foi possível carregar as métricas de produtos em falta agora.
+            </div>
+          </SectionCard>
+        </div>
+      ) : missingProductsQuery.isPending ? (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Produtos em falta"
+            description="Leitura das menções de produtos que os clientes procuraram e não encontraram."
+          >
+            <div className="admin-empty-state py-8">Carregando métricas de produtos em falta...</div>
+          </SectionCard>
+        </div>
+      ) : missingProductsQuery.data && missingProductsQuery.data.length > 0 ? (
+        <div className="mt-6">
+          {businessExportFeedback ? (
+            <div className="admin-alert mb-3 border-rose-200 bg-rose-50 text-rose-900">{businessExportFeedback}</div>
+          ) : null}
+          {missingProductsQuery.data.map((report) => (
+            <SectionCard
+              key={report.questionId}
+              eyebrow="Métrica de negócio"
+              title={`Produtos em falta — ${report.questionTitle}`}
+              description={`${report.items.length} produto(s) mencionado(s) por clientes. Total de respostas: ${report.totalResponses}.`}
+            >
+              {canExportCsv || canExportPdf ? (
+                <div className="mb-4 flex justify-end gap-2">
+                  {canExportCsv ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportMissingProducts(report.questionId, 'csv')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `missing:${report.questionId}:csv` ? 'Exportando CSV...' : 'CSV'}
+                    </button>
+                  ) : null}
+                  {canExportPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportMissingProducts(report.questionId, 'pdf')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `missing:${report.questionId}:pdf` ? 'Exportando PDF...' : 'PDF'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {report.items.length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        <th className="pb-2 pr-2">#</th>
+                        <th className="pb-2 pr-4">Produto</th>
+                        <th className="pb-2 pr-4 text-right">Menções</th>
+                        <th className="pb-2 text-right">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.items.map((item, index) => (
+                        <tr key={`${report.questionId}-${index}`} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2.5 pr-2">
+                            {index === 0 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                <Trophy className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 1 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 2 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-700">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <span className="pl-1 text-xs text-slate-400">{index + 1}º</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-4 font-medium text-slate-900">{item.product}</td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              {item.count}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className={`h-full rounded-full ${index === 0 ? 'bg-amber-500' : index === 1 ? 'bg-slate-400' : index === 2 ? 'bg-orange-400' : 'bg-indigo-500'}`}
+                                  style={{ width: `${Math.max(item.percentage, item.count > 0 ? 3 : 0)}%` }}
+                                />
+                              </div>
+                              <span className="shrink-0 text-slate-500">{item.percentage}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="admin-empty-state py-8">Nenhum produto mencionado no período.</div>
+              )}
+            </SectionCard>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Produtos em falta"
+            description="Leitura das menções de produtos que os clientes procuraram e não encontraram."
+          >
+            <div className="admin-empty-state py-8">Nenhuma métrica de produtos em falta foi encontrada nesta pesquisa.</div>
+          </SectionCard>
+        </div>
+      )}
+
+      {/* Attendant Performance Report */}
+      {attendantPerformanceQuery.isError ? (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Desempenho dos atendentes"
+            description="Leitura das notas cruzadas com o nome do atendente para ajudar a operação."
+          >
+            <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">
+              Não foi possível carregar as métricas de desempenho dos atendentes agora.
+            </div>
+          </SectionCard>
+        </div>
+      ) : attendantPerformanceQuery.isPending ? (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Desempenho dos atendentes"
+            description="Leitura das notas cruzadas com o nome do atendente para ajudar a operação."
+          >
+            <div className="admin-empty-state py-8">Carregando métricas de desempenho dos atendentes...</div>
+          </SectionCard>
+        </div>
+      ) : attendantPerformanceQuery.data && attendantPerformanceQuery.data.length > 0 ? (
+        <div className="mt-6">
+          {businessExportFeedback ? (
+            <div className="admin-alert mb-3 border-rose-200 bg-rose-50 text-rose-900">{businessExportFeedback}</div>
+          ) : null}
+          {attendantPerformanceQuery.data.map((report) => (
+            <SectionCard
+              key={report.nameQuestionId}
+              eyebrow="Métrica de negócio"
+              title={`Desempenho dos atendentes — ${report.nameQuestionTitle}`}
+              description={`${report.totalEvaluations} avaliação(ões) cruzadas com a pergunta de nota.`}
+            >
+              {canExportCsv || canExportPdf ? (
+                <div className="mb-4 flex justify-end gap-2">
+                  {canExportCsv ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportAttendantPerformance(report.nameQuestionId, 'csv')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `attendant:${report.nameQuestionId}:csv` ? 'Exportando CSV...' : 'CSV'}
+                    </button>
+                  ) : null}
+                  {canExportPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportAttendantPerformance(report.nameQuestionId, 'pdf')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `attendant:${report.nameQuestionId}:pdf` ? 'Exportando PDF...' : 'PDF'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {report.attendants.length ? (
+                <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                        <th className="pb-2 pr-2">#</th>
+                        <th className="pb-2 pr-4">Atendente</th>
+                        <th className="pb-2 pr-4 text-right">Nota média</th>
+                        <th className="pb-2 pr-4 text-right">Avaliações</th>
+                        <th className="pb-2 text-right">Faixa</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.attendants.map((attendant, index) => (
+                        <tr key={`${report.nameQuestionId}-${index}`} className="border-b border-slate-100 last:border-0">
+                          <td className="py-2.5 pr-2">
+                            {index === 0 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                                <Trophy className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 1 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : index === 2 ? (
+                              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-700">
+                                <Medal className="h-3.5 w-3.5" />
+                              </span>
+                            ) : (
+                              <span className="pl-1 text-xs text-slate-400">{index + 1}º</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 pr-4 font-medium text-slate-900">{attendant.name}</td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className={`h-full rounded-full ${attendant.averageRating >= 4 ? 'bg-emerald-500' : attendant.averageRating >= 3 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                  style={{ width: `${(attendant.averageRating / 5) * 100}%` }}
+                                />
+                              </div>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                attendant.averageRating >= 4 ? 'bg-emerald-100 text-emerald-700' :
+                                attendant.averageRating >= 3 ? 'bg-amber-100 text-amber-700' :
+                                'bg-rose-100 text-rose-700'
+                              }`}>
+                                {attendant.averageRating.toFixed(1)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                                {attendant.ratingCount}
+                              </span>
+                              {attendant.ratingCount >= 500 ? (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-700" title="Alto volume de avaliações">Alto</span>
+                              ) : attendant.ratingCount >= 100 ? (
+                                <span className="inline-flex items-center rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-700" title="Volume médio de avaliações">Médio</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-500" title="Baixo volume de avaliações">Baixo</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-2.5 text-right text-slate-500">{attendant.minRating}–{attendant.maxRating}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+                  <span className="font-semibold uppercase tracking-wider">Volume de avaliações:</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">Alto</span> 500+</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-sky-700">Médio</span> 100–499</span>
+                  <span className="inline-flex items-center gap-1"><span className="inline-block rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-500">Baixo</span> até 99</span>
+                </div>
+                </>
+              ) : (
+                <div className="admin-empty-state py-8">Nenhum atendente avaliado no período.</div>
+              )}
+            </SectionCard>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Desempenho dos atendentes"
+            description="Leitura das notas cruzadas com o nome do atendente para ajudar a operação."
+          >
+            <div className="admin-empty-state py-8">Nenhuma métrica de desempenho dos atendentes foi encontrada nesta pesquisa.</div>
+          </SectionCard>
+        </div>
+      )}
+
       </div>
     </AppShell>
   )

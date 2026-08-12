@@ -300,7 +300,7 @@ export function UsersPage() {
               ? 'border border-rose-200 bg-rose-50 text-rose-900'
               : 'border border-emerald-200 bg-emerald-50 text-emerald-900'
           }`}
-          style={{ borderRadius: 6 }}
+          style={{ borderRadius: 8 }}
         >
           {feedback.message}
         </div>
@@ -319,13 +319,13 @@ export function UsersPage() {
           description="Listagem com ações reais para manter o painel organizado."
         >
           {usersQuery.isError ? (
-            <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" style={{ borderRadius: 6 }}>
+            <div className="mb-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" style={{ borderRadius: 8 }}>
               Não foi possível carregar os usuários agora. Verifique a API e tente novamente.
             </div>
           ) : null}
 
           {!usersQuery.isError && !data.length ? (
-            <div className="mb-4 border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600" style={{ borderRadius: 6 }}>
+            <div className="mb-4 border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-600" style={{ borderRadius: 8 }}>
               Nenhum usuário administrativo encontrado até o momento.
             </div>
           ) : null}

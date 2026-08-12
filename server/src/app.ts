@@ -49,6 +49,7 @@ app.get('/api/health', (_request, response) => {
 })
 
 app.use('/api/auth', authRouter)
+app.use('/api/system-settings', settingsRouter)
 app.use('/api/users', usersRouter)
 app.use('/api/plans', plansRouter)
 app.use('/api/surveys', surveysRouter)
@@ -56,6 +57,5 @@ app.use('/api/public', publicRouter)
 app.use('/api', birthdayAutomationRouter)
 app.use('/api', reportsRouter)
 app.use('/api', rewardsRouter)
-app.use('/api/system-settings', settingsRouter)
 
 app.use(errorHandler)

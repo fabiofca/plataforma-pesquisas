@@ -21,7 +21,7 @@ export function getPublicSurveyUrl(slug: string, source?: SurveyShareSource) {
 }
 
 export function getSurveyTestPath(id: string) {
-  return `/app/pesquisas/${id}/teste`
+  return `/app/pesquisas/${id}/teste?fresh=1`
 }
 
 export function getSharedSurveyTestPath(token: string) {

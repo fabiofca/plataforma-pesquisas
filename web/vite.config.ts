@@ -1,10 +1,29 @@
 /// <reference types="vitest/config" />
+import { execSync } from 'node:child_process'
+
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tsconfigPaths from 'vite-tsconfig-paths'
 
+function getGitCommitSha() {
+  const injectedCommitSha = process.env.APP_GIT_COMMIT_SHA?.trim()
+
+  if (injectedCommitSha) {
+    return injectedCommitSha
+  }
+
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+  } catch {
+    return 'local'
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_COMMIT_SHA__: JSON.stringify(getGitCommitSha()),
+  },
   build: {
     sourcemap: 'hidden',
     rollupOptions: {

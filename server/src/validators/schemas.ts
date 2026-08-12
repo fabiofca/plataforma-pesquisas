@@ -54,6 +54,26 @@ export const surveyQuestionSchema = z.object({
       }),
     )
     .optional(),
+  businessMetric: z.enum(['missing_product', 'attendant_name', 'attendant_rating']).nullish(),
+  linkedQuestionId: z.string().nullish(),
+})
+
+const surveyFlowNodeSchema = z.object({
+  id: z.string().min(1),
+  x: z.number(),
+  y: z.number(),
+})
+
+const surveyFlowLayoutSchema = z.object({
+  version: z.number().int().default(1),
+  nodes: z.array(surveyFlowNodeSchema).default([]),
+  viewport: z
+    .object({
+      x: z.number(),
+      y: z.number(),
+      zoom: z.number().positive(),
+    })
+    .optional(),
 })
 
 export const surveySchema = z.object({
@@ -68,6 +88,10 @@ export const surveySchema = z.object({
   closingMessage: z.string().optional(),
   rewardEnabled: z.boolean().default(false),
   preventDuplicateResponses: z.boolean().default(false),
+  duplicateResponseCooldownDays: z.number().int().min(1).max(365).default(15),
+  allowMultipleResponses: z.boolean().default(true),
+  builderMode: z.enum(['classic', 'visual']).default('classic'),
+  flowLayout: surveyFlowLayoutSchema.optional(),
   questions: z.array(surveyQuestionSchema).min(1),
 })
 
@@ -177,12 +201,34 @@ export const planAssignmentSchema = z.object({
 
 export const rewardCampaignSchema = z.object({
   status: z.enum(['active', 'paused', 'ended']).default('active'),
+  wheelMode: z.enum(['standard', 'advanced']).default('standard'),
+  finalSpinMode: z.enum(['allow_no_prize', 'guaranteed_prize']).default('allow_no_prize'),
   expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  redemptionExpirationDays: z.number().int().min(1).max(365).default(15),
   pickupAddress: z.string().max(500).optional().or(z.literal('')),
   contactWhatsApp: z.string().max(30).optional().or(z.literal('')),
+  redemptionMethod: z.enum(['address_only', 'address_and_whatsapp']).default('address_and_whatsapp'),
   retryUnlockEnabled: z.boolean().default(false),
   retryUnlockTasks: z.array(rewardRetryTaskSchema).max(2, 'Cadastre no máximo 2 tarefas para liberar mais uma chance.').default([]),
+  testPhones: z.array(z.string().regex(/^\d+$/, 'Use apenas números.')).max(20, 'No máximo 20 telefones de teste.').default([]),
+  requireReceiverIdentity: z.boolean().default(false),
 }).superRefine((value, context) => {
+  if (!value.pickupAddress?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['pickupAddress'],
+      message: 'Informe o endereço de retirada para aparecer no comprovante do prêmio.',
+    })
+  }
+
+  if (value.redemptionMethod === 'address_and_whatsapp' && !value.contactWhatsApp?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['contactWhatsApp'],
+      message: 'Informe o WhatsApp da loja para liberar o botão de resgate pelo comprovante.',
+    })
+  }
+
   if (value.retryUnlockEnabled && value.retryUnlockTasks.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -190,22 +236,48 @@ export const rewardCampaignSchema = z.object({
       message: 'Cadastre pelo menos uma tarefa para liberar a chance extra.',
     })
   }
+
+  if (value.wheelMode === 'standard' && value.finalSpinMode === 'guaranteed_prize') {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['finalSpinMode'],
+      message: 'O modo "Premiar todos no último giro" só está disponível na roleta avançada.',
+    })
+  }
 })
 
 const rewardItemBaseSchema = z.object({
   title: z.string().min(3),
   description: z.string().optional(),
-  quantityTotal: z.number().int().positive(),
+  wheelLabel: z.string().min(1).max(150).optional(),
+  imageUrl: z.string().max(500).optional().or(z.literal('')),
+  outcomeRole: z.enum(['prize', 'no_prize', 'showcase']).default('prize'),
+  showOnWheel: z.boolean().default(true),
+  quantityTotal: z.number().int().positive().optional(),
   isActive: z.boolean().default(true),
   frequencyMode: z.enum(['frequent', 'balanced', 'rare', 'custom']).default('balanced'),
   customFrequencyTarget: z.number().int().min(2).max(100000).optional(),
+  sortOrder: z.number().int().min(0).max(999).optional(),
 })
 
 function validateRewardFrequency(
-  value: { frequencyMode?: 'frequent' | 'balanced' | 'rare' | 'custom'; customFrequencyTarget?: number },
+  value: {
+    frequencyMode?: 'frequent' | 'balanced' | 'rare' | 'custom'
+    customFrequencyTarget?: number
+    outcomeRole?: 'prize' | 'no_prize' | 'showcase'
+    quantityTotal?: number
+  },
   context: z.RefinementCtx,
 ) {
-  if (value.frequencyMode === 'custom' && !value.customFrequencyTarget) {
+  if (value.outcomeRole === 'prize' && !value.quantityTotal) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['quantityTotal'],
+      message: 'Informe o estoque do prêmio real.',
+    })
+  }
+
+  if (value.outcomeRole === 'prize' && value.frequencyMode === 'custom' && !value.customFrequencyTarget) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['customFrequencyTarget'],
@@ -220,6 +292,7 @@ export const rewardItemPatchSchema = rewardItemBaseSchema.partial().superRefine(
 export const rewardWinRedemptionSchema = z.object({
   status: z.enum(['pending', 'delivered', 'cancelled']),
   redemptionNotes: z.string().max(500).optional().or(z.literal('')),
+  receivedBy: z.string().max(150).optional().or(z.literal('')),
 })
 
 export const systemSettingSchema = z.array(

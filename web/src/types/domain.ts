@@ -20,10 +20,27 @@ export type QuestionType =
   | 'nps'
 
 export type SurveyFlowTarget = string | '__end__'
+export type SurveyBuilderMode = 'classic' | 'visual'
 
 export interface SurveyQuestionFlowRule {
   value: string
   nextQuestionId: SurveyFlowTarget
+}
+
+export interface SurveyFlowNodeLayout {
+  id: string
+  x: number
+  y: number
+}
+
+export interface SurveyFlowLayout {
+  version: number
+  nodes: SurveyFlowNodeLayout[]
+  viewport?: {
+    x: number
+    y: number
+    zoom: number
+  }
 }
 
 export interface AuthUser {
@@ -54,6 +71,8 @@ export interface DashboardMetric {
   change: string
 }
 
+export type BusinessMetric = 'missing_product' | 'attendant_name' | 'attendant_rating'
+
 export interface SurveyQuestion {
   id: string
   title: string
@@ -62,6 +81,8 @@ export interface SurveyQuestion {
   description?: string
   options?: string[]
   flowRules?: SurveyQuestionFlowRule[]
+  businessMetric?: BusinessMetric | null
+  linkedQuestionId?: string | null
 }
 
 export interface SurveyItem {
@@ -74,6 +95,8 @@ export interface SurveyItem {
   responses: number
   participationMode: 'Anônima' | 'Identificada'
   rewardEnabled: boolean
+  builderMode?: SurveyBuilderMode
+  flowLayout?: SurveyFlowLayout
   primaryColor: string
   updatedAt: string
   questions: SurveyQuestion[]
@@ -84,18 +107,35 @@ export interface SurveyItem {
   linkClicks?: number
   qrScans?: number
   preventDuplicateResponses?: boolean
+  duplicateResponseCooldownDays?: number
+  allowMultipleResponses?: boolean
   rewardPreviewItems?: Array<{
     id: string
     title: string
+    wheelLabel?: string
+    imageUrl?: string
+    outcomeRole?: 'prize' | 'no_prize' | 'showcase'
+    showOnWheel?: boolean
+    quantityTotal?: number
+    quantityAwarded?: number
+    sortOrder?: number
   }>
+  rewardWheelMode?: 'standard' | 'advanced'
+  rewardFinalSpinMode?: 'allow_no_prize' | 'guaranteed_prize'
   rewardRetryUnlockEnabled?: boolean
   rewardPickupAddress?: string
   rewardContactWhatsApp?: string
+  rewardRedemptionMethod?: 'address_only' | 'address_and_whatsapp'
+  rewardRedemptionExpirationDays?: number
   rewardRetryTasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'
     title: string
     url: string
+  }>
+  attendants?: Array<{
+    id: string
+    name: string
   }>
 }
 

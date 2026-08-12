@@ -409,7 +409,7 @@ export function NpsSurveysPage() {
                       <span className="admin-badge bg-white">{survey.responses} resposta(s)</span>
                       <span className="admin-badge bg-white">NPS</span>
                       <span className="admin-badge border-slate-900 bg-slate-950 text-white">{survey.status}</span>
-                      <span className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600" style={{ borderRadius: 6 }}>
+                      <span className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600" style={{ borderRadius: 8 }}>
                         <ChevronRight className="h-4 w-4" />
                       </span>
                     </div>

@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 type PrizeWheelSegment = {
   id: string
   label: string
-  kind: 'reward' | 'neutral' | 'retry'
+  kind: 'reward' | 'neutral' | 'retry' | 'showcase'
 }
 
 type PrizeWheelProps = {
@@ -17,56 +17,73 @@ type PrizeWheelProps = {
   disabled?: boolean
   variant?: 'default' | 'fullscreen'
   spinLabel?: string
+  disableTransition?: boolean
   onSpin: () => void
 }
 
 const rewardSegmentPalette = [
-  { start: '#4c1d95', end: '#6d28d9', text: '#ffffff' },
-  { start: '#7f1d1d', end: '#be123c', text: '#ffffff' },
-  { start: '#1e3a8a', end: '#2563eb', text: '#ffffff' },
-  { start: '#92400e', end: '#b45309', text: '#fff7ed' },
-  { start: '#115e59', end: '#0f766e', text: '#ffffff' },
-  { start: '#581c87', end: '#9333ea', text: '#ffffff' },
-  { start: '#3f6212', end: '#4d7c0f', text: '#ffffff' },
-  { start: '#9a3412', end: '#ea580c', text: '#ffffff' },
-  { start: '#0f172a', end: '#334155', text: '#ffffff' },
+  { start: '#dc2626', end: '#ef4444', text: '#ffffff' },
+  { start: '#7c3aed', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#db2777', end: '#ec4899', text: '#ffffff' },
+  { start: '#ea580c', end: '#f97316', text: '#ffffff' },
+  { start: '#059669', end: '#10b981', text: '#ffffff' },
+  { start: '#2563eb', end: '#3b82f6', text: '#ffffff' },
 ]
 
 const retrySegmentPalette = [
-  { start: '#9f1239', end: '#e11d48', text: '#ffffff' },
-  { start: '#7c2d12', end: '#f97316', text: '#ffffff' },
-  { start: '#6d28d9', end: '#a855f7', text: '#ffffff' },
-  { start: '#155e75', end: '#0891b2', text: '#ffffff' },
-  { start: '#166534', end: '#16a34a', text: '#ffffff' },
-  { start: '#1d4ed8', end: '#38bdf8', text: '#ffffff' },
-  { start: '#0f766e', end: '#14b8a6', text: '#ffffff' },
-  { start: '#92400e', end: '#f59e0b', text: '#fff7ed' },
-  { start: '#831843', end: '#db2777', text: '#ffffff' },
+  { start: '#0284c7', end: '#0ea5e9', text: '#ffffff' },
+  { start: '#0891b2', end: '#06b6d4', text: '#ffffff' },
+  { start: '#7c3aed', end: '#8b5cf6', text: '#ffffff' },
+  { start: '#16a34a', end: '#22c55e', text: '#ffffff' },
+]
+
+const showcaseSegmentPalette = [
+  { start: '#d97706', end: '#f59e0b', text: '#ffffff' },
+  { start: '#dc2626', end: '#ef4444', text: '#ffffff' },
+  { start: '#4f46e5', end: '#6366f1', text: '#ffffff' },
+  { start: '#0d9488', end: '#14b8a6', text: '#ffffff' },
 ]
 
 const neutralSegmentPalette = [
-  { start: '#8b5cf6', end: '#6366f1', text: '#ffffff' },
-  { start: '#f43f5e', end: '#ec4899', text: '#ffffff' },
-  { start: '#0f172a', end: '#334155', text: '#ffffff' },
-  { start: '#2563eb', end: '#60a5fa', text: '#ffffff' },
-  { start: '#f59e0b', end: '#facc15', text: '#1f2937' },
-  { start: '#14b8a6', end: '#22c55e', text: '#ffffff' },
-  { start: '#d946ef', end: '#a855f7', text: '#ffffff' },
-  { start: '#fb7185', end: '#f97316', text: '#ffffff' },
-  { start: '#0ea5e9', end: '#06b6d4', text: '#ffffff' },
+  { start: '#3b82f6', end: '#60a5fa', text: '#ffffff' },
+  { start: '#8b5cf6', end: '#a78bfa', text: '#ffffff' },
+  { start: '#f43f5e', end: '#fb7185', text: '#ffffff' },
+  { start: '#f59e0b', end: '#fbbf24', text: '#451a03' },
+  { start: '#22c55e', end: '#4ade80', text: '#ffffff' },
+  { start: '#06b6d4', end: '#22d3ee', text: '#ffffff' },
 ]
 
-const confettiPalette = ['#facc15', '#ff006e', '#4338ca', '#22c55e', '#38bdf8', '#ffffff']
-const confettiPieces = Array.from({ length: 18 }, (_, index) => {
-  const angle = (Math.PI * 2 * index) / 18
-  const distance = 84 + (index % 3) * 18
+const confettiPalette = ['#facc15', '#ff006e', '#6366f1', '#22c55e', '#38bdf8', '#ffffff', '#fb7185', '#f97316']
+const confettiPieces = Array.from({ length: 34 }, (_, index) => {
+  const angle = (Math.PI * 2 * index) / 34
+  const distance = 108 + (index % 4) * 28
 
   return {
     x: `${Math.cos(angle) * distance}px`,
-    y: `${Math.sin(angle) * distance - 28}px`,
-    rotate: `${index % 2 === 0 ? 120 : -120}deg`,
-    delay: `${index * 28}ms`,
+    y: `${Math.sin(angle) * distance - 42}px`,
+    rotate: `${index % 2 === 0 ? 220 : -220}deg`,
+    delay: `${index * 18}ms`,
+    duration: `${1180 + (index % 4) * 160}ms`,
     color: confettiPalette[index % confettiPalette.length],
+    width: `${8 + (index % 3) * 3}px`,
+    height: `${12 + (index % 4) * 4}px`,
+    shape: index % 5 === 0 ? '999px' : '3px',
+  }
+})
+
+const confettiRainPieces = Array.from({ length: 22 }, (_, index) => {
+  const spread = 10 + (index % 6) * 4
+
+  return {
+    left: `${8 + ((index * 11) % 84)}%`,
+    delay: `${220 + index * 55}ms`,
+    duration: `${1800 + (index % 5) * 180}ms`,
+    drift: `${index % 2 === 0 ? -spread : spread}px`,
+    rotate: `${index % 2 === 0 ? -160 : 160}deg`,
+    color: confettiPalette[(index + 3) % confettiPalette.length],
+    width: `${6 + (index % 3) * 3}px`,
+    height: `${12 + (index % 4) * 4}px`,
+    shape: index % 4 === 0 ? '999px' : '3px',
   }
 })
 
@@ -131,11 +148,16 @@ function getWheelDisplayLabel(label: string) {
 function getSegmentColors(segment: PrizeWheelSegment, index: number, primaryColor: string) {
   if (segment.kind === 'reward') {
     const selected = rewardSegmentPalette[index % rewardSegmentPalette.length]
-    return index === 0 ? { ...selected, end: primaryColor, text: '#ffffff' } : selected
+    // First reward segment is branded with primaryColor; keep it solid and let the vignette overlay create depth
+    return index === 0 ? { start: primaryColor, end: primaryColor, text: '#ffffff' } : selected
   }
 
   if (segment.kind === 'retry') {
     return retrySegmentPalette[index % retrySegmentPalette.length]
+  }
+
+  if (segment.kind === 'showcase') {
+    return showcaseSegmentPalette[index % showcaseSegmentPalette.length]
   }
 
   return neutralSegmentPalette[index % neutralSegmentPalette.length]
@@ -147,23 +169,22 @@ function buildWheelGradient(segments: PrizeWheelSegment[], primaryColor: string)
   return segments
     .map((segment, index) => {
       const start = index * angle
-      const mid = start + angle * 0.48
       const end = start + angle
       const colors = getSegmentColors(segment, index, primaryColor)
-      return `${colors.start} ${start}deg, ${colors.end} ${mid}deg, ${colors.start} ${end}deg`
+      return `${colors.start} ${start}deg, ${colors.end} ${end - angle * 0.45}deg, ${colors.start} ${end}deg`
     })
     .join(', ')
 }
 
 function buildWheelOverlay(segments: PrizeWheelSegment[]) {
-  const dividerWidth = Math.max(0.9, Math.min(1.8, 7 / segments.length))
+  const dividerWidth = Math.max(1.2, Math.min(2.2, 8 / segments.length))
   const angle = 360 / segments.length
 
   return segments
     .map((_, index) => {
       const start = index * angle
       const end = start + dividerWidth
-      return `rgba(255,255,255,0.22) ${start}deg ${end}deg`
+      return `rgba(255,255,255,0.72) ${start}deg, rgba(255,255,255,0.72) ${end}deg, transparent ${end}deg, transparent ${start + angle - dividerWidth / 2}deg`
     })
     .join(', ')
 }
@@ -190,6 +211,7 @@ export function PrizeWheel({
   disabled,
   variant = 'default',
   spinLabel,
+  disableTransition,
   onSpin,
 }: PrizeWheelProps) {
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -208,11 +230,11 @@ export function PrizeWheel({
       : 'clamp(96px, 15vw, 132px)'
     : '124px'
   const pointerBaseClass = isFullscreen
-    ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
-    : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#4b5563_0%,#1f2937_100%)] shadow-[0_10px_18px_rgba(15,23,42,0.35)]'
+    ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#b91c1c_0%,#7f1d1d_60%,#450a0a_100%)] shadow-[0_10px_22px_rgba(185,28,28,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
+    : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#b91c1c_0%,#7f1d1d_60%,#450a0a_100%)] shadow-[0_10px_22px_rgba(185,28,28,0.35)]'
   const pointerTipClass = isFullscreen
-    ? 'absolute left-1/2 top-[18px] z-40 h-0 w-0 -translate-x-1/2 border-l-[18px] border-r-[18px] border-t-[32px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)] sm:top-[20px] sm:border-l-[20px] sm:border-r-[20px] sm:border-t-[36px]'
-    : 'absolute left-1/2 top-[16px] z-40 h-0 w-0 -translate-x-1/2 border-l-[16px] border-r-[16px] border-t-[30px] border-l-transparent border-r-transparent border-t-slate-700 drop-shadow-[0_10px_14px_rgba(15,23,42,0.28)]'
+    ? 'absolute left-1/2 top-[18px] z-40 h-0 w-0 -translate-x-1/2 border-l-[18px] border-r-[18px] border-t-[32px] border-l-transparent border-r-transparent border-t-red-700 drop-shadow-[0_10px_14px_rgba(185,28,28,0.35)] sm:top-[20px] sm:border-l-[20px] sm:border-r-[20px] sm:border-t-[36px]'
+    : 'absolute left-1/2 top-[16px] z-40 h-0 w-0 -translate-x-1/2 border-l-[16px] border-r-[16px] border-t-[30px] border-l-transparent border-r-transparent border-t-red-700 drop-shadow-[0_10px_14px_rgba(185,28,28,0.35)]'
   const wheelWrapperStyle = {
     maxWidth: isFullscreen ? 'min(calc(100vw - 0.75rem), calc(100dvh - 11.5rem))' : '430px',
   }
@@ -286,6 +308,40 @@ export function PrizeWheel({
     oscillator.stop(now + 0.06)
   }
 
+  function playWinSound(audioContext: AudioContext) {
+    const now = audioContext.currentTime
+    const notes = [523.25, 659.25, 783.99, 1046.5]
+    notes.forEach((frequency, index) => {
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(frequency, now + index * 0.08)
+      gainNode.gain.setValueAtTime(0.0001, now + index * 0.08)
+      gainNode.gain.exponentialRampToValueAtTime(0.08, now + index * 0.08 + 0.04)
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.08 + 0.35)
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      oscillator.start(now + index * 0.08)
+      oscillator.stop(now + index * 0.08 + 0.4)
+    })
+  }
+
+  function playNeutralSound(audioContext: AudioContext) {
+    const now = audioContext.currentTime
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+    oscillator.type = 'triangle'
+    oscillator.frequency.setValueAtTime(300, now)
+    oscillator.frequency.linearRampToValueAtTime(250, now + 0.25)
+    gainNode.gain.setValueAtTime(0.0001, now)
+    gainNode.gain.exponentialRampToValueAtTime(0.05, now + 0.04)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.35)
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+    oscillator.start(now)
+    oscillator.stop(now + 0.4)
+  }
+
   useEffect(() => {
     if (!isSpinning || !audioUnlockedRef.current) {
       clearSpinSoundLoop()
@@ -323,6 +379,43 @@ export function PrizeWheel({
   }, [isSpinning])
 
   useEffect(() => {
+    if (!showCelebration || !audioUnlockedRef.current) {
+      return
+    }
+
+    const audioContext = getAudioContext()
+    if (!audioContext || audioContext.state !== 'running') {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      playWinSound(audioContext)
+    }, 200)
+
+    return () => {
+      window.clearTimeout(timeout)
+    }
+  }, [showCelebration, celebrationKey])
+
+  useEffect(() => {
+    if (isSpinning || !activeSegmentId || !audioUnlockedRef.current) {
+      return
+    }
+
+    const activeSegment = segments.find((segment) => segment.id === activeSegmentId)
+    if (!activeSegment || activeSegment.kind === 'reward') {
+      return
+    }
+
+    const audioContext = getAudioContext()
+    if (!audioContext || audioContext.state !== 'running') {
+      return
+    }
+
+    playNeutralSound(audioContext)
+  }, [activeSegmentId, isSpinning, segments])
+
+  useEffect(() => {
     return () => {
       clearSpinSoundLoop()
     }
@@ -331,9 +424,13 @@ export function PrizeWheel({
   return (
     <div className="mx-auto w-full" style={wheelWrapperStyle}>
       <div className="relative aspect-square">
-        <div className="absolute inset-[-7%] rounded-full bg-[radial-gradient(circle,_rgba(251,191,36,0.28)_0%,_rgba(236,72,153,0.18)_24%,_rgba(56,189,248,0.16)_46%,_rgba(124,58,237,0.14)_60%,_transparent_76%)] blur-2xl" />
+        <div className="absolute inset-[-8%] rounded-full bg-[radial-gradient(circle,_rgba(250,204,21,0.35)_0%,_rgba(249,115,22,0.28)_22%,_rgba(236,72,153,0.24)_45%,_rgba(139,92,246,0.18)_68%,_rgba(255,255,255,0)_88%)] blur-2xl" />
         {showCelebration ? (
           <div key={celebrationKey} className="pointer-events-none absolute inset-0 z-50" aria-hidden="true">
+            <span className="celebration-flash" />
+            <span className="celebration-glow-ring" />
+            <span className="confetti-burst-core" />
+            <span className="confetti-burst-ring" />
             {confettiPieces.map((piece, index) => (
               <span
                 key={`${celebrationKey}-${index}`}
@@ -344,9 +441,33 @@ export function PrizeWheel({
                     top: '42%',
                     backgroundColor: piece.color,
                     animationDelay: piece.delay,
+                    animationDuration: piece.duration,
+                    width: piece.width,
+                    height: piece.height,
+                    borderRadius: piece.shape,
                     ['--confetti-x' as string]: piece.x,
                     ['--confetti-y' as string]: piece.y,
                     ['--confetti-rotate' as string]: piece.rotate,
+                  } as Record<string, string>
+                }
+              />
+            ))}
+            {confettiRainPieces.map((piece, index) => (
+              <span
+                key={`rain-${celebrationKey}-${index}`}
+                className="confetti-rain-piece"
+                style={
+                  {
+                    left: piece.left,
+                    top: '12%',
+                    backgroundColor: piece.color,
+                    animationDelay: piece.delay,
+                    animationDuration: piece.duration,
+                    width: piece.width,
+                    height: piece.height,
+                    borderRadius: piece.shape,
+                    ['--confetti-rain-drift' as string]: piece.drift,
+                    ['--confetti-rain-rotate' as string]: piece.rotate,
                   } as Record<string, string>
                 }
               />
@@ -357,22 +478,24 @@ export function PrizeWheel({
         <div className={pointerBaseClass} />
         <div className={pointerTipClass} />
 
-        <div className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,#fff4c3_0%,#f59e0b_16%,#fb7185_38%,#7c3aed_58%,#38bdf8_78%,#fff4c3_100%)] shadow-[0_26px_60px_rgba(79,70,229,0.24)]" />
-        <div className="absolute inset-[1.4%] rounded-full border border-white/35 bg-[linear-gradient(135deg,#fef3c7_0%,#f59e0b_24%,#c2410c_40%,#7c3aed_66%,#38bdf8_84%,#fde68a_100%)]" />
-        <div className="absolute inset-[3.7%] rounded-full bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.3),_transparent_42%),linear-gradient(180deg,#5b4a17_0%,#2b1f08_100%)] shadow-[inset_0_0_18px_rgba(0,0,0,0.24)]" />
+        <div className="absolute inset-0 rounded-full border-[6px] border-transparent bg-clip-padding shadow-[0_22px_50px_rgba(245,158,11,0.22),inset_0_0_0_1px_rgba(255,255,255,0.45)]" style={{ background: 'linear-gradient(180deg, #fefce8 0%, #fde68a 100%)' }} />
+        <div className="absolute inset-[0.7%] rounded-full border-[5px] border-white/70" style={{ background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 20%, #fcd34d 40%, #f59e0b 60%, #fbbf24 80%, #f59e0b 100%)' }} />
+        <div className="absolute inset-[1.6%] rounded-full border border-white/80 shadow-[inset_0_2px_6px_rgba(180,83,9,0.12)]" style={{ background: 'linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%)' }} />
+        <div className="absolute inset-[2.6%] rounded-full border border-amber-300/70 bg-white shadow-[inset_0_0_14px_rgba(245,158,11,0.18)]" />
 
-        <div className="absolute inset-[5.1%] overflow-hidden rounded-full border-[5px] border-white/85 shadow-[0_22px_40px_rgba(15,23,42,0.22)] transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]"
+        <div className={"absolute inset-[5.1%] overflow-hidden rounded-full border-[4px] border-white/90 shadow-[0_18px_36px_rgba(15,23,42,0.14),inset_0_0_18px_rgba(0,0,0,0.06)] " + (disableTransition ? "" : "transition-transform duration-[5200ms] [transition-timing-function:cubic-bezier(0.16,1,0.3,1)]")}
           style={{
             background: `
-              radial-gradient(circle at 50% 18%, rgba(255,255,255,0.22), transparent 26%),
-              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), transparent 70%),
-              conic-gradient(${dividerOverlay}),
-              conic-gradient(${gradient})
+              conic-gradient(from 0deg, ${dividerOverlay}),
+              conic-gradient(from 0deg, ${gradient}),
+              radial-gradient(circle at 50% 50%, rgba(255,255,255,0.12) 0%, rgba(0,0,0,0.08) 70%)
             `,
+            backgroundBlendMode: 'normal, normal, multiply',
             transform: `rotate(${rotation}deg)`,
           }}
         >
-          <div className="absolute inset-[2.2%] rounded-full border border-white/18 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.05),_transparent_72%)]">
+          <div className="pointer-events-none absolute inset-0 rounded-full shadow-[inset_0_0_40px_rgba(0,0,0,0.12)]" />
+          <div className="absolute inset-[2.2%] rounded-full border border-white/25 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_72%)]">
             {segments.map((segment, index) => {
               const centerAngle = index * angle + angle / 2
               const centerRadians = (centerAngle * Math.PI) / 180
@@ -398,11 +521,11 @@ export function PrizeWheel({
               const textShadow =
                 isRewardSegment || isRetrySegment
                   ? text === '#1f2937' || text === '#e11d48'
-                    ? '0 1px 0 rgba(255,255,255,0.62), 0 0 8px rgba(255,255,255,0.22)'
-                    : '0 3px 8px rgba(0,0,0,0.52), 0 0 2px rgba(0,0,0,0.75)'
+                    ? '0 1px 0 rgba(255,255,255,0.55)'
+                    : '0 1px 2px rgba(0,0,0,0.55), 0 0 1px rgba(0,0,0,0.6)'
                   : text === '#1f2937' || text === '#e11d48'
-                    ? '0 1px 0 rgba(255,255,255,0.5), 0 0 5px rgba(255,255,255,0.14)'
-                    : '0 2px 5px rgba(0,0,0,0.4), 0 0 1px rgba(0,0,0,0.58)'
+                    ? '0 1px 0 rgba(255,255,255,0.4)'
+                    : '0 1px 2px rgba(0,0,0,0.45), 0 0 1px rgba(0,0,0,0.5)'
 
               return (
                 <div
@@ -416,7 +539,7 @@ export function PrizeWheel({
                 >
                   <div
                     className={`-rotate-90 text-center uppercase transition ${
-                      isActive ? 'scale-[1.06]' : ''
+                      isActive ? 'scale-[1.12]' : ''
                     }`}
                     style={{
                       width:
@@ -430,7 +553,9 @@ export function PrizeWheel({
                               : labelWidth
                             : undefined,
                       color: text,
-                      textShadow,
+                      textShadow: isActive
+                        ? `${textShadow}, 0 0 14px rgba(255,255,255,0.5)`
+                        : textShadow,
                       fontSize:
                         isRewardSegment || isRetrySegment
                           ? isFullscreen
@@ -445,8 +570,8 @@ export function PrizeWheel({
                             : 'clamp(9px, 0.95vw, 14px)',
                       fontWeight: isRewardSegment || isRetrySegment ? '900' : '700',
                       lineHeight: isRewardSegment || isRetrySegment ? '1.02' : '1',
-                      letterSpacing: isRewardSegment || isRetrySegment ? '0.01em' : '0.01em',
-                      opacity: isRewardSegment || isRetrySegment ? '1' : '0.88',
+                      letterSpacing: isRewardSegment || isRetrySegment ? '0.02em' : '0.015em',
+                      opacity: isRewardSegment || isRetrySegment ? '1' : '0.9',
                     }}
                   >
                     {labelLines.map((line) => (
@@ -459,15 +584,15 @@ export function PrizeWheel({
               )
             })}
           </div>
-          <div className="absolute inset-[2%] rounded-full border border-slate-950/10" />
+          <div className="absolute inset-[2%] rounded-full border border-slate-900/8" />
         </div>
 
-        <div className="absolute left-1/2 top-1/2 z-20 flex h-[56px] w-[56px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-[#f7d794] bg-[radial-gradient(circle_at_30%_30%,#f8d892_0%,#b87333_44%,#8b5a2b_72%,#f6c667_100%)] text-center shadow-[0_12px_24px_rgba(120,53,15,0.26)] sm:h-[60px] sm:w-[60px]">
-          <div className="h-[18px] w-[18px] rounded-full bg-[radial-gradient(circle,#fff2c7_0%,#f59e0b_55%,#92400e_100%)] shadow-[inset_0_2px_4px_rgba(255,255,255,0.45)] sm:h-[20px] sm:w-[20px]" />
+        <div className="absolute left-1/2 top-1/2 z-20 flex h-[56px] w-[56px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[4px] border-amber-100 bg-[radial-gradient(circle_at_30%_30%,#fffbeb_0%,#fde68a_35%,#f59e0b_70%,#b45309_100%)] text-center shadow-[0_12px_28px_rgba(180,83,9,0.28),inset_0_-3px_8px_rgba(0,0,0,0.12)] sm:h-[60px] sm:w-[60px]">
+          <div className="h-[20px] w-[20px] rounded-full bg-[radial-gradient(circle_at_35%_35%,#fffbeb_0%,#fbbf24_45%,#d97706_100%)] shadow-[0_2px_6px_rgba(180,83,9,0.35),inset_0_1px_2px_rgba(255,255,255,0.7)] sm:h-[22px] sm:w-[22px]" />
         </div>
       </div>
 
-      <div className="mt-4 flex justify-center">
+      <div className="mt-5 flex justify-center">
         <button
           type="button"
           onClick={() => {
@@ -475,11 +600,15 @@ export function PrizeWheel({
             onSpin()
           }}
           disabled={disabled || isSpinning}
-          className={`rounded-full bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_52%,#e2e8f0_100%)] font-bold uppercase text-slate-950 shadow-[0_10px_18px_rgba(255,255,255,0.16)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 ${
-            isFullscreen ? 'px-8 py-3.5 text-xs tracking-[0.22em] sm:px-10' : 'px-6 py-2.5 text-[11px] tracking-[0.18em]'
+          className={`relative overflow-hidden rounded-full font-black uppercase text-white shadow-[0_14px_28px_rgba(0,0,0,0.22),inset_0_-4px_0_rgba(0,0,0,0.18)] transition-all active:translate-y-[2px] active:shadow-[0_6px_14px_rgba(0,0,0,0.22),inset_0_-2px_0_rgba(0,0,0,0.18)] disabled:cursor-not-allowed disabled:opacity-60 ${
+            isFullscreen ? 'px-10 py-4 text-xs tracking-[0.24em] sm:px-12' : 'px-8 py-3 text-[11px] tracking-[0.2em]'
           }`}
+          style={{ backgroundColor: primaryColor }}
         >
-          {isSpinning ? 'Girando' : spinLabel || 'Girar'}
+          <span className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.28)_0%,transparent_50%,rgba(0,0,0,0.12)_100%)]" />
+          <span className="relative z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
+            {isSpinning ? 'Girando' : spinLabel || 'Girar'}
+          </span>
         </button>
       </div>
     </div>

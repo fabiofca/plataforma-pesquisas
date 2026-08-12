@@ -10,13 +10,16 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Moon,
   Settings,
+  Sun,
   Users2,
   X,
 } from 'lucide-react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 
 import { defaultBrandingSettings, useBrandingSettings } from '@/hooks/useBrandingSettings'
+import { useTheme } from '@/hooks/useTheme'
 import { useAuthStore } from '@/store/use-auth-store'
 
 const DESKTOP_BREAKPOINT = 900
@@ -24,6 +27,7 @@ const DESKTOP_SIDEBAR_OPEN_WIDTH = 248
 const DESKTOP_SIDEBAR_CLOSED_WIDTH = 76
 const MOBILE_SIDEBAR_WIDTH = 280
 const HEADER_HEIGHT = 56
+const APP_COMMIT_SHA = __APP_COMMIT_SHA__
 
 function normalizeHexColor(value: string, fallback: string) {
   return /^#([0-9a-f]{6})$/i.test(value) ? value : fallback
@@ -116,7 +120,7 @@ function SidebarBody({
         {!compact && roleCode ? (
           <span
             className="shrink-0 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white"
-            style={{ backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 6 }}
+            style={{ backgroundColor: withAlpha('#ffffff', 0.1), borderRadius: 8 }}
           >
             {roleCode}
           </span>
@@ -130,7 +134,7 @@ function SidebarBody({
             style={{
               borderColor: withAlpha('#ffffff', 0.08),
               backgroundColor: withAlpha('#ffffff', 0.05),
-              borderRadius: 6,
+              borderRadius: 8,
             }}
           >
             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Usuário atual</p>
@@ -154,7 +158,7 @@ function SidebarBody({
                     compact ? 'justify-center' : ''
                   } ${isNavigationActive(item.to) ? 'bg-white text-slate-950' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`
                 }
-                style={{ borderRadius: 6 }}
+                style={{ borderRadius: 8 }}
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 {!compact ? <span className="truncate">{item.label}</span> : null}
@@ -172,13 +176,32 @@ function SidebarBody({
           style={{
             borderColor: withAlpha('#ffffff', 0.08),
             backgroundColor: withAlpha('#ffffff', 0.06),
-            borderRadius: 6,
+            borderRadius: 8,
           }}
           title={compact ? 'Sair' : undefined}
         >
           <LogOut className="h-4 w-4" />
           {!compact ? 'Sair' : null}
         </button>
+
+        <div
+          className={`mt-2 border px-3 py-2 text-[11px] ${compact ? 'text-center' : ''}`}
+          style={{
+            borderColor: withAlpha('#ffffff', 0.08),
+            backgroundColor: withAlpha('#ffffff', 0.04),
+            borderRadius: 8,
+          }}
+          title={`Commit ${APP_COMMIT_SHA}`}
+        >
+          {compact ? (
+            <span className="font-semibold uppercase tracking-[0.12em] text-slate-300">#{APP_COMMIT_SHA}</span>
+          ) : (
+            <>
+              <p className="uppercase tracking-[0.16em] text-slate-400">Versão atual</p>
+              <p className="mt-1 font-semibold text-white">Commit {APP_COMMIT_SHA}</p>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -191,6 +214,7 @@ export function AppShell({
   backHref,
   backLabel = 'Voltar',
   breadcrumbs,
+  hideHeader,
 }: {
   title: string
   subtitle: string
@@ -201,9 +225,12 @@ export function AppShell({
     label: string
     href?: string
   }>
+  hideHeader?: boolean
 }) {
+  const location = useLocation()
   const { user, signOut } = useAuthStore()
   const navigate = useNavigate()
+  const { theme, toggleTheme, isDark } = useTheme()
   const branding = useBrandingSettings().data ?? defaultBrandingSettings
   const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
     typeof window === 'undefined' ? true : window.innerWidth >= DESKTOP_BREAKPOINT,
@@ -238,6 +265,10 @@ export function AppShell({
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [location.pathname])
 
   const navigation = useMemo(
     () => [
@@ -282,7 +313,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900">
+    <div className="min-h-screen bg-slate-100 text-slate-900 transition-colors duration-200">
       {!isDesktopViewport && isMobileSidebarOpen ? (
         <button
           type="button"
@@ -331,7 +362,7 @@ export function AppShell({
               type="button"
               onClick={handleMobileClose}
               className="inline-flex h-9 w-9 items-center justify-center border text-white"
-              style={{ borderColor: withAlpha('#ffffff', 0.12), borderRadius: 6 }}
+              style={{ borderColor: withAlpha('#ffffff', 0.12), borderRadius: 8 }}
               aria-label="Fechar menu lateral"
             >
               <X className="h-4 w-4" />
@@ -361,7 +392,7 @@ export function AppShell({
         style={{ marginLeft: contentOffset }}
       >
         <header
-          className="fixed top-0 right-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur"
+          className="fixed top-0 right-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur transition-colors duration-200"
           style={{
             left: contentOffset,
             height: HEADER_HEIGHT,
@@ -373,7 +404,7 @@ export function AppShell({
                 type="button"
                 onClick={handleSidebarToggle}
                 className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100"
-                style={{ borderRadius: 6 }}
+                style={{ borderRadius: 8 }}
                 aria-label={isDesktopViewport ? 'Abrir ou fechar barra lateral' : 'Abrir menu lateral'}
               >
                 <Menu className="h-4 w-4" />
@@ -386,57 +417,68 @@ export function AppShell({
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100"
+                style={{ borderRadius: 8 }}
+                aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+                title={isDark ? 'Modo claro' : 'Modo escuro'}
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
               <div className="admin-badge hidden sm:block">Painel rápido</div>
               <div className="admin-badge hidden md:block">{user?.roleCode === 'master' ? 'Conta master' : 'Seu painel'}</div>
             </div>
           </div>
         </header>
 
-        <main className="px-2 pb-2 pt-[64px] md:px-3">
-          <div className="min-h-[calc(100vh-4.5rem)] w-full border border-slate-200 bg-white p-3 shadow-card md:p-4 xl:p-5">
-            <header className="mb-4 border-b border-slate-200 pb-3">
-              {(backHref || breadcrumbs?.length) ? (
-                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    {backHref ? (
-                      <button
-                        type="button"
-                        onClick={handleBackNavigation}
-                        className="inline-flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                        style={{ borderRadius: 6 }}
+        <main key={location.pathname} className="animate-fade-in px-2 pb-2 pt-[64px] md:px-3">
+          <div className={`min-h-[calc(100vh-4.5rem)] w-full border border-slate-200 bg-white shadow-card ${hideHeader ? '' : 'p-3 md:p-4 xl:p-5'}`}>
+            {!hideHeader ? (
+              <header className="mb-4 border-b border-slate-200 pb-3">
+                {(backHref || breadcrumbs?.length) ? (
+                  <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      {backHref ? (
+                        <button
+                          type="button"
+                          onClick={handleBackNavigation}
+                          className="inline-flex items-center gap-2 border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                          style={{ borderRadius: 8 }}
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                          {backLabel}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {breadcrumbs?.length ? (
+                      <nav
+                        className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:justify-end"
+                        aria-label="Caminho da pÃ¡gina"
                       >
-                        <ArrowLeft className="h-4 w-4" />
-                        {backLabel}
-                      </button>
+                        {breadcrumbs.map((item, index) => (
+                          <div key={`${item.label}-${index}`} className="flex items-center gap-2">
+                            {item.href ? (
+                              <Link to={item.href} className="transition hover:text-slate-900">
+                                {item.label}
+                              </Link>
+                            ) : (
+                              <span className="font-medium text-slate-900">{item.label}</span>
+                            )}
+
+                            {index < breadcrumbs.length - 1 ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
+                          </div>
+                        ))}
+                      </nav>
                     ) : null}
                   </div>
-
-                  {breadcrumbs?.length ? (
-                    <nav
-                      className="flex flex-wrap items-center gap-2 text-sm text-slate-500 lg:justify-end"
-                      aria-label="Caminho da pÃ¡gina"
-                    >
-                      {breadcrumbs.map((item, index) => (
-                        <div key={`${item.label}-${index}`} className="flex items-center gap-2">
-                          {item.href ? (
-                            <Link to={item.href} className="transition hover:text-slate-900">
-                              {item.label}
-                            </Link>
-                          ) : (
-                            <span className="font-medium text-slate-900">{item.label}</span>
-                          )}
-
-                          {index < breadcrumbs.length - 1 ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
-                        </div>
-                      ))}
-                    </nav>
-                  ) : null}
-                </div>
-              ) : null}
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{branding.platformName}</p>
-              <h1 className="mt-1 font-display text-[30px] leading-none text-slate-950 sm:text-[34px] lg:text-[38px]">{title}</h1>
-              <p className="mt-1 text-[13px] text-slate-600">{subtitle}</p>
-            </header>
+                ) : null}
+                <h1 className="font-display text-[26px] leading-none text-slate-950 sm:text-[30px] lg:text-[34px]">{title}</h1>
+                {subtitle ? <p className="mt-1 text-[13px] text-slate-600">{subtitle}</p> : null}
+              </header>
+            ) : null}
 
             {children}
           </div>

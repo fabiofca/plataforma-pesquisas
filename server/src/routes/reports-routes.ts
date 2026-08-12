@@ -8,11 +8,14 @@ import { ensureSurveyAccess } from '../services/survey-access.js'
 import { reportPeriodSchema } from '../validators/schemas.js'
 
 export const reportsRouter = Router()
+const REWARD_EXPIRATION_DAYS = 15
 
 type ReportRange = {
   startDate: string
   endDate: string
 }
+
+type ReportScope = 'production' | 'test' | 'all'
 
 type PaginationInput = {
   page: number
@@ -22,6 +25,10 @@ type PaginationInput = {
 type PaginationMeta = PaginationInput & {
   totalItems: number
   totalPages: number
+}
+
+type RespondentFilters = {
+  search: string
 }
 
 type RewardWinnerFilters = {
@@ -110,6 +117,8 @@ type RewardStockItem = {
 type RewardWinnerItem = {
   id: string
   awardedAt: string
+  expiresAt: string
+  isExpired: boolean
   deliveredAt: string | null
   name: string | null
   phone: string | null
@@ -118,6 +127,7 @@ type RewardWinnerItem = {
   couponCode: string
   redemptionStatus: 'pending' | 'delivered' | 'cancelled'
   redemptionNotes: string | null
+  receivedBy: string | null
 }
 
 type NoPrizeItem = {
@@ -176,6 +186,52 @@ function getReportRange(request: AuthenticatedRequest): ReportRange {
   }
 }
 
+function getReportScope(request: AuthenticatedRequest): ReportScope {
+  const scope = typeof request.query.scope === 'string' ? request.query.scope : ''
+
+  if (scope === 'test' || scope === 'all') {
+    return scope
+  }
+
+  return 'production'
+}
+
+function getResponseScopeCondition(scope: ReportScope, alias = 'survey_responses') {
+  if (scope === 'test') {
+    return `${alias}.is_test_response = true`
+  }
+
+  if (scope === 'all') {
+    return '1 = 1'
+  }
+
+  return `${alias}.is_test_response = false`
+}
+
+function getRewardWinScopeCondition(scope: ReportScope, alias = 'reward_wins') {
+  if (scope === 'test') {
+    return `${alias}.is_test_win = true`
+  }
+
+  if (scope === 'all') {
+    return '1 = 1'
+  }
+
+  return `${alias}.is_test_win = false`
+}
+
+function getRewardSpinScopeCondition(scope: ReportScope, alias = 'reward_spin_logs') {
+  if (scope === 'test') {
+    return `${alias}.is_test_spin = true`
+  }
+
+  if (scope === 'all') {
+    return '1 = 1'
+  }
+
+  return `${alias}.is_test_spin = false`
+}
+
 function parsePositiveInt(value: unknown, fallback: number, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
   const parsed = Number(value)
 
@@ -184,6 +240,26 @@ function parsePositiveInt(value: unknown, fallback: number, { min = 1, max = Num
   }
 
   return Math.min(parsed, max)
+}
+
+function getRewardExpirationInfo(input: { awardedAt: string; redemptionExpiresAt: string | null }) {
+  const expirationDate = input.redemptionExpiresAt ? new Date(input.redemptionExpiresAt) : new Date(input.awardedAt)
+
+  if (Number.isNaN(expirationDate.getTime())) {
+    return {
+      expiresAt: input.redemptionExpiresAt ?? input.awardedAt,
+      isExpired: false,
+    }
+  }
+
+  if (!input.redemptionExpiresAt) {
+    expirationDate.setUTCDate(expirationDate.getUTCDate() + REWARD_EXPIRATION_DAYS)
+  }
+
+  return {
+    expiresAt: expirationDate.toISOString(),
+    isExpired: expirationDate.getTime() < Date.now(),
+  }
 }
 
 function getPaginationQuery(
@@ -229,6 +305,21 @@ function getWinnerFilters(request: AuthenticatedRequest): RewardWinnerFilters {
         : 'awardedAt',
     sortDirection: sortDirectionRaw === 'asc' ? 'asc' : 'desc',
   }
+}
+
+function getRespondentFilters(request: AuthenticatedRequest): RespondentFilters {
+  return {
+    search: typeof request.query.search === 'string' ? request.query.search.trim() : '',
+  }
+}
+
+function toTitleCase(value: string) {
+  return value
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
 
 function roundNumber(value: number, digits = 2) {
@@ -324,6 +415,35 @@ function formatBirthdayLabel(input: { birthDay: number | null; birthMonth: numbe
   return `${String(input.birthDay).padStart(2, '0')}/${String(input.birthMonth).padStart(2, '0')}`
 }
 
+function formatDateBR(value: string | Date) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [year, month, day] = trimmed.split('-')
+      return `${day}/${month}/${year}`
+    }
+  }
+
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return String(value)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
+function formatDateTimeBR(value: string | Date) {
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return String(value)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${day}/${month}/${year} ${hours}:${minutes}`
+}
+
 function ensurePdfSpace(document: PDFKit.PDFDocument, minSpace = 72) {
   if (document.y > document.page.height - document.page.margins.bottom - minSpace) {
     document.addPage()
@@ -367,11 +487,14 @@ async function getSummaryReportData(
   surveyId: string,
   range: ReportRange,
   canViewTracking: boolean,
+  scope: ReportScope,
 ): Promise<{
   summary: ReportSummary
   period: ReportPeriodItem[]
   range: ReportRange
 }> {
+  const responseScopeCondition = getResponseScopeCondition(scope)
+  const rewardWinScopeCondition = getRewardWinScopeCondition(scope)
   const summary = await query<ReportSummary>(
     `with metrics as (
         select
@@ -379,6 +502,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and submitted_at >= $2::date
               and submitted_at < ($3::date + interval '1 day')
           ) as total_responses,
@@ -386,6 +510,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and participant_name is not null
               and submitted_at >= $2::date
               and submitted_at < ($3::date + interval '1 day')
@@ -395,6 +520,7 @@ async function getSummaryReportData(
             from reward_wins
             join survey_responses on reward_wins.response_id = survey_responses.id
             where survey_responses.survey_id = $1
+              and ${rewardWinScopeCondition}
               and survey_responses.submitted_at >= $2::date
               and survey_responses.submitted_at < ($3::date + interval '1 day')
           ) as reward_wins,
@@ -402,6 +528,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and participant_email is not null
               and submitted_at >= $2::date
               and submitted_at < ($3::date + interval '1 day')
@@ -410,6 +537,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and participant_birth_day is not null
               and participant_birth_month is not null
               and submitted_at >= $2::date
@@ -463,6 +591,7 @@ async function getSummaryReportData(
         select date_trunc('day', submitted_at) as day
         from survey_responses
         where survey_id = $1
+          and ${responseScopeCondition}
           and submitted_at >= $2::date
           and submitted_at < ($3::date + interval '1 day')
         union
@@ -476,6 +605,7 @@ async function getSummaryReportData(
         select date_trunc('day', submitted_at) as day, count(*) as total
         from survey_responses
         where survey_id = $1
+          and ${responseScopeCondition}
           and submitted_at >= $2::date
           and submitted_at < ($3::date + interval '1 day')
         group by 1
@@ -499,17 +629,19 @@ async function getSummaryReportData(
     [surveyId, range.startDate, range.endDate],
   )
 
+  const allowTrackingMetrics = canViewTracking && scope !== 'test'
+
   return {
     summary: {
       ...summary.rows[0],
-      link_clicks: canViewTracking ? summary.rows[0].link_clicks : '0',
-      qr_scans: canViewTracking ? summary.rows[0].qr_scans : '0',
-      total_visits: canViewTracking ? summary.rows[0].total_visits : '0',
-      conversion_rate: canViewTracking ? summary.rows[0].conversion_rate : '0',
+      link_clicks: allowTrackingMetrics ? summary.rows[0].link_clicks : '0',
+      qr_scans: allowTrackingMetrics ? summary.rows[0].qr_scans : '0',
+      total_visits: allowTrackingMetrics ? summary.rows[0].total_visits : '0',
+      conversion_rate: allowTrackingMetrics ? summary.rows[0].conversion_rate : '0',
     },
     period: period.rows.map((item) => ({
       ...item,
-      visits: canViewTracking ? item.visits : '0',
+      visits: allowTrackingMetrics ? item.visits : '0',
     })),
     range,
   }
@@ -518,9 +650,11 @@ async function getSummaryReportData(
 async function getRespondentsReportData(
   surveyId: string,
   range: ReportRange,
+  scope: ReportScope,
   options?: {
     pagination?: PaginationInput
     all?: boolean
+    filters?: RespondentFilters
   },
 ): Promise<{
   respondents: ReportRespondentItem[]
@@ -528,19 +662,34 @@ async function getRespondentsReportData(
   range: ReportRange
 }> {
   const pagination = options?.pagination ?? { page: 1, pageSize: 20 }
+  const responseScopeCondition = getResponseScopeCondition(scope)
+  const filters = options?.filters ?? { search: '' }
+  const baseValues: Array<string | number> = [surveyId, range.startDate, range.endDate]
+  const whereClauses = [
+    'survey_id = $1',
+    responseScopeCondition,
+    'submitted_at >= $2::date',
+    "submitted_at < ($3::date + interval '1 day')",
+  ]
+
+  if (filters.search) {
+    baseValues.push(`%${filters.search}%`)
+    whereClauses.push(
+      `(coalesce(participant_name, '') ilike $${baseValues.length} or coalesce(participant_phone, '') ilike $${baseValues.length} or coalesce(participant_email, '') ilike $${baseValues.length})`,
+    )
+  }
+
   const countResult = await query<{ total: string }>(
     `select cast(count(*) as text) as total
      from survey_responses
-     where survey_id = $1
-       and submitted_at >= $2::date
-       and submitted_at < ($3::date + interval '1 day')`,
-    [surveyId, range.startDate, range.endDate],
+     where ${whereClauses.join('\n       and ')}`,
+    baseValues,
   )
   const totalItems = Number(countResult.rows[0]?.total ?? 0)
   const meta = buildPaginationMeta(totalItems, pagination)
   const offset = (meta.page - 1) * meta.pageSize
 
-  const values: Array<string | number> = [surveyId, range.startDate, range.endDate]
+  const values = [...baseValues]
   let paginationSql = ''
 
   if (!options?.all) {
@@ -566,9 +715,7 @@ async function getRespondentsReportData(
         participant_birth_day,
         participant_birth_month
      from survey_responses
-     where survey_id = $1
-       and submitted_at >= $2::date
-       and submitted_at < ($3::date + interval '1 day')
+     where ${whereClauses.join('\n       and ')}
      order by submitted_at desc${paginationSql}`,
     values,
   )
@@ -576,7 +723,7 @@ async function getRespondentsReportData(
   return {
     respondents: result.rows.map((row) => ({
       id: row.id,
-      submittedAt: row.submitted_at,
+      submittedAt: formatDateTimeBR(row.submitted_at),
       name: row.participant_name,
       phone: row.participant_phone,
       email: row.participant_email,
@@ -602,15 +749,18 @@ async function getRespondentsReportData(
 async function getQuestionReportData(
   surveyId: string,
   range: ReportRange,
+  scope: ReportScope,
 ): Promise<{
   questions: ReportQuestionItem[]
   totalResponses: number
   range: ReportRange
 }> {
+  const responseScopeCondition = getResponseScopeCondition(scope)
   const totalResponsesResult = await query<{ total: string }>(
     `select cast(count(*) as text) as total
      from survey_responses
      where survey_id = $1
+       and ${responseScopeCondition}
        and submitted_at >= $2::date
        and submitted_at < ($3::date + interval '1 day')`,
     [surveyId, range.startDate, range.endDate],
@@ -657,6 +807,7 @@ async function getQuestionReportData(
       from response_answers
       join survey_responses on survey_responses.id = response_answers.response_id
       where survey_responses.survey_id = $1
+        and ${responseScopeCondition}
         and survey_responses.submitted_at >= $2::date
         and survey_responses.submitted_at < ($3::date + interval '1 day')
       order by survey_responses.submitted_at desc`,
@@ -841,6 +992,7 @@ async function getRewardReportData(
   surveyId: string,
   range: ReportRange,
   options?: {
+    scope?: ReportScope
     winnerFilters?: RewardWinnerFilters
     winnerPagination?: PaginationInput
     includeAllWinners?: boolean
@@ -848,18 +1000,20 @@ async function getRewardReportData(
 ): Promise<{
   summary: RewardSummaryItem
   pickupAddress: string | null
+  requireReceiverIdentity: boolean
   stock: RewardStockItem[]
   winners: RewardWinnerItem[]
   winnersPagination: PaginationMeta
   noPrizeBreakdown: NoPrizeItem[]
   range: ReportRange
 }> {
-  const campaignResult = await query<{ id: string; pickup_address: string | null }>(
-    'select id, pickup_address from reward_campaigns where survey_id = $1 limit 1',
+  const campaignResult = await query<{ id: string; pickup_address: string | null; require_receiver_identity: boolean }>(
+    'select id, pickup_address, require_receiver_identity from reward_campaigns where survey_id = $1 limit 1',
     [surveyId],
   )
   const campaignId = campaignResult.rows[0]?.id
   const pickupAddress = campaignResult.rows[0]?.pickup_address ?? null
+  const requireReceiverIdentity = campaignResult.rows[0]?.require_receiver_identity ?? false
 
   if (!campaignId) {
     return {
@@ -872,6 +1026,7 @@ async function getRewardReportData(
         cancelled_redemptions: '0',
       },
       pickupAddress,
+      requireReceiverIdentity,
       stock: [],
       winners: [],
       winnersPagination: {
@@ -885,6 +1040,9 @@ async function getRewardReportData(
     }
   }
 
+  const scope = options?.scope ?? 'production'
+  const rewardWinScopeCondition = getRewardWinScopeCondition(scope)
+  const rewardSpinScopeCondition = getRewardSpinScopeCondition(scope)
   const winnerFilters = options?.winnerFilters ?? {
     name: '',
     phone: '',
@@ -897,6 +1055,7 @@ async function getRewardReportData(
   const winnerPagination = options?.winnerPagination ?? { page: 1, pageSize: 20 }
   const winnerWhereClauses = [
     'reward_wins.campaign_id = $1',
+    rewardWinScopeCondition,
     'reward_wins.awarded_at >= $2::date',
     "reward_wins.awarded_at < ($3::date + interval '1 day')",
   ]
@@ -963,22 +1122,26 @@ async function getRewardReportData(
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
+              and ${rewardWinScopeCondition}
               and redemption_status = 'pending'
           ) as pending_redemptions,
           (
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
+              and ${rewardWinScopeCondition}
               and redemption_status = 'delivered'
           ) as delivered_redemptions,
           (
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
+              and ${rewardWinScopeCondition}
               and redemption_status = 'cancelled'
           ) as cancelled_redemptions
        from reward_spin_logs
        where campaign_id = $1
+         and ${rewardSpinScopeCondition}
          and created_at >= $2::date
          and created_at < ($3::date + interval '1 day')`,
       [campaignId, range.startDate, range.endDate],
@@ -998,6 +1161,7 @@ async function getRewardReportData(
           cast(count(reward_wins.id) filter (
             where reward_wins.awarded_at >= $2::date
               and reward_wins.awarded_at < ($3::date + interval '1 day')
+              and ${rewardWinScopeCondition}
           ) as text) as wins_in_range
        from reward_items
        left join reward_wins on reward_wins.reward_item_id = reward_items.id
@@ -1009,6 +1173,7 @@ async function getRewardReportData(
     query<{
       id: string
       awarded_at: string
+      redemption_expires_at: string | null
       delivered_at: string | null
       participant_name: string | null
       participant_phone: string | null
@@ -1017,10 +1182,12 @@ async function getRewardReportData(
       coupon_code: string
       redemption_status: 'pending' | 'delivered' | 'cancelled'
       redemption_notes: string | null
+      received_by: string | null
     }>(
       `select
           reward_wins.id,
           cast(reward_wins.awarded_at as text) as awarded_at,
+          cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
           cast(reward_wins.delivered_at as text) as delivered_at,
           survey_responses.participant_name,
           survey_responses.participant_phone,
@@ -1028,7 +1195,8 @@ async function getRewardReportData(
           reward_items.title as item_title,
           reward_wins.coupon_code,
           reward_wins.redemption_status,
-          reward_wins.redemption_notes
+          reward_wins.redemption_notes,
+          reward_wins.received_by
        from reward_wins
        join reward_items on reward_items.id = reward_wins.reward_item_id
        join survey_responses on survey_responses.id = reward_wins.response_id
@@ -1040,6 +1208,7 @@ async function getRewardReportData(
       `select wheel_label as label, cast(count(*) as text) as count
        from reward_spin_logs
        where campaign_id = $1
+         and ${rewardSpinScopeCondition}
          and outcome_type = 'no_prize'
          and created_at >= $2::date
          and created_at < ($3::date + interval '1 day')
@@ -1059,6 +1228,7 @@ async function getRewardReportData(
       cancelled_redemptions: '0',
     },
     pickupAddress,
+    requireReceiverIdentity,
     stock: stockResult.rows.map((item) => ({
       id: item.id,
       title: item.title,
@@ -1067,18 +1237,28 @@ async function getRewardReportData(
       remainingStock: Math.max(item.quantity_total - item.quantity_awarded, 0),
       winsInRange: Number(item.wins_in_range ?? 0),
     })),
-    winners: winnersResult.rows.map((row) => ({
-      id: row.id,
-      awardedAt: row.awarded_at,
-      deliveredAt: row.delivered_at,
-      name: row.participant_name,
-      phone: row.participant_phone,
-      email: row.participant_email,
-      itemTitle: row.item_title,
-      couponCode: row.coupon_code,
-      redemptionStatus: row.redemption_status,
-      redemptionNotes: row.redemption_notes,
-    })),
+    winners: winnersResult.rows.map((row) => {
+      const expiration = getRewardExpirationInfo({
+        awardedAt: row.awarded_at,
+        redemptionExpiresAt: row.redemption_expires_at,
+      })
+
+      return {
+        id: row.id,
+        awardedAt: row.awarded_at,
+        expiresAt: expiration.expiresAt,
+        isExpired: expiration.isExpired,
+        deliveredAt: row.delivered_at,
+        name: row.participant_name,
+        phone: row.participant_phone,
+        email: row.participant_email,
+        itemTitle: row.item_title,
+        couponCode: row.coupon_code,
+        redemptionStatus: row.redemption_status,
+        redemptionNotes: row.redemption_notes,
+        receivedBy: row.received_by,
+      }
+    }),
     winnersPagination: options?.includeAllWinners
       ? {
           page: 1,
@@ -1229,11 +1409,13 @@ function buildCsvReportContent(input: {
     winners: RewardWinnerItem[]
     noPrizeBreakdown: NoPrizeItem[]
   }
+  missingProducts?: MissingProductsResponse[]
+  attendantPerformance?: AttendantPerformanceResponse[]
 }) {
   const lines: string[][] = [
     ['Relatório', input.title],
-    ['Período inicial', input.range.startDate],
-    ['Período final', input.range.endDate],
+    ['Período inicial', formatDateBR(input.range.startDate)],
+    ['Período final', formatDateBR(input.range.endDate)],
     ['Total de respostas', input.summary.total_responses],
     ['Participação identificada', input.summary.identified_responses],
     ['Prêmios entregues', input.summary.reward_wins],
@@ -1261,7 +1443,7 @@ function buildCsvReportContent(input: {
     ['Local de retirada', input.rewards.pickupAddress ?? 'Não informado'],
     [],
     ['Dia', 'Acessos', 'Respostas'],
-    ...input.period.map((item) => [item.day, item.visits, item.responses]),
+    ...input.period.map((item) => [formatDateBR(item.day), item.visits, item.responses]),
   ]
 
   if (input.questions.length) {
@@ -1317,18 +1499,20 @@ function buildCsvReportContent(input: {
   if (input.rewards.winners.length) {
     lines.push([])
     lines.push(['Ganhadores'])
-    lines.push(['Data', 'Nome', 'WhatsApp', 'E-mail', 'Prêmio', 'Protocolo', 'Status', 'Retirado em', 'Observações'])
+    lines.push(['Data', 'Validade', 'Expirado', 'Nome', 'WhatsApp', 'E-mail', 'Prêmio', 'Protocolo', 'Status', 'Retirado em', 'Observações'])
 
     for (const winner of input.rewards.winners) {
       lines.push([
-        winner.awardedAt,
+        formatDateTimeBR(winner.awardedAt),
+        formatDateBR(winner.expiresAt),
+        winner.isExpired ? 'Sim' : 'Não',
         winner.name ?? '',
         winner.phone ?? '',
         winner.email ?? '',
         winner.itemTitle,
         winner.couponCode,
         winner.redemptionStatus,
-        winner.deliveredAt ?? '',
+        winner.deliveredAt ? formatDateTimeBR(winner.deliveredAt) : '',
         winner.redemptionNotes ?? '',
       ])
     }
@@ -1337,16 +1521,39 @@ function buildCsvReportContent(input: {
   if (input.respondents.length) {
     lines.push([])
     lines.push(['Participantes'])
-    lines.push(['Data', 'Nome', 'WhatsApp', 'E-mail', 'Aniversário'])
+    lines.push(['Data', 'Nome', 'WhatsApp', 'Aniversário', 'E-mail'])
 
     for (const respondent of input.respondents) {
       lines.push([
         respondent.submittedAt,
         respondent.name ?? '',
         respondent.phone ?? '',
-        respondent.email ?? '',
         respondent.birthdayLabel ?? '',
+        respondent.email ?? '',
       ])
+    }
+  }
+
+  if (input.missingProducts?.length) {
+    for (const report of input.missingProducts) {
+      lines.push([])
+      lines.push([`Produtos em falta — ${report.questionTitle}`])
+      lines.push(['Produto', 'Menções', 'Porcentagem'])
+      for (const item of report.items) {
+        lines.push([item.product, String(item.count), `${item.percentage}%`])
+      }
+    }
+  }
+
+  if (input.attendantPerformance?.length) {
+    for (const report of input.attendantPerformance) {
+      lines.push([])
+      lines.push([`Desempenho dos atendentes — ${report.nameQuestionTitle}`])
+      lines.push(['Posição', 'Atendente', 'Nota média', 'Avaliações', 'Faixa'])
+      for (let i = 0; i < report.attendants.length; i++) {
+        const att = report.attendants[i]
+        lines.push([`${i + 1}º`, att.name, String(att.averageRating), String(att.ratingCount), `${att.minRating}-${att.maxRating}`])
+      }
     }
   }
 
@@ -1367,6 +1574,8 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
     winners: RewardWinnerItem[]
     noPrizeBreakdown: NoPrizeItem[]
   }
+  missingProducts?: MissingProductsResponse[]
+  attendantPerformance?: AttendantPerformanceResponse[]
 }) {
   const summaryLines = [
     `Total de respostas: ${input.summary.total_responses}`,
@@ -1387,7 +1596,7 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
 
   document.fontSize(20).fillColor('#0f172a').text(input.title)
   document.moveDown(0.4)
-  document.fontSize(11).fillColor('#475569').text(`Período: ${input.range.startDate} até ${input.range.endDate}`)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
   document.moveDown()
 
   document.fontSize(14).fillColor('#0f172a').text('Resumo')
@@ -1406,7 +1615,7 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
       document
         .fontSize(10)
         .fillColor('#111827')
-        .text(`${item.day}: ${item.visits} acessos | ${item.responses} respostas`)
+        .text(`${formatDateBR(item.day)}: ${item.visits} acessos | ${item.responses} respostas`)
     }
   } else {
     document.fontSize(10).fillColor('#64748b').text('Nenhum dado disponível para o período selecionado.')
@@ -1511,8 +1720,8 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
         .text(`Data: ${respondent.submittedAt}`)
         .text(`Nome: ${respondent.name ?? '-'}`)
         .text(`WhatsApp: ${respondent.phone ?? '-'}`)
-        .text(`E-mail: ${respondent.email ?? '-'}`)
         .text(`Aniversário: ${respondent.birthdayLabel ?? '-'}`)
+        .text(`E-mail: ${respondent.email ?? '-'}`)
       document.moveDown(0.6)
     })
   }
@@ -1524,31 +1733,68 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
 
   if (!input.rewards.winners.length) {
     document.fontSize(10).fillColor('#64748b').text('Nenhum ganhador disponível para o período selecionado.')
-    return
+  } else {
+    input.rewards.winners.forEach((winner) => {
+      ensurePdfSpace(document, 84)
+      document
+        .fontSize(10)
+        .fillColor('#111827')
+        .text(`Data: ${formatDateTimeBR(winner.awardedAt)}`)
+        .text(`Validade: ${formatDateBR(winner.expiresAt)}`)
+        .text(`Expirado: ${winner.isExpired ? 'Sim' : 'Não'}`)
+        .text(`Nome: ${winner.name ?? '-'}`)
+        .text(`WhatsApp: ${winner.phone ?? '-'}`)
+        .text(`E-mail: ${winner.email ?? '-'}`)
+        .text(`Prêmio: ${winner.itemTitle}`)
+        .text(`Protocolo: ${winner.couponCode}`)
+        .text(`Status: ${winner.redemptionStatus}`)
+        .text(`Retirado em: ${winner.deliveredAt ? formatDateTimeBR(winner.deliveredAt) : '-'}`)
+        .text(`Observações: ${winner.redemptionNotes ?? '-'}`)
+      document.moveDown(0.6)
+    })
   }
 
-  input.rewards.winners.forEach((winner) => {
-    ensurePdfSpace(document, 84)
-    document
-      .fontSize(10)
-      .fillColor('#111827')
-      .text(`Data: ${winner.awardedAt}`)
-      .text(`Nome: ${winner.name ?? '-'}`)
-      .text(`WhatsApp: ${winner.phone ?? '-'}`)
-      .text(`E-mail: ${winner.email ?? '-'}`)
-      .text(`Prêmio: ${winner.itemTitle}`)
-      .text(`Protocolo: ${winner.couponCode}`)
-      .text(`Status: ${winner.redemptionStatus}`)
-      .text(`Retirado em: ${winner.deliveredAt ?? '-'}`)
-      .text(`Observações: ${winner.redemptionNotes ?? '-'}`)
-    document.moveDown(0.6)
-  })
+  if (input.missingProducts?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 180)
+    document.fontSize(14).fillColor('#0f172a').text('Produtos em falta')
+    document.moveDown(0.4)
+    for (const report of input.missingProducts) {
+      ensurePdfSpace(document, 60)
+      document.fontSize(11).fillColor('#0f172a').text(report.questionTitle)
+      document.moveDown(0.2)
+      for (const item of report.items) {
+        ensurePdfSpace(document, 24)
+        document.fontSize(10).fillColor('#111827').text(`${item.product}: ${item.count} menções (${item.percentage}%)`)
+      }
+      document.moveDown(0.4)
+    }
+  }
+
+  if (input.attendantPerformance?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 180)
+    document.fontSize(14).fillColor('#0f172a').text('Desempenho dos atendentes')
+    document.moveDown(0.4)
+    for (const report of input.attendantPerformance) {
+      ensurePdfSpace(document, 60)
+      document.fontSize(11).fillColor('#0f172a').text(report.nameQuestionTitle)
+      document.moveDown(0.2)
+      for (let i = 0; i < report.attendants.length; i++) {
+        const att = report.attendants[i]
+        ensurePdfSpace(document, 24)
+        document.fontSize(10).fillColor('#111827').text(`${i + 1}º ${att.name}: nota média ${att.averageRating} (${att.ratingCount} avaliações)`)
+      }
+      document.moveDown(0.4)
+    }
+  }
 }
 
 reportsRouter.use(requireAuth)
 
 reportsRouter.get('/surveys/:id/reports/summary', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1562,11 +1808,12 @@ reportsRouter.get('/surveys/:id/reports/summary', async (request: AuthenticatedR
     'survey_share_tracking',
   )
 
-  response.json(await getSummaryReportData(surveyId, getReportRange(request), canViewTracking))
+  response.json(await getSummaryReportData(surveyId, getReportRange(request), canViewTracking, scope))
 })
 
 reportsRouter.get('/surveys/:id/reports/questions', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1574,11 +1821,13 @@ reportsRouter.get('/surveys/:id/reports/questions', async (request: Authenticate
     return
   }
 
-  response.json(await getQuestionReportData(surveyId, getReportRange(request)))
+  response.json(await getQuestionReportData(surveyId, getReportRange(request), scope))
 })
 
 reportsRouter.get('/surveys/:id/reports/respondents', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1587,14 +1836,16 @@ reportsRouter.get('/surveys/:id/reports/respondents', async (request: Authentica
   }
 
   response.json(
-    await getRespondentsReportData(surveyId, getReportRange(request), {
+    await getRespondentsReportData(surveyId, getReportRange(request), scope, {
       pagination: getPaginationQuery(request),
+      filters,
     }),
   )
 })
 
 reportsRouter.get('/surveys/:id/reports/rewards', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1604,6 +1855,7 @@ reportsRouter.get('/surveys/:id/reports/rewards', async (request: AuthenticatedR
 
   response.json(
     await getRewardReportData(surveyId, getReportRange(request), {
+      scope,
       winnerFilters: getWinnerFilters(request),
       winnerPagination: getPaginationQuery(request),
     }),
@@ -1612,6 +1864,7 @@ reportsRouter.get('/surveys/:id/reports/rewards', async (request: AuthenticatedR
 
 reportsRouter.get('/surveys/:id/reports/export.csv', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1636,12 +1889,14 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
     request.auth!.roleCode,
     'survey_share_tracking',
   )
-  const [title, summaryData, questionsData, respondentsData, rewardsData] = await Promise.all([
+  const [title, summaryData, questionsData, respondentsData, rewardsData, missingProductsData, attendantPerformanceData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getSummaryReportData(surveyId, range, canViewTracking),
-    getQuestionReportData(surveyId, range),
-    getRespondentsReportData(surveyId, range, { all: true }),
-    getRewardReportData(surveyId, range, { includeAllWinners: true }),
+    getSummaryReportData(surveyId, range, canViewTracking, scope),
+    getQuestionReportData(surveyId, range, scope),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRewardReportData(surveyId, range, { includeAllWinners: true, scope }),
+    getMissingProductsReportData(surveyId, range, scope),
+    getAttendantPerformanceReportData(surveyId, range, scope),
   ])
 
   const fileName = `relatorio-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
@@ -1653,6 +1908,8 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
     questions: questionsData.questions,
     respondents: respondentsData.respondents,
     rewards: rewardsData,
+    missingProducts: missingProductsData,
+    attendantPerformance: attendantPerformanceData,
   })
 
   response.setHeader('Content-Type', 'text/csv; charset=utf-8')
@@ -1662,6 +1919,7 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
 
 reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1686,12 +1944,14 @@ reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: Authenticat
     request.auth!.roleCode,
     'survey_share_tracking',
   )
-  const [title, summaryData, questionsData, respondentsData, rewardsData] = await Promise.all([
+  const [title, summaryData, questionsData, respondentsData, rewardsData, missingProductsData, attendantPerformanceData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getSummaryReportData(surveyId, range, canViewTracking),
-    getQuestionReportData(surveyId, range),
-    getRespondentsReportData(surveyId, range, { all: true }),
-    getRewardReportData(surveyId, range, { includeAllWinners: true }),
+    getSummaryReportData(surveyId, range, canViewTracking, scope),
+    getQuestionReportData(surveyId, range, scope),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRewardReportData(surveyId, range, { includeAllWinners: true, scope }),
+    getMissingProductsReportData(surveyId, range, scope),
+    getAttendantPerformanceReportData(surveyId, range, scope),
   ])
 
   const fileName = `relatorio-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
@@ -1712,7 +1972,814 @@ reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: Authenticat
     questions: questionsData.questions,
     respondents: respondentsData.respondents,
     rewards: rewardsData,
+    missingProducts: missingProductsData,
+    attendantPerformance: attendantPerformanceData,
   })
+  document.end()
+})
+
+function buildParticipantsCsvContent(input: {
+  title: string
+  range: ReportRange
+  respondents: ReportRespondentItem[]
+  search?: string
+}) {
+  const lines: string[][] = [
+    ['Participantes da pesquisa', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    ['Busca aplicada', input.search?.trim() ? input.search.trim() : 'Todas'],
+    ['Total de participantes', String(input.respondents.length)],
+    [],
+    ['Nome', 'WhatsApp', 'Aniversário', 'E-mail', 'Data de participação'],
+  ]
+
+  for (const respondent of input.respondents) {
+    lines.push([
+      respondent.name ?? '',
+      respondent.phone ?? '',
+      respondent.birthdayLabel ?? '',
+      respondent.email ?? '',
+      respondent.submittedAt,
+    ])
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, respondentsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getRespondentsReportData(surveyId, range, scope, { all: true, filters }),
+  ])
+
+  const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildParticipantsCsvContent({
+    title,
+    range,
+    respondents: respondentsData.respondents,
+    search: filters.search,
+  })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+function buildParticipantsTxtContent(input: {
+  title: string
+  range: ReportRange
+  respondents: ReportRespondentItem[]
+  search?: string
+}) {
+  const separator = '─'.repeat(70)
+  const lines: string[] = [
+    separator,
+    `  PARTICIPANTES DA PESQUISA: ${input.title}`,
+    `  Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`,
+    `  Busca aplicada: ${input.search?.trim() ? input.search.trim() : 'Todas'}`,
+    `  Total de participantes: ${input.respondents.length}`,
+    separator,
+    '',
+  ]
+
+  for (let i = 0; i < input.respondents.length; i++) {
+    const r = input.respondents[i]
+    lines.push(`  ${i + 1}. Nome: ${r.name ?? 'Não informado'}`)
+    lines.push(`     WhatsApp: ${r.phone ?? 'Não informado'}`)
+    lines.push(`     Aniversário: ${r.birthdayLabel ?? 'Não informado'}`)
+    lines.push(`     E-mail: ${r.email ?? 'Não informado'}`)
+    lines.push(`     Data de participação: ${r.submittedAt}`)
+    lines.push('')
+  }
+
+  lines.push(separator)
+  return lines.join('\n')
+}
+
+function buildParticipantsPdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  respondents: ReportRespondentItem[]
+  search?: string
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Participantes — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.fontSize(11).fillColor('#475569').text(`Busca aplicada: ${input.search?.trim() ? input.search.trim() : 'Todas'}`)
+  document.fontSize(11).fillColor('#475569').text(`Total: ${input.respondents.length} participante(s)`)
+  document.moveDown()
+
+  const columns = [
+    { key: 'name', label: 'Nome', x: 40, width: 170 },
+    { key: 'phone', label: 'WhatsApp', x: 210, width: 95 },
+    { key: 'birthday', label: 'Aniv.', x: 305, width: 55 },
+    { key: 'email', label: 'E-mail', x: 360, width: 110 },
+    { key: 'date', label: 'Data', x: 470, width: 85 },
+  ] as const
+  const tableWidth = 515
+
+  ensurePdfSpace(document, 48)
+  const headerY = document.y
+  document.fontSize(9).fillColor('#64748b').font('Helvetica-Bold')
+  for (const column of columns) {
+    document.text(column.label, column.x, headerY, {
+      width: column.width,
+      lineBreak: false,
+    })
+  }
+
+  const headerBottomY = headerY + 16
+  document
+    .moveTo(40, headerBottomY)
+    .lineTo(40 + tableWidth, headerBottomY)
+    .strokeColor('#e2e8f0')
+    .lineWidth(0.5)
+    .stroke()
+
+  document.font('Helvetica').fontSize(8).fillColor('#111827')
+  document.y = headerBottomY + 8
+
+  for (const r of input.respondents) {
+    const values = {
+      name: r.name ?? 'Não informado',
+      phone: r.phone ?? '-',
+      birthday: r.birthdayLabel ?? '-',
+      email: r.email ?? '-',
+      date: r.submittedAt,
+    }
+    const rowHeight = Math.max(
+      16,
+      ...columns.map((column) =>
+        document.heightOfString(values[column.key], {
+          width: column.width,
+          align: 'left',
+        }),
+      ),
+    )
+
+    ensurePdfSpace(document, rowHeight + 12)
+    const rowY = document.y
+
+    for (const column of columns) {
+      document.text(values[column.key], column.x, rowY, {
+        width: column.width,
+        lineBreak: false,
+      })
+    }
+
+    const rowBottomY = rowY + rowHeight + 4
+    document
+      .moveTo(40, rowBottomY)
+      .lineTo(40 + tableWidth, rowBottomY)
+      .strokeColor('#f1f5f9')
+      .lineWidth(0.5)
+      .stroke()
+
+    document.y = rowBottomY + 6
+  }
+}
+
+reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, respondentsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getRespondentsReportData(surveyId, range, scope, { all: true, filters }),
+  ])
+
+  const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.txt`
+  const txt = buildParticipantsTxtContent({
+    title,
+    range,
+    respondents: respondentsData.respondents,
+    search: filters.search,
+  })
+
+  response.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(txt)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, respondentsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getRespondentsReportData(surveyId, range, scope, { all: true, filters }),
+  ])
+
+  const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildParticipantsPdfDocument(document, {
+    title,
+    range,
+    respondents: respondentsData.respondents,
+    search: filters.search,
+  })
+  document.end()
+})
+
+function buildQuestionCsvContent(input: {
+  title: string
+  range: ReportRange
+  question: ReportQuestionItem
+  questionIndex: number
+}) {
+  const lines: string[][] = [
+    ['Pergunta da pesquisa', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    ['Pergunta', `Pergunta ${input.questionIndex}`],
+    ['Título', input.question.title],
+    ['Tipo', formatQuestionTypeLabel(input.question.type)],
+    ['Total de respostas', String(input.question.totalAnswers)],
+    ['Taxa de conclusão', `${input.question.completionRate}%`],
+  ]
+
+  if (input.question.averageScore !== undefined) {
+    lines.push(['Média', String(input.question.averageScore)])
+  }
+
+  if (input.question.nps) {
+    lines.push(['NPS', String(input.question.nps.score)])
+    lines.push(['Promotores', String(input.question.nps.promoters)])
+    lines.push(['Neutros', String(input.question.nps.neutrals)])
+    lines.push(['Detratores', String(input.question.nps.detractors)])
+  }
+
+  if (input.question.description) {
+    lines.push(['Descrição', input.question.description])
+  }
+
+  if (input.question.distribution?.length) {
+    lines.push([])
+    lines.push(['Distribuição'])
+    lines.push(['Opção', 'Quantidade', 'Percentual'])
+    for (const item of input.question.distribution) {
+      lines.push([item.label, String(item.count), `${item.percentage}%`])
+    }
+  }
+
+  if (input.question.textSamples?.length) {
+    lines.push([])
+    lines.push(['Amostras de resposta'])
+    lines.push(['Texto'])
+    for (const sample of input.question.textSamples) {
+      lines.push([sample])
+    }
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+function buildQuestionPdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  question: ReportQuestionItem
+  questionIndex: number
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Pergunta ${input.questionIndex} — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.moveDown()
+  document.fontSize(14).fillColor('#0f172a').text(input.question.title)
+  document.moveDown(0.2)
+  document.fontSize(10).fillColor('#475569').text(`Tipo: ${formatQuestionTypeLabel(input.question.type)}`)
+  document.fontSize(10).fillColor('#111827').text(`Respostas: ${input.question.totalAnswers}`)
+  document.fontSize(10).fillColor('#111827').text(`Conclusão: ${input.question.completionRate}%`)
+
+  if (input.question.description) {
+    document.moveDown(0.3)
+    document.fontSize(10).fillColor('#111827').text(`Descrição: ${input.question.description}`)
+  }
+
+  if (input.question.averageScore !== undefined) {
+    document.fontSize(10).fillColor('#111827').text(`Média: ${input.question.averageScore}`)
+  }
+
+  if (input.question.nps) {
+    document
+      .fontSize(10)
+      .fillColor('#111827')
+      .text(
+        `NPS: ${input.question.nps.score} | Promotores: ${input.question.nps.promoters} | Neutros: ${input.question.nps.neutrals} | Detratores: ${input.question.nps.detractors}`,
+      )
+  }
+
+  if (input.question.distribution?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 120)
+    document.fontSize(13).fillColor('#0f172a').text('Distribuição')
+    document.moveDown(0.3)
+    for (const item of input.question.distribution) {
+      ensurePdfSpace(document, 24)
+      document.fontSize(10).fillColor('#111827').text(`${item.label}: ${item.count} resposta(s) (${item.percentage}%)`)
+    }
+  }
+
+  if (input.question.textSamples?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 120)
+    document.fontSize(13).fillColor('#0f172a').text('Amostras de resposta')
+    document.moveDown(0.3)
+    for (const sample of input.question.textSamples) {
+      ensurePdfSpace(document, 36)
+      document.fontSize(10).fillColor('#111827').text(`- ${sample}`)
+    }
+  }
+}
+
+function buildMissingProductsCsvContent(input: {
+  title: string
+  range: ReportRange
+  reports: MissingProductsResponse[]
+}) {
+  const lines: string[][] = [
+    ['Produtos em falta', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    [],
+    ['Pergunta', 'Produto', 'Menções', 'Percentual'],
+  ]
+
+  for (const report of input.reports) {
+    for (const item of report.items) {
+      lines.push([report.questionTitle, item.product, String(item.count), `${item.percentage}%`])
+    }
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+function buildMissingProductsPdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  reports: MissingProductsResponse[]
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Produtos em falta — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.moveDown()
+
+  if (!input.reports.length) {
+    document.fontSize(10).fillColor('#64748b').text('Nenhuma métrica de produtos em falta encontrada para o período selecionado.')
+    return
+  }
+
+  for (const report of input.reports) {
+    ensurePdfSpace(document, 120)
+    document.fontSize(13).fillColor('#0f172a').text(report.questionTitle)
+    document.fontSize(10).fillColor('#475569').text(`Total de respostas no período: ${report.totalResponses}`)
+    document.moveDown(0.3)
+
+    if (!report.items.length) {
+      document.fontSize(10).fillColor('#64748b').text('Nenhum produto mencionado neste recorte.')
+      document.moveDown(0.5)
+      continue
+    }
+
+    for (const item of report.items) {
+      ensurePdfSpace(document, 24)
+      document.fontSize(10).fillColor('#111827').text(`${item.product}: ${item.count} menções (${item.percentage}%)`)
+    }
+
+    document.moveDown(0.6)
+  }
+}
+
+function buildAttendantPerformanceCsvContent(input: {
+  title: string
+  range: ReportRange
+  reports: AttendantPerformanceResponse[]
+}) {
+  const lines: string[][] = [
+    ['Desempenho dos atendentes', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    [],
+    ['Pergunta de atendente', 'Pergunta de nota', 'Atendente', 'Nota média', 'Avaliações', 'Nota mínima', 'Nota máxima'],
+  ]
+
+  for (const report of input.reports) {
+    for (const attendant of report.attendants) {
+      lines.push([
+        report.nameQuestionTitle,
+        report.ratingQuestionTitle,
+        attendant.name,
+        String(attendant.averageRating),
+        String(attendant.ratingCount),
+        String(attendant.minRating),
+        String(attendant.maxRating),
+      ])
+    }
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+function buildAttendantPerformancePdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  reports: AttendantPerformanceResponse[]
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Desempenho dos atendentes — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.moveDown()
+
+  if (!input.reports.length) {
+    document.fontSize(10).fillColor('#64748b').text('Nenhuma métrica de desempenho dos atendentes encontrada para o período selecionado.')
+    return
+  }
+
+  for (const report of input.reports) {
+    ensurePdfSpace(document, 140)
+    document.fontSize(13).fillColor('#0f172a').text(report.nameQuestionTitle)
+    document.fontSize(10).fillColor('#475569').text(`Pergunta de nota: ${report.ratingQuestionTitle}`)
+    document.fontSize(10).fillColor('#475569').text(`Total de avaliações: ${report.totalEvaluations}`)
+    document.moveDown(0.3)
+
+    if (!report.attendants.length) {
+      document.fontSize(10).fillColor('#64748b').text('Nenhum atendente avaliado neste recorte.')
+      document.moveDown(0.5)
+      continue
+    }
+
+    for (let index = 0; index < report.attendants.length; index++) {
+      const attendant = report.attendants[index]
+      ensurePdfSpace(document, 28)
+      document
+        .fontSize(10)
+        .fillColor('#111827')
+        .text(
+          `${index + 1}º ${attendant.name}: nota média ${attendant.averageRating} | ${attendant.ratingCount} avaliação(ões) | faixa ${attendant.minRating}-${attendant.maxRating}`,
+        )
+    }
+
+    document.moveDown(0.6)
+  }
+}
+
+reportsRouter.get('/surveys/:id/reports/export-question.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  if (!questionId) {
+    response.status(400).json({ message: 'Informe a pergunta que deve ser exportada.' })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, questionsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getQuestionReportData(surveyId, range, scope),
+  ])
+  const questionIndex = questionsData.questions.findIndex((question) => question.id === questionId)
+
+  if (questionIndex === -1) {
+    response.status(404).json({ message: 'Pergunta não encontrada para exportação.' })
+    return
+  }
+
+  const question = questionsData.questions[questionIndex]
+  const fileName = `pergunta-${questionIndex + 1}-${sanitizeFileName(question.title)}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildQuestionCsvContent({
+    title,
+    range,
+    question,
+    questionIndex: questionIndex + 1,
+  })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-question.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  if (!questionId) {
+    response.status(400).json({ message: 'Informe a pergunta que deve ser exportada.' })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, questionsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getQuestionReportData(surveyId, range, scope),
+  ])
+  const questionIndex = questionsData.questions.findIndex((question) => question.id === questionId)
+
+  if (questionIndex === -1) {
+    response.status(404).json({ message: 'Pergunta não encontrada para exportação.' })
+    return
+  }
+
+  const question = questionsData.questions[questionIndex]
+  const fileName = `pergunta-${questionIndex + 1}-${sanitizeFileName(question.title)}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildQuestionPdfDocument(document, {
+    title,
+    range,
+    question,
+    questionIndex: questionIndex + 1,
+  })
+  document.end()
+})
+
+reportsRouter.get('/surveys/:id/reports/export-missing-products.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getMissingProductsReportData(surveyId, range, scope),
+  ])
+  const filteredReports = questionId ? reports.filter((report) => report.questionId === questionId) : reports
+
+  if (questionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de produtos em falta não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `produtos-em-falta-${sanitizeFileName(filteredReports[0].questionTitle)}`
+      : 'produtos-em-falta'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildMissingProductsCsvContent({ title, range, reports: filteredReports })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-missing-products.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getMissingProductsReportData(surveyId, range, scope),
+  ])
+  const filteredReports = questionId ? reports.filter((report) => report.questionId === questionId) : reports
+
+  if (questionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de produtos em falta não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `produtos-em-falta-${sanitizeFileName(filteredReports[0].questionTitle)}`
+      : 'produtos-em-falta'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildMissingProductsPdfDocument(document, { title, range, reports: filteredReports })
+  document.end()
+})
+
+reportsRouter.get('/surveys/:id/reports/export-attendant-performance.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const nameQuestionId = typeof request.query.nameQuestionId === 'string' ? request.query.nameQuestionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getAttendantPerformanceReportData(surveyId, range, scope),
+  ])
+  const filteredReports = nameQuestionId
+    ? reports.filter((report) => report.nameQuestionId === nameQuestionId)
+    : reports
+
+  if (nameQuestionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de desempenho dos atendentes não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `desempenho-atendentes-${sanitizeFileName(filteredReports[0].nameQuestionTitle)}`
+      : 'desempenho-atendentes'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildAttendantPerformanceCsvContent({ title, range, reports: filteredReports })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-attendant-performance.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const nameQuestionId = typeof request.query.nameQuestionId === 'string' ? request.query.nameQuestionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getAttendantPerformanceReportData(surveyId, range, scope),
+  ])
+  const filteredReports = nameQuestionId
+    ? reports.filter((report) => report.nameQuestionId === nameQuestionId)
+    : reports
+
+  if (nameQuestionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de desempenho dos atendentes não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `desempenho-atendentes-${sanitizeFileName(filteredReports[0].nameQuestionTitle)}`
+      : 'desempenho-atendentes'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildAttendantPerformancePdfDocument(document, { title, range, reports: filteredReports })
   document.end()
 })
 
@@ -1727,7 +2794,7 @@ reportsRouter.get('/reports/global', requireMaster, async (_request, response) =
         (select cast(count(*) as text) from surveys) as surveys,
         (select cast(count(*) as text) from users where deleted_at is null) as users,
         (select cast(count(*) as text) from survey_responses) as responses,
-        (select cast(count(*) as text) from reward_wins) as wins`,
+        (select cast(count(*) as text) from reward_wins where is_test_win = false) as wins`,
   )
 
   response.json({ metrics: result.rows[0] })
@@ -1737,4 +2804,282 @@ reportsRouter.get('/reports/nps-overview', async (request: AuthenticatedRequest,
   response.json({
     summary: await getNpsOverviewData(request.auth!.userId, request.auth!.roleCode),
   })
+})
+
+// --- Business Metrics Reports ---
+
+type MissingProductItem = {
+  product: string
+  count: number
+  percentage: number
+}
+
+type MissingProductsResponse = {
+  questionId: string
+  questionTitle: string
+  totalResponses: number
+  items: MissingProductItem[]
+}
+
+async function getMissingProductsReportData(
+  surveyId: string,
+  range: ReportRange,
+  scope: ReportScope,
+): Promise<MissingProductsResponse[]> {
+  // Find questions marked as missing_product
+  const metricQuestions = await query<{
+    id: string
+    title: string
+    settings_json: { businessMetric?: string }
+  }>(
+    `select id, title, settings_json
+     from survey_questions
+     where survey_id = $1
+       and settings_json->>'businessMetric' = 'missing_product'
+     order by position asc`,
+    [surveyId],
+  )
+
+  if (!metricQuestions.rows.length) {
+    return []
+  }
+
+  const responseScopeCondition = getResponseScopeCondition(scope, 'sr')
+  const totalResponsesResult = await query<{ total: string }>(
+    `select cast(count(*) as text) as total
+     from survey_responses
+     where survey_id = $1
+       and ${getResponseScopeCondition(scope)}
+       and submitted_at >= $2::date
+       and submitted_at < ($3::date + interval '1 day')`,
+    [surveyId, range.startDate, range.endDate],
+  )
+  const totalResponses = Number(totalResponsesResult.rows[0]?.total ?? 0)
+
+  const results: MissingProductsResponse[] = []
+
+  for (const q of metricQuestions.rows) {
+    const answers = await query<{ answer_text: string | null; answer_json: unknown }>(
+      `select ra.answer_text, ra.answer_json
+       from response_answers ra
+       join survey_responses sr on sr.id = ra.response_id
+       where ra.question_id = $1
+         and sr.survey_id = $2
+         and ${responseScopeCondition}
+         and sr.submitted_at >= $3::date
+         and sr.submitted_at < ($4::date + interval '1 day')`,
+      [q.id, surveyId, range.startDate, range.endDate],
+    )
+
+    const counts = new Map<string, number>()
+    let totalAnswers = 0
+
+    for (const row of answers.rows) {
+      const text = parseStoredAnswerValue(row.answer_text, row.answer_json)
+      if (typeof text === 'string' && text.trim()) {
+        const normalized = text.trim().toLowerCase()
+        counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+        totalAnswers++
+      }
+    }
+
+    const items = Array.from(counts.entries())
+      .map(([product, count]) => ({
+        product,
+        count,
+        percentage: totalAnswers ? roundNumber((count / totalAnswers) * 100, 2) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+
+    results.push({
+      questionId: q.id,
+      questionTitle: q.title,
+      totalResponses,
+      items,
+    })
+  }
+
+  return results
+}
+
+type AttendantPerformanceItem = {
+  name: string
+  averageRating: number
+  ratingCount: number
+  minRating: number
+  maxRating: number
+}
+
+type AttendantPerformanceResponse = {
+  nameQuestionId: string
+  nameQuestionTitle: string
+  ratingQuestionId: string
+  ratingQuestionTitle: string
+  totalEvaluations: number
+  attendants: AttendantPerformanceItem[]
+}
+
+async function getAttendantPerformanceReportData(
+  surveyId: string,
+  range: ReportRange,
+  scope: ReportScope,
+): Promise<AttendantPerformanceResponse[]> {
+  // Find questions marked as attendant_rating (they link to the attendant_name question)
+  const ratingQuestions = await query<{
+    id: string
+    title: string
+    settings_json: { businessMetric?: string; linkedQuestionId?: string }
+  }>(
+    `select id, title, settings_json
+     from survey_questions
+     where survey_id = $1
+       and settings_json->>'businessMetric' = 'attendant_rating'
+     order by position asc`,
+    [surveyId],
+  )
+
+  if (!ratingQuestions.rows.length) {
+    return []
+  }
+
+  const responseScopeCondition = getResponseScopeCondition(scope, 'sr')
+  const results: AttendantPerformanceResponse[] = []
+
+  for (const rq of ratingQuestions.rows) {
+    const linkedQuestionId = rq.settings_json?.linkedQuestionId
+    if (!linkedQuestionId) continue
+
+    // Verify linked question exists and is a text type (attendant_name)
+    const nameQuestion = await query<{
+      id: string
+      title: string
+      type: string
+    }>(
+      `select id, title, type
+       from survey_questions
+       where id = $1 and survey_id = $2`,
+      [linkedQuestionId, surveyId],
+    )
+
+    if (!nameQuestion.rows.length) continue
+    const nq = nameQuestion.rows[0]
+
+    // Fetch registered attendants for matching
+    const registeredAttendants = await query<{ id: string; name: string; is_active: boolean }>(
+      `select id, name, is_active from survey_attendants where survey_id = $1 order by name asc`,
+      [surveyId],
+    )
+
+    // Build normalized name -> registered name map (only active attendants)
+    const registeredNameMap = new Map<string, string>()
+    for (const att of registeredAttendants.rows) {
+      if (att.is_active) {
+        registeredNameMap.set(att.name.toLowerCase(), att.name)
+      }
+    }
+
+    // Get paired answers: name + rating from same response
+    const pairedAnswers = await query<{
+      response_id: string
+      name_text: string | null
+      name_json: unknown
+      rating_text: string | null
+      rating_json: unknown
+    }>(
+      `select
+         ra_name.response_id,
+         ra_name.answer_text as name_text,
+         ra_name.answer_json as name_json,
+         ra_rating.answer_text as rating_text,
+         ra_rating.answer_json as rating_json
+       from response_answers ra_name
+       join response_answers ra_rating
+         on ra_rating.response_id = ra_name.response_id
+         and ra_rating.question_id = $2
+       join survey_responses sr on sr.id = ra_name.response_id
+       where ra_name.question_id = $1
+         and sr.survey_id = $3
+         and ${responseScopeCondition}
+         and sr.submitted_at >= $4::date
+         and sr.submitted_at < ($5::date + interval '1 day')`,
+      [nq.id, rq.id, surveyId, range.startDate, range.endDate],
+    )
+
+    const attendantMap = new Map<
+      string,
+      { ratings: number[]; count: number; displayName: string }
+    >()
+
+    for (const row of pairedAnswers.rows) {
+      const name = parseStoredAnswerValue(row.name_text, row.name_json)
+      const rating = parseStoredAnswerValue(row.rating_text, row.rating_json)
+
+      if (typeof name !== 'string' || !name.trim()) continue
+      const numericRating = extractNumericValue(rating)
+      if (numericRating === null) continue
+
+      const trimmedName = name.trim()
+      const normalizedKey = trimmedName.toLowerCase()
+
+      // Try to match against registered attendants (exact match)
+      const matchedName = registeredNameMap.get(normalizedKey)
+      const displayName = matchedName ?? toTitleCase(trimmedName)
+      const mapKey = matchedName ? matchedName.toLowerCase() : normalizedKey
+
+      const existing = attendantMap.get(mapKey) ?? { ratings: [], count: 0, displayName }
+      existing.ratings.push(numericRating)
+      existing.count++
+      attendantMap.set(mapKey, existing)
+    }
+
+    const attendants = Array.from(attendantMap.entries())
+      .map(([, data]) => {
+        const avg = data.ratings.reduce((s, v) => s + v, 0) / data.ratings.length
+        return {
+          name: data.displayName,
+          averageRating: roundNumber(avg, 2),
+          ratingCount: data.count,
+          minRating: Math.min(...data.ratings),
+          maxRating: Math.max(...data.ratings),
+        }
+      })
+      .sort((a, b) => b.averageRating - a.averageRating || b.ratingCount - a.ratingCount)
+
+    results.push({
+      nameQuestionId: nq.id,
+      nameQuestionTitle: nq.title,
+      ratingQuestionId: rq.id,
+      ratingQuestionTitle: rq.title,
+      totalEvaluations: attendants.reduce((sum, a) => sum + a.ratingCount, 0),
+      attendants,
+    })
+  }
+
+  return results
+}
+
+reportsRouter.get('/surveys/:id/reports/missing-products', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  response.json(await getMissingProductsReportData(surveyId, getReportRange(request), scope))
+})
+
+reportsRouter.get('/surveys/:id/reports/attendant-performance', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  response.json(await getAttendantPerformanceReportData(surveyId, getReportRange(request), scope))
 })

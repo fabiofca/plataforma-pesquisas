@@ -1,4 +1,4 @@
-import type { SurveyItem, SurveyQuestion, UserListItem } from '@/types/domain'
+import type { BusinessMetric, SurveyItem, SurveyQuestion, UserListItem } from '@/types/domain'
 
 function mapRoleLabel(roleCode: string) {
   return roleCode === 'master' ? 'Usuário master' : 'Usuário comum'
@@ -12,6 +12,80 @@ function mapSurveyStatus(status: string): SurveyItem['status'] {
 
 function mapParticipationMode(mode: string): SurveyItem['participationMode'] {
   return mode === 'identified' ? 'Identificada' : 'Anônima'
+}
+
+function normalizeFlowRules(
+  flowRules:
+    | Array<{
+        value: string
+        nextQuestionId: string
+      }>
+    | unknown,
+) {
+  if (!Array.isArray(flowRules)) {
+    return []
+  }
+
+  return flowRules.filter(
+    (rule): rule is { value: string; nextQuestionId: string } =>
+      Boolean(
+        rule &&
+          typeof rule === 'object' &&
+          typeof rule.value === 'string' &&
+          typeof rule.nextQuestionId === 'string',
+      ),
+  )
+}
+
+function normalizeFlowLayout(
+  flowLayout:
+    | {
+        version?: number
+        nodes?: Array<{
+          id: string
+          x: number
+          y: number
+        }>
+        viewport?: {
+          x: number
+          y: number
+          zoom: number
+        }
+      }
+    | null
+    | undefined,
+) {
+  if (!flowLayout || typeof flowLayout !== 'object') {
+    return undefined
+  }
+
+  const nodes = Array.isArray(flowLayout.nodes)
+    ? flowLayout.nodes.filter(
+        (node): node is { id: string; x: number; y: number } =>
+          Boolean(
+            node &&
+              typeof node === 'object' &&
+              typeof node.id === 'string' &&
+              Number.isFinite(node.x) &&
+              Number.isFinite(node.y),
+          ),
+      )
+    : []
+
+  const viewport =
+    flowLayout.viewport &&
+    typeof flowLayout.viewport === 'object' &&
+    Number.isFinite(flowLayout.viewport.x) &&
+    Number.isFinite(flowLayout.viewport.y) &&
+    Number.isFinite(flowLayout.viewport.zoom)
+      ? flowLayout.viewport
+      : undefined
+
+  return {
+    version: flowLayout.version ?? 1,
+    nodes,
+    viewport,
+  }
 }
 
 function mapSurveyKind(item: {
@@ -71,6 +145,8 @@ export function mapApiQuestion(item: {
       value: string
       nextQuestionId: string
     }>
+    businessMetric?: string | null
+    linkedQuestionId?: string | null
   }
 }): SurveyQuestion {
   return {
@@ -80,7 +156,9 @@ export function mapApiQuestion(item: {
     type: item.type as SurveyQuestion['type'],
     required: item.is_required ?? item.required ?? false,
     options: item.options ?? [],
-    flowRules: item.settings_json?.flowRules ?? [],
+    flowRules: normalizeFlowRules(item.settings_json?.flowRules),
+    businessMetric: (item.settings_json?.businessMetric as BusinessMetric) ?? null,
+    linkedQuestionId: item.settings_json?.linkedQuestionId ?? null,
   }
 }
 
@@ -96,8 +174,26 @@ export function mapApiSurvey(item: {
   participationMode?: string
   reward_enabled?: boolean
   rewardEnabled?: boolean
+  builder_mode?: 'classic' | 'visual'
+  flow_json?: {
+    version?: number
+    nodes?: Array<{
+      id: string
+      x: number
+      y: number
+    }>
+    viewport?: {
+      x: number
+      y: number
+      zoom: number
+    }
+  } | null
   prevent_duplicate_responses?: boolean
   preventDuplicateResponses?: boolean
+  duplicate_response_cooldown_days?: number
+  duplicateResponseCooldownDays?: number
+  allow_multiple_responses?: boolean
+  allowMultipleResponses?: boolean
   primary_color?: string
   primaryColor?: string
   questions?: Array<{
@@ -113,6 +209,8 @@ export function mapApiSurvey(item: {
           value: string
           nextQuestionId: string
         }>
+        businessMetric?: string | null
+        linkedQuestionId?: string | null
       }
   }>
   brand_name?: string
@@ -125,15 +223,30 @@ export function mapApiSurvey(item: {
   reward_items?: Array<{
     id: string
     title: string
+    wheel_label?: string | null
+    image_url?: string | null
+    outcome_role?: 'prize' | 'no_prize' | 'showcase'
+    show_on_wheel?: boolean
+    quantity_total?: number
+    quantity_awarded?: number
+    sort_order?: number
   }>
+  reward_wheel_mode?: 'standard' | 'advanced' | null
+  reward_final_spin_mode?: 'allow_no_prize' | 'guaranteed_prize' | null
   reward_retry_unlock_enabled?: boolean
   reward_pickup_address?: string | null
   reward_contact_whatsapp?: string | null
+  reward_redemption_method?: 'address_only' | 'address_and_whatsapp' | null
+  reward_redemption_expiration_days?: number | null
   reward_retry_tasks?: Array<{
     id: string
     type: 'google_review' | 'instagram_follow' | 'custom_link'
     title: string
     url: string
+  }>
+  attendants?: Array<{
+    id: string
+    name: string
   }>
 }): SurveyItem {
   return {
@@ -146,6 +259,8 @@ export function mapApiSurvey(item: {
     responses: Number(item.responses ?? 0),
     participationMode: mapParticipationMode(item.participation_mode ?? item.participationMode ?? 'anonymous'),
     rewardEnabled: item.reward_enabled ?? item.rewardEnabled ?? false,
+    builderMode: item.builder_mode ?? 'classic',
+    flowLayout: normalizeFlowLayout(item.flow_json),
     primaryColor: item.primary_color ?? item.primaryColor ?? '#0b5cff',
     updatedAt: 'Atualizada agora',
     questions: (item.questions ?? []).map(mapApiQuestion),
@@ -156,13 +271,27 @@ export function mapApiSurvey(item: {
     linkClicks: Number(item.link_clicks ?? 0),
     qrScans: Number(item.qr_scans ?? 0),
     preventDuplicateResponses: item.prevent_duplicate_responses ?? item.preventDuplicateResponses ?? false,
+    duplicateResponseCooldownDays: item.duplicate_response_cooldown_days ?? item.duplicateResponseCooldownDays ?? 15,
+    allowMultipleResponses: item.allow_multiple_responses ?? item.allowMultipleResponses ?? true,
     rewardPreviewItems: (item.reward_items ?? []).map((rewardItem) => ({
       id: rewardItem.id,
       title: rewardItem.title,
+      wheelLabel: rewardItem.wheel_label ?? rewardItem.title,
+      imageUrl: rewardItem.image_url ?? undefined,
+      outcomeRole: rewardItem.outcome_role ?? 'prize',
+      showOnWheel: rewardItem.show_on_wheel ?? true,
+      quantityTotal: rewardItem.quantity_total,
+      quantityAwarded: rewardItem.quantity_awarded,
+      sortOrder: rewardItem.sort_order,
     })),
+    rewardWheelMode: item.reward_wheel_mode ?? undefined,
+    rewardFinalSpinMode: item.reward_final_spin_mode ?? undefined,
     rewardRetryUnlockEnabled: item.reward_retry_unlock_enabled ?? false,
     rewardPickupAddress: item.reward_pickup_address ?? undefined,
     rewardContactWhatsApp: item.reward_contact_whatsapp ?? undefined,
+    rewardRedemptionMethod: item.reward_redemption_method ?? undefined,
+    rewardRedemptionExpirationDays: item.reward_redemption_expiration_days ?? undefined,
     rewardRetryTasks: item.reward_retry_tasks ?? [],
+    attendants: item.attendants ?? [],
   }
 }

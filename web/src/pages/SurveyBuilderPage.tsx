@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
+  Download,
   FileImage,
-  FileText,
-  Link2,
   Palette,
-  Plus,
-  Settings2,
   Share2,
   Sparkles,
   Trash2,
@@ -16,15 +13,40 @@ import {
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
-import { AdminModal } from '@/components/ui/AdminModal'
+import { SurveyNavBar } from '@/components/surveys/SurveyNavBar'
+import { SurveyVisualFlowEditor } from '@/components/surveys/SurveyVisualFlowEditor'
 import { SectionCard } from '@/components/ui/SectionCard'
-import { SurveyPreviewLinkCard } from '@/components/ui/SurveyPreviewLinkCard'
-import { SurveyShareCard } from '@/components/ui/SurveyShareCard'
 import { apiRequest, uploadApiFile } from '@/lib/api-client'
+
+function downloadJsonFile(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function readJsonFile(file: File): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        resolve(JSON.parse(reader.result as string))
+      } catch {
+        reject(new Error('Arquivo JSON inválido.'))
+      }
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo.'))
+    reader.readAsText(file)
+  })
+}
 import { mapApiSurvey } from '@/lib/mappers'
 import { getSurveyTestPath } from '@/lib/public-survey'
-import { FLOW_END, FLOW_ON_ANSWER, getQuestionFlowValues, supportsQuestionFlow } from '@/lib/survey-flow'
-import type { QuestionType, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
+import { FLOW_ON_ANSWER } from '@/lib/survey-flow'
+import { mergeFlowLayout, sortIdsByFlowLayout } from '@/lib/survey-visual-flow'
+import type { BusinessMetric, QuestionType, SurveyBuilderMode, SurveyFlowLayout, SurveyItem, SurveyQuestionFlowRule } from '@/types/domain'
 
 type BuilderQuestion = {
   id: string
@@ -34,6 +56,8 @@ type BuilderQuestion = {
   required: boolean
   options: string[]
   flowRules: SurveyQuestionFlowRule[]
+  businessMetric?: BusinessMetric | null
+  linkedQuestionId?: string | null
 }
 
 type BuilderState = {
@@ -48,27 +72,44 @@ type BuilderState = {
   participationMode: 'anonymous' | 'identified'
   rewardEnabled: boolean
   preventDuplicateResponses: boolean
+  duplicateResponseCooldownDays: number
+  allowMultipleResponses: boolean
+  builderMode: SurveyBuilderMode
+  flowLayout: SurveyFlowLayout
   questions: BuilderQuestion[]
 }
 
-const questionTypes: Array<{ value: QuestionType; label: string }> = [
-  { value: 'short_text', label: 'Texto curto' },
-  { value: 'long_text', label: 'Texto longo' },
-  { value: 'single_choice', label: 'Única escolha' },
-  { value: 'multiple_choice', label: 'Múltipla escolha' },
-  { value: 'yes_no', label: 'Sim / Não' },
-  { value: 'rating_1_5', label: 'Nota de 1 a 5' },
-  { value: 'nps', label: 'NPS' },
-]
-
-const questionTypeLabels = Object.fromEntries(questionTypes.map((item) => [item.value, item.label])) as Record<
-  QuestionType,
-  string
+type FlowDraftState = Pick<BuilderState, 'questions' | 'flowLayout'>
+type ImportedAttendantDraft = {
+  name: string
+  isActive: boolean
+  sortOrder?: number
+}
+type BuilderDraftState = Pick<
+  BuilderState,
+  | 'title'
+  | 'description'
+  | 'slug'
+  | 'brandName'
+  | 'logoUrl'
+  | 'primaryColor'
+  | 'bannerUrl'
+  | 'closingMessage'
+  | 'rewardEnabled'
+  | 'preventDuplicateResponses'
+  | 'duplicateResponseCooldownDays'
+  | 'allowMultipleResponses'
+  | 'questions'
+  | 'flowLayout'
 >
 
 const surveyColorPresets = ['#0b5cff', '#11284a', '#0f766e', '#7c3aed', '#d97706', '#dc2626']
 
 type SurveyUploadTarget = 'logo' | 'banner'
+
+function normalizeHexColor(value: string | undefined | null, fallback = '#0b5cff') {
+  return typeof value === 'string' && /^#([0-9a-f]{6})$/i.test(value) ? value : fallback
+}
 
 function makeQuestion(type: QuestionType = 'short_text'): BuilderQuestion {
   return {
@@ -80,17 +121,6 @@ function makeQuestion(type: QuestionType = 'short_text'): BuilderQuestion {
     options: type === 'single_choice' || type === 'multiple_choice' ? [''] : [],
     flowRules: [],
   }
-}
-
-function updateFlowRuleList(flowRules: SurveyQuestionFlowRule[], value: string, nextQuestionId: string) {
-  const normalizedValue = value.trim()
-  const nextRules = flowRules.filter((rule) => rule.value !== normalizedValue)
-
-  if (!nextQuestionId) {
-    return nextRules
-  }
-
-  return [...nextRules, { value: normalizedValue, nextQuestionId }]
 }
 
 function removeRulesThatPointToQuestion(flowRules: SurveyQuestionFlowRule[], targetQuestionId: string) {
@@ -112,6 +142,7 @@ function getBrandInitials(value: string) {
 }
 
 function makeEmptyBuilderState(): BuilderState {
+  const initialQuestions = [makeQuestion()]
   return {
     title: '',
     description: '',
@@ -123,35 +154,192 @@ function makeEmptyBuilderState(): BuilderState {
     closingMessage: 'Obrigado por participar. Sua resposta foi registrada com sucesso.',
     participationMode: 'identified',
     rewardEnabled: false,
-    preventDuplicateResponses: false,
-    questions: [makeQuestion()],
+    preventDuplicateResponses: true,
+    duplicateResponseCooldownDays: 15,
+    allowMultipleResponses: true,
+    builderMode: 'visual',
+    flowLayout: mergeFlowLayout(initialQuestions.map((question) => question.id), { version: 1, nodes: [] }),
+    questions: initialQuestions,
   }
 }
 
+function extractFlowDraft(state: Pick<BuilderState, 'questions' | 'flowLayout'>): FlowDraftState {
+  return {
+    questions: state.questions.map((question) => ({
+      ...question,
+      options: [...question.options],
+      flowRules: question.flowRules.map((rule) => ({ ...rule })),
+    })),
+    flowLayout: {
+      ...state.flowLayout,
+      nodes: state.flowLayout.nodes.map((node) => ({ ...node })),
+      viewport: state.flowLayout.viewport ? { ...state.flowLayout.viewport } : undefined,
+    },
+  }
+}
+
+function extractBuilderDraft(state: BuilderState): BuilderDraftState {
+  return {
+    title: state.title,
+    description: state.description,
+    slug: state.slug,
+    brandName: state.brandName,
+    logoUrl: state.logoUrl,
+    primaryColor: state.primaryColor,
+    bannerUrl: state.bannerUrl,
+    closingMessage: state.closingMessage,
+    rewardEnabled: state.rewardEnabled,
+    preventDuplicateResponses: state.preventDuplicateResponses,
+    duplicateResponseCooldownDays: state.duplicateResponseCooldownDays,
+    allowMultipleResponses: state.allowMultipleResponses,
+    questions: state.questions.map((question) => ({
+      ...question,
+      options: [...question.options],
+      flowRules: question.flowRules.map((rule) => ({ ...rule })),
+    })),
+    flowLayout: {
+      ...state.flowLayout,
+      nodes: state.flowLayout.nodes.map((node) => ({ ...node })),
+      viewport: state.flowLayout.viewport ? { ...state.flowLayout.viewport } : undefined,
+    },
+  }
+}
+
+function normalizeFlowDraft(state: FlowDraftState): FlowDraftState {
+  const normalizedLayout = mergeFlowLayout(
+    state.questions.map((question) => question.id),
+    state.flowLayout,
+  )
+
+  return {
+    questions: [...state.questions]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((question) => ({
+        ...question,
+        options: [...question.options],
+        flowRules: [...question.flowRules].sort(
+          (left, right) =>
+            left.value.localeCompare(right.value) || left.nextQuestionId.localeCompare(right.nextQuestionId),
+        ),
+      })),
+    flowLayout: {
+      ...normalizedLayout,
+      nodes: [...normalizedLayout.nodes].sort((left, right) => left.id.localeCompare(right.id)),
+      viewport: normalizedLayout.viewport ? { ...normalizedLayout.viewport } : undefined,
+    },
+  }
+}
+
+function remapImportedFlowDraft(state: FlowDraftState): FlowDraftState {
+  const questionIdMap = new Map<string, string>()
+
+  for (const question of state.questions) {
+    questionIdMap.set(question.id, crypto.randomUUID())
+  }
+
+  const remapQuestionReference = (value: string | null | undefined) => {
+    if (!value) {
+      return value ?? null
+    }
+
+    if (value === '__end__') {
+      return value
+    }
+
+    return questionIdMap.get(value) ?? value
+  }
+
+  const questions = state.questions.map((question) => ({
+    ...question,
+    id: questionIdMap.get(question.id) ?? question.id,
+    options: [...question.options],
+    flowRules: question.flowRules.map((rule) => ({
+      ...rule,
+      nextQuestionId: remapQuestionReference(rule.nextQuestionId) ?? rule.nextQuestionId,
+    })),
+    linkedQuestionId: remapQuestionReference(question.linkedQuestionId ?? null),
+  }))
+
+  return {
+    questions,
+    flowLayout: mergeFlowLayout(
+      questions.map((question) => question.id),
+      {
+        ...state.flowLayout,
+        nodes: state.flowLayout.nodes.map((node) => ({
+          ...node,
+          id: questionIdMap.get(node.id) ?? node.id,
+        })),
+        viewport: state.flowLayout.viewport ? { ...state.flowLayout.viewport } : undefined,
+      },
+    ),
+  }
+}
+
+function getFlowDraftSignature(state: FlowDraftState) {
+  return JSON.stringify(normalizeFlowDraft(state))
+}
+
+function normalizeBuilderDraft(state: BuilderDraftState): BuilderDraftState {
+  const normalizedLayout = mergeFlowLayout(
+    state.questions.map((question) => question.id),
+    state.flowLayout,
+  )
+
+  return {
+    ...state,
+    questions: state.questions.map((question) => ({
+      ...question,
+      options: [...question.options],
+      flowRules: question.flowRules.map((rule) => ({ ...rule })),
+    })),
+    flowLayout: {
+      ...normalizedLayout,
+      nodes: [...normalizedLayout.nodes].sort((left, right) => left.id.localeCompare(right.id)),
+      viewport: normalizedLayout.viewport ? { ...normalizedLayout.viewport } : undefined,
+    },
+  }
+}
+
+function getBuilderDraftSignature(state: BuilderDraftState) {
+  return JSON.stringify(normalizeBuilderDraft(state))
+}
+
 function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
+  const questions = survey.questions.length
+    ? survey.questions.map((question) => ({
+        id: question.id,
+        title: question.title,
+        description: question.description ?? '',
+        type: question.type,
+        required: question.required,
+        options: question.options?.length ? question.options : [],
+        flowRules: question.flowRules ?? [],
+        businessMetric: question.businessMetric ?? null,
+        linkedQuestionId: question.linkedQuestionId ?? null,
+      }))
+    : [makeQuestion()]
+
   return {
     title: survey.title,
     description: survey.description ?? '',
     slug: survey.slug,
     brandName: survey.brandName ?? 'Minha marca',
     logoUrl: survey.logoUrl ?? '',
-    primaryColor: survey.primaryColor,
+    primaryColor: normalizeHexColor(survey.primaryColor),
     bannerUrl: survey.bannerUrl ?? '',
     closingMessage: survey.closingMessage ?? 'Obrigado por participar. Sua resposta foi registrada com sucesso.',
     participationMode: 'identified',
     rewardEnabled: survey.rewardEnabled,
-    preventDuplicateResponses: false,
-    questions: survey.questions.length
-      ? survey.questions.map((question) => ({
-          id: question.id,
-          title: question.title,
-          description: question.description ?? '',
-          type: question.type,
-          required: question.required,
-          options: question.options?.length ? question.options : [],
-          flowRules: question.flowRules ?? [],
-        }))
-      : [makeQuestion()],
+    preventDuplicateResponses: survey.preventDuplicateResponses ?? true,
+    duplicateResponseCooldownDays: survey.duplicateResponseCooldownDays ?? 15,
+    allowMultipleResponses: survey.allowMultipleResponses ?? true,
+    builderMode: 'visual',
+    flowLayout: mergeFlowLayout(
+      questions.map((question) => question.id),
+      survey.flowLayout ?? { version: 1, nodes: [] },
+    ),
+    questions,
   }
 }
 
@@ -162,8 +350,12 @@ export function SurveyBuilderPage() {
   const queryClient = useQueryClient()
   const isEditing = Boolean(params.id)
   const [form, setForm] = useState<BuilderState>(makeEmptyBuilderState)
+  const [savedFlowSnapshot, setSavedFlowSnapshot] = useState<FlowDraftState | null>(null)
+  const [savedBuilderSnapshot, setSavedBuilderSnapshot] = useState<BuilderDraftState | null>(null)
+  const [selectedVisualQuestionId, setSelectedVisualQuestionId] = useState('')
   const [feedback, setFeedback] = useState('')
-  const [previewOpen, setPreviewOpen] = useState(false)
+  const [pendingImportedAttendants, setPendingImportedAttendants] = useState<ImportedAttendantDraft[] | null>(null)
+  const [centeredFeedback, setCenteredFeedback] = useState<{ message: string; key: number } | null>(null)
   const [uploadingKey, setUploadingKey] = useState<SurveyUploadTarget | ''>('')
   const [removingKey, setRemovingKey] = useState<SurveyUploadTarget | ''>('')
   const [uploadErrors, setUploadErrors] = useState<Record<SurveyUploadTarget, string>>({
@@ -174,6 +366,7 @@ export function SurveyBuilderPage() {
     logo: 0,
     banner: 0,
   })
+  const centeredFeedbackTimeoutRef = useRef<number | null>(null)
 
   const surveyQuery = useQuery({
     queryKey: ['survey', params.id],
@@ -191,7 +384,11 @@ export function SurveyBuilderPage() {
           banner_url?: string | null
           closing_message?: string | null
           reward_enabled: boolean
+          builder_mode?: SurveyBuilderMode
+          flow_json?: SurveyFlowLayout | null
           prevent_duplicate_responses: boolean
+          duplicate_response_cooldown_days: number
+          allow_multiple_responses: boolean
           link_clicks: string
           qr_scans: string
           status: string
@@ -220,65 +417,228 @@ export function SurveyBuilderPage() {
 
   const survey = useMemo(() => surveyQuery.data, [surveyQuery.data])
   const isPublishedSurvey = survey?.status === 'Publicada'
+  const safePrimaryColor = normalizeHexColor(form.primaryColor)
 
   useEffect(() => {
     if (survey) {
-      setForm(mapSurveyToBuilderState(survey))
+      const nextForm = mapSurveyToBuilderState(survey)
+      setForm(nextForm)
+      setSavedFlowSnapshot(extractFlowDraft(nextForm))
+      setSavedBuilderSnapshot(extractBuilderDraft(nextForm))
+      setPendingImportedAttendants(null)
       setUploadErrors({ logo: '', banner: '' })
       return
     }
 
     if (!isEditing) {
-      setForm(makeEmptyBuilderState())
+      const nextForm = makeEmptyBuilderState()
+      setForm(nextForm)
+      setSavedFlowSnapshot(extractFlowDraft(nextForm))
+      setSavedBuilderSnapshot(extractBuilderDraft(nextForm))
+      setPendingImportedAttendants(null)
       setFeedback('')
       setUploadErrors({ logo: '', banner: '' })
     }
   }, [isEditing, survey])
 
   useEffect(() => {
-    const state = location.state as { feedback?: string } | null
+    const state = location.state as { feedback?: string; visualNotice?: string } | null
 
-    if (!state?.feedback) {
+    if (!state?.feedback && !state?.visualNotice) {
       return
     }
 
-    setFeedback(state.feedback)
+    if (state.feedback) {
+      setFeedback(state.feedback)
+    }
+    if (state.visualNotice) {
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({ message: state.visualNotice, key: Date.now() })
+      centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCenteredFeedback(null)
+      }, 1800)
+    }
     navigate(location.pathname, { replace: true, state: null })
   }, [location.pathname, location.state, navigate])
 
+  useEffect(() => {
+    return () => {
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!form.questions.length) {
+      setSelectedVisualQuestionId('')
+      return
+    }
+
+    if (!selectedVisualQuestionId || !form.questions.some((question) => question.id === selectedVisualQuestionId)) {
+      setSelectedVisualQuestionId(form.questions[0].id)
+    }
+  }, [form.questions, selectedVisualQuestionId])
+
+  const currentFlowSnapshot = useMemo(() => extractFlowDraft(form), [form.flowLayout, form.questions])
+  const currentFlowSignature = useMemo(() => getFlowDraftSignature(currentFlowSnapshot), [currentFlowSnapshot])
+  const savedFlowSignature = useMemo(
+    () => (savedFlowSnapshot ? getFlowDraftSignature(savedFlowSnapshot) : ''),
+    [savedFlowSnapshot],
+  )
+  const currentBuilderSnapshot = useMemo(() => extractBuilderDraft(form), [form])
+  const currentBuilderSignature = useMemo(() => getBuilderDraftSignature(currentBuilderSnapshot), [currentBuilderSnapshot])
+  const savedBuilderSignature = useMemo(
+    () => (savedBuilderSnapshot ? getBuilderDraftSignature(savedBuilderSnapshot) : ''),
+    [savedBuilderSnapshot],
+  )
+  const hasUnsavedBuilderChanges = Boolean(savedBuilderSnapshot) && currentBuilderSignature !== savedBuilderSignature
+  const hasUnsavedFlowChanges = Boolean(savedFlowSnapshot) && currentFlowSignature !== savedFlowSignature
+
+  useEffect(() => {
+    if (!hasUnsavedBuilderChanges) {
+      return
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [hasUnsavedBuilderChanges])
+
+  useEffect(() => {
+    if (!hasUnsavedBuilderChanges) {
+      return
+    }
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return
+      }
+
+      const target = event.target
+
+      if (!(target instanceof Element)) {
+        return
+      }
+
+      const anchor = target.closest('a')
+
+      if (!(anchor instanceof HTMLAnchorElement) || !anchor.href || anchor.target === '_blank' || anchor.hasAttribute('download')) {
+        return
+      }
+
+      const currentUrl = new URL(window.location.href)
+      const nextUrl = new URL(anchor.href, currentUrl.href)
+
+      if (nextUrl.origin !== currentUrl.origin) {
+        return
+      }
+
+      if (
+        nextUrl.pathname === currentUrl.pathname &&
+        nextUrl.search === currentUrl.search &&
+        nextUrl.hash === currentUrl.hash
+      ) {
+        return
+      }
+
+      if (window.confirm('Você tem alterações não salvas. Deseja sair mesmo assim?')) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
+    document.addEventListener('click', handleDocumentClick, true)
+    return () => {
+      document.removeEventListener('click', handleDocumentClick, true)
+    }
+  }, [hasUnsavedBuilderChanges])
+
   const saveMutation = useMutation({
-    mutationFn: async (shouldPublish: boolean) => {
+    mutationFn: async ({
+      shouldPublish,
+      flowSnapshot,
+      draft,
+    }: {
+      shouldPublish: boolean
+      flowSnapshot: FlowDraftState
+      draft: BuilderState
+    }) => {
+      const normalizedFlowLayout = mergeFlowLayout(
+        draft.questions.map((question) => question.id),
+        draft.flowLayout,
+      )
+      const orderedQuestions =
+        draft.builderMode === 'visual'
+          ? sortIdsByFlowLayout(
+              draft.questions.map((question) => question.id),
+              normalizedFlowLayout,
+            )
+              .map((questionId) => draft.questions.find((question) => question.id === questionId))
+              .filter((question): question is BuilderQuestion => Boolean(question))
+          : draft.questions
       const payload = {
-        title: form.title.trim(),
-        description: form.description.trim(),
+        title: draft.title.trim(),
+        description: draft.description.trim(),
         participationMode: 'identified' as const,
-        slug: form.slug.trim(),
-        brandName: form.brandName.trim(),
-        logoUrl: form.logoUrl.trim(),
-        primaryColor: form.primaryColor.trim(),
-        bannerUrl: form.bannerUrl.trim(),
-        closingMessage: form.closingMessage.trim(),
-        rewardEnabled: form.rewardEnabled,
-        preventDuplicateResponses: false,
-        questions: form.questions.map((question, index) => ({
-          id: question.id,
-          title: question.title.trim(),
-          description: question.description.trim(),
-          type: question.type,
-          isRequired: question.required,
-          position: index,
-          options:
-            question.type === 'single_choice' || question.type === 'multiple_choice'
-              ? question.options.map((item) => item.trim()).filter(Boolean)
-              : [],
-          flowRules:
-            question.flowRules.filter(
-              (rule) =>
-                rule.value.trim() &&
-                rule.nextQuestionId.trim() &&
-                (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice'),
-            ),
-        })),
+        slug: draft.slug.trim(),
+        brandName: draft.brandName.trim(),
+        logoUrl: draft.logoUrl.trim(),
+        primaryColor: draft.primaryColor.trim(),
+        bannerUrl: draft.bannerUrl.trim(),
+        closingMessage: draft.closingMessage.trim(),
+        rewardEnabled: draft.rewardEnabled,
+        preventDuplicateResponses: draft.preventDuplicateResponses,
+        duplicateResponseCooldownDays: draft.duplicateResponseCooldownDays,
+        allowMultipleResponses: draft.allowMultipleResponses,
+        builderMode: 'visual',
+        flowLayout: normalizedFlowLayout,
+        questions: orderedQuestions.map((question, index) => {
+          // Validate linkedQuestionId: must point to an existing question of compatible type
+          let validatedLinkedId = question.linkedQuestionId ?? null
+          if (validatedLinkedId) {
+            const linkedQuestion = orderedQuestions.find((q) => q.id === validatedLinkedId)
+            if (!linkedQuestion) {
+              validatedLinkedId = null
+            } else if (question.businessMetric === 'attendant_rating' && linkedQuestion.type !== 'short_text' && linkedQuestion.type !== 'long_text') {
+              validatedLinkedId = null
+            } else if (question.businessMetric === 'attendant_name') {
+              validatedLinkedId = null
+            }
+          }
+
+          return {
+            id: question.id,
+            title: question.title.trim(),
+            description: question.description.trim(),
+            type: question.type,
+            isRequired: question.required,
+            position: index,
+            options:
+              question.type === 'single_choice' || question.type === 'multiple_choice'
+                ? question.options.map((item) => item.trim()).filter(Boolean)
+                : [],
+            flowRules:
+              question.flowRules.filter(
+                (rule) =>
+                  rule.value.trim() &&
+                  rule.nextQuestionId.trim() &&
+                  (rule.value === FLOW_ON_ANSWER || question.type === 'yes_no' || question.type === 'single_choice' || question.type === 'multiple_choice'),
+              ),
+            businessMetric: question.businessMetric ?? null,
+            linkedQuestionId: validatedLinkedId,
+          }
+        }),
       }
 
       let surveyId = params.id ?? ''
@@ -302,14 +662,26 @@ export function SurveyBuilderPage() {
         })
       }
 
-      return { surveyId, published: shouldPublish }
+      return { surveyId, published: shouldPublish, flowSnapshot, builderSnapshot: extractBuilderDraft(draft) }
     },
-    onSuccess: async ({ surveyId, published }) => {
+    onSuccess: async ({ surveyId, published, flowSnapshot, builderSnapshot }) => {
+      if (pendingImportedAttendants) {
+        await apiRequest<{ ok: boolean }>(`/surveys/${surveyId}/attendants/import`, {
+          method: 'PUT',
+          body: JSON.stringify({ attendants: pendingImportedAttendants }),
+        })
+        setPendingImportedAttendants(null)
+      }
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['survey', surveyId] }),
+        queryClient.invalidateQueries({ queryKey: ['attendants', surveyId] }),
       ])
+
+      setSavedFlowSnapshot(flowSnapshot)
+      setSavedBuilderSnapshot(builderSnapshot)
 
       const successMessage = published
         ? 'Pesquisa salva e publicada com sucesso.'
@@ -318,17 +690,143 @@ export function SurveyBuilderPage() {
       if (!isEditing) {
         navigate(`/app/pesquisas/${surveyId}/editar`, {
           replace: true,
-          state: { feedback: successMessage },
+          state: { feedback: successMessage, visualNotice: successMessage },
         })
         return
       }
 
       setFeedback(successMessage)
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({ message: successMessage, key: Date.now() })
+      centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCenteredFeedback(null)
+      }, 1800)
     },
     onError: (error) => {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível salvar a pesquisa.')
     },
   })
+
+  const [importingSurvey, setImportingSurvey] = useState(false)
+  const importFileRef = useRef<HTMLInputElement | null>(null)
+
+  async function handleExportSurvey() {
+    if (!params.id) return
+    try {
+      const result = await apiRequest<{ version: number; kind: string; data: unknown }>(`/surveys/${params.id}/export`)
+      const fileName = `pesquisa-${Date.now()}.json`
+      downloadJsonFile(result, fileName)
+      setFeedback('Pesquisa exportada com sucesso.')
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível exportar a pesquisa.')
+    }
+  }
+
+  async function handleImportSurvey(file: File) {
+    if (importingSurvey) return
+    setImportingSurvey(true)
+    try {
+      const parsed = await readJsonFile(file) as { data?: Record<string, unknown> }
+      if (!parsed.data || typeof parsed.data !== 'object') {
+        throw new Error('Arquivo de importação inválido.')
+      }
+
+      const rawQuestions = Array.isArray(parsed.data.questions) ? parsed.data.questions : []
+      if (!rawQuestions.length) {
+        throw new Error('Esse arquivo não traz um fluxo de perguntas válido para importar.')
+      }
+
+      const importedQuestions = rawQuestions.map((question) => ({
+        id: typeof question.id === 'string' ? question.id : crypto.randomUUID(),
+        title: typeof question.title === 'string' ? question.title : '',
+        description: typeof question.description === 'string' ? question.description : '',
+        type: (question.type as QuestionType) ?? 'short_text',
+        required: Boolean(question.isRequired),
+        options:
+          Array.isArray(question.options) && (question.type === 'single_choice' || question.type === 'multiple_choice')
+            ? question.options.filter((option): option is string => typeof option === 'string')
+            : [],
+        flowRules: Array.isArray(question.flowRules)
+          ? question.flowRules
+              .filter(
+                (rule): rule is SurveyQuestionFlowRule =>
+                  Boolean(
+                    rule &&
+                      typeof rule === 'object' &&
+                      typeof rule.value === 'string' &&
+                      typeof rule.nextQuestionId === 'string',
+                  ),
+              )
+              .map((rule) => ({ ...rule }))
+          : [],
+        businessMetric:
+          question.businessMetric === 'missing_product' ||
+          question.businessMetric === 'attendant_name' ||
+          question.businessMetric === 'attendant_rating'
+            ? question.businessMetric
+            : null,
+        linkedQuestionId: typeof question.linkedQuestionId === 'string' ? question.linkedQuestionId : null,
+      }))
+
+      const importedFlowLayout =
+        parsed.data.flowLayout && typeof parsed.data.flowLayout === 'object'
+          ? (parsed.data.flowLayout as SurveyFlowLayout)
+          : { version: 1, nodes: [] }
+      const importedAttendants = Array.isArray(parsed.data.attendants)
+        ? parsed.data.attendants
+            .filter(
+              (attendant): attendant is { name: string; isActive?: boolean; sortOrder?: number } =>
+                Boolean(attendant && typeof attendant === 'object' && typeof attendant.name === 'string'),
+            )
+            .map((attendant, index) => ({
+              name: attendant.name.trim(),
+              isActive: attendant.isActive ?? true,
+              sortOrder: typeof attendant.sortOrder === 'number' ? attendant.sortOrder : index + 1,
+            }))
+            .filter((attendant) => attendant.name.length > 0)
+        : []
+
+      const remappedFlowDraft = remapImportedFlowDraft({
+        questions: importedQuestions,
+        flowLayout: importedFlowLayout,
+      })
+
+      setForm((current) => ({
+        ...current,
+        questions: remappedFlowDraft.questions,
+        flowLayout: remappedFlowDraft.flowLayout,
+      }))
+      setSelectedVisualQuestionId(remappedFlowDraft.questions[0]?.id ?? '')
+      if (importedAttendants.length) {
+        if (isEditing && params.id) {
+          await apiRequest<{ ok: boolean }>(`/surveys/${params.id}/attendants/import`, {
+            method: 'PUT',
+            body: JSON.stringify({ attendants: importedAttendants }),
+          })
+          await queryClient.invalidateQueries({ queryKey: ['attendants', params.id] })
+          setPendingImportedAttendants(null)
+        } else {
+          setPendingImportedAttendants(importedAttendants)
+        }
+      } else {
+        setPendingImportedAttendants(null)
+      }
+      setFeedback(
+        isEditing
+          ? 'Fluxo importado para esta pesquisa. Os atendentes vinculados tambem foram copiados.'
+          : 'Fluxo importado com sucesso. Os atendentes serao copiados quando a pesquisa for salva.',
+      )
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Não foi possível importar a pesquisa.')
+    } finally {
+      setImportingSurvey(false)
+      if (importFileRef.current) {
+        importFileRef.current.value = ''
+      }
+    }
+  }
 
   const unpublishMutation = useMutation({
     mutationFn: async () => {
@@ -352,6 +850,13 @@ export function SurveyBuilderPage() {
       ])
 
       setFeedback('Pesquisa movida de volta para rascunho com sucesso.')
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({ message: 'Pesquisa atualizada com sucesso.', key: Date.now() })
+      centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+        setCenteredFeedback(null)
+      }, 1800)
     },
     onError: (error) => {
       setFeedback(error instanceof Error ? error.message : 'Não foi possível voltar a pesquisa para rascunho.')
@@ -472,11 +977,29 @@ export function SurveyBuilderPage() {
     }))
   }
 
-  function addQuestion() {
+  function updateQuestionById(questionId: string, updater: (question: BuilderQuestion) => BuilderQuestion) {
     setForm((current) => ({
       ...current,
-      questions: [...current.questions, makeQuestion()],
+      questions: current.questions.map((question) => (question.id === questionId ? updater(question) : question)),
     }))
+  }
+
+  function addQuestion() {
+    const nextQuestion = makeQuestion()
+
+    setForm((current) => {
+      const nextQuestions = [...current.questions, nextQuestion]
+
+      return {
+        ...current,
+        questions: nextQuestions,
+        flowLayout: mergeFlowLayout(
+          nextQuestions.map((question) => question.id),
+          current.flowLayout,
+        ),
+      }
+    })
+    setSelectedVisualQuestionId(nextQuestion.id)
   }
 
   function removeQuestion(index: number) {
@@ -485,19 +1008,49 @@ export function SurveyBuilderPage() {
         return current
       }
 
-      const removedQuestionId = current.questions[index]?.id
+      const removedQuestion = current.questions[index]
+      if (!removedQuestion) return current
+
+      // Warn if the question has a business metric
+      if (removedQuestion.businessMetric) {
+        const metricLabels: Record<string, string> = {
+          missing_product: 'Produto em falta',
+          attendant_name: 'Nome do atendente',
+          attendant_rating: 'Nota do atendente',
+        }
+        const label = metricLabels[removedQuestion.businessMetric] ?? removedQuestion.businessMetric
+        if (!window.confirm(`Esta pergunta está configurada como métrica de negócio "${label}". Deseja removê-la mesmo assim? A métrica será perdida.`)) {
+          return current
+        }
+      }
+
+      const removedQuestionId = removedQuestion.id
       const nextQuestions = current.questions.filter((_, i) => i !== index)
 
       return {
         ...current,
-        questions: removedQuestionId
-          ? nextQuestions.map((question) => ({
-              ...question,
-              flowRules: removeRulesThatPointToQuestion(question.flowRules, removedQuestionId),
-            }))
-          : nextQuestions,
+        questions: nextQuestions.map((question) => ({
+          ...question,
+          flowRules: removeRulesThatPointToQuestion(question.flowRules, removedQuestionId),
+          // Clean up linkedQuestionId if it points to the removed question
+          linkedQuestionId: question.linkedQuestionId === removedQuestionId ? null : question.linkedQuestionId,
+        })),
+        flowLayout: {
+          ...current.flowLayout,
+          nodes: current.flowLayout.nodes.filter((node) => node.id !== removedQuestionId),
+        },
       }
     })
+  }
+
+  function removeQuestionById(questionId: string) {
+    const questionIndex = form.questions.findIndex((question) => question.id === questionId)
+
+    if (questionIndex < 0) {
+      return
+    }
+
+    removeQuestion(questionIndex)
   }
 
   function addOption(questionIndex: number) {
@@ -518,141 +1071,65 @@ export function SurveyBuilderPage() {
     }))
   }
 
-  const previewContent = (
-    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-      <div
-        className="overflow-hidden border border-slate-200"
-        style={{
-          borderRadius: 8,
-          backgroundImage: form.bannerUrl
-            ? `linear-gradient(180deg, rgba(15,23,42,0.18) 0%, rgba(15,23,42,0.7) 100%), url(${form.bannerUrl})`
-            : `linear-gradient(135deg, ${form.primaryColor || '#0b5cff'} 0%, #0f172a 100%)`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      >
-        <div className="flex min-h-[260px] flex-col justify-between px-5 py-5 text-white">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              {form.logoUrl ? (
-                <div className="flex h-14 w-14 items-center justify-center overflow-hidden border border-white/30 bg-white/90" style={{ borderRadius: 8 }}>
-                  <img src={form.logoUrl} alt="Logo da previa da pesquisa" className="h-full w-full object-contain" />
-                </div>
-              ) : (
-                <div
-                  className="flex h-14 w-14 items-center justify-center border border-white/30 bg-white/15 text-sm font-semibold"
-                  style={{ borderRadius: 8 }}
-                >
-                  {getBrandInitials(form.brandName)}
-                </div>
-              )}
-
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.18em] text-white/70">{form.brandName.trim() || 'Sua marca'}</p>
-                <p className="mt-1 text-sm font-medium text-white/90">/s/{form.slug.trim() || 'seu-link-aqui'}</p>
-              </div>
-            </div>
-
-            <span className="border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ borderRadius: 999 }}>
-              {form.rewardEnabled ? 'Com roleta' : 'Pesquisa simples'}
-            </span>
-          </div>
-
-          <div className="max-w-2xl">
-            <h3 className="text-2xl font-semibold leading-tight sm:text-3xl">
-              {form.title.trim() || 'O titulo da sua pesquisa aparecera aqui'}
-            </h3>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-white/85">
-              {form.description.trim() || 'Use a descricao para explicar rapidamente o objetivo da pesquisa e orientar o participante.'}
-            </p>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                Nome e WhatsApp obrigatorios
-              </span>
-              <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4">
-        <div className="border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Como o participante percebe</p>
-          <div className="mt-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-            <p className="text-sm font-semibold text-slate-950">
-              {form.questions[0]?.title?.trim() || 'A primeira pergunta aparecera aqui'}
-            </p>
-            <p className="mt-2 text-sm text-slate-600">
-              {form.questions[0]?.description?.trim() || 'Voce pode usar a descricao de apoio para orientar a resposta do cliente.'}
-            </p>
-            <div className="mt-4 grid gap-2">
-              <div className="h-10 border border-slate-200 bg-slate-50" style={{ borderRadius: 6 }} />
-              <div
-                className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white"
-                style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-              >
-                Continuar
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Resumo da identidade</p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-              <p className="text-xs text-slate-500">Cor principal</p>
-              <div className="mt-2 flex items-center gap-2">
-                <div
-                  className="h-8 w-8 border border-slate-200"
-                  style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                />
-                <span className="text-sm font-medium text-slate-900">{form.primaryColor || '#0b5cff'}</span>
-              </div>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-              <p className="text-xs text-slate-500">Logo</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{form.logoUrl ? 'Enviada' : 'Pendente'}</p>
-            </div>
-            <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-              <p className="text-xs text-slate-500">Banner</p>
-              <p className="mt-2 text-sm font-medium text-slate-900">{form.bannerUrl ? 'Enviado' : 'Pendente'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
   const actionButtons = (
     <>
-      <button type="button" onClick={() => setPreviewOpen(true)} className="admin-button">
-        <FileImage className="h-4 w-4" />
-        Ver previa
-      </button>
       {params.id ? (
-        <Link to={getSurveyTestPath(params.id)} className="admin-button">
+        <Link to={getSurveyTestPath(params.id)} className="admin-button border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100">
           <Sparkles className="h-4 w-4" />
           Testar pesquisa
         </Link>
       ) : null}
+      {params.id ? (
+        <button type="button" onClick={() => void handleExportSurvey()} className="admin-button">
+          <Download className="h-4 w-4" />
+          Exportar
+        </button>
+      ) : null}
+      <input
+        ref={importFileRef}
+        type="file"
+        accept=".json"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void handleImportSurvey(file)
+        }}
+      />
       <button
         type="button"
-        onClick={() => void saveMutation.mutateAsync(false)}
-          disabled={saveMutation.isPending || unpublishMutation.isPending}
-        className="admin-button-primary"
+        disabled={importingSurvey}
+        onClick={() => importFileRef.current?.click()}
+        className="admin-button"
       >
-        <Sparkles className="h-4 w-4" />
-        {saveMutation.isPending ? 'Salvando...' : 'Salvar rascunho'}
+        <Upload className="h-4 w-4" />
+        {importingSurvey ? 'Importando...' : 'Importar'}
       </button>
       <button
         type="button"
-        onClick={() => void saveMutation.mutateAsync(true)}
-          disabled={saveMutation.isPending || unpublishMutation.isPending}
-        className="admin-button"
+        onClick={() =>
+          void saveMutation.mutateAsync({
+            shouldPublish: false,
+            flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+            draft: form,
+          })
+        }
+        disabled={saveMutation.isPending || unpublishMutation.isPending}
+        className="admin-button border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100"
+      >
+        <FileImage className="h-4 w-4" />
+        Salvar rascunho
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void saveMutation.mutateAsync({
+            shouldPublish: true,
+            flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+            draft: form,
+          })
+        }
+        disabled={saveMutation.isPending || unpublishMutation.isPending}
+        className="admin-button-primary border-emerald-200 bg-emerald-600 text-white hover:bg-emerald-700"
       >
         <Share2 className="h-4 w-4" />
         Salvar e publicar
@@ -670,38 +1147,43 @@ export function SurveyBuilderPage() {
                 void unpublishMutation.mutateAsync()
               }
             }}
-            className="admin-button"
+            className="admin-button border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
           >
             <Share2 className="h-4 w-4" />
             {unpublishMutation.isPending ? 'Voltando...' : 'Voltar para rascunho'}
           </button>
         ) : null}
-      {params.id && form.rewardEnabled ? (
-        <Link
-          to={`/app/pesquisas/${params.id}/premios`}
-          className="admin-button"
-        >
-          Configurar prêmios
-        </Link>
-      ) : null}
     </>
   )
 
   return (
-    <AppShell
-      title={params.id ? 'Editor de pesquisa' : 'Nova pesquisa'}
-      subtitle="Organize sua pesquisa em blocos claros, revise as perguntas e publique somente quando tudo estiver pronto."
-      backHref={params.id ? `/app/pesquisas/${params.id}` : '/app/pesquisas'}
-      backLabel={params.id ? 'Voltar para a pesquisa' : 'Voltar para pesquisas'}
-      breadcrumbs={
-        params.id
-          ? [
-              { label: 'Pesquisas', href: '/app/pesquisas' },
-              { label: survey?.title ?? 'Pesquisa', href: `/app/pesquisas/${params.id}` },
-              { label: 'Editar' },
-            ]
-          : [{ label: 'Pesquisas', href: '/app/pesquisas' }, { label: 'Nova pesquisa' }]
-      }
+    <>
+      {centeredFeedback ? (
+        <div className="pointer-events-none fixed inset-0 z-[140] flex items-center justify-center px-4">
+          <div
+            key={centeredFeedback.key}
+            className="animate-fade-in-scale rounded-[24px] border border-emerald-200 bg-white/95 px-6 py-5 text-center shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur-sm"
+          >
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-[0_12px_30px_rgba(16,185,129,0.18)]">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <p className="mt-3 text-xs font-bold uppercase tracking-[0.22em] text-emerald-700">Tudo certo</p>
+            <p className="mt-2 text-base font-semibold text-slate-950 sm:text-lg">{centeredFeedback.message}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <AppShell
+      title={params.id ? (survey?.title ?? 'Fluxo da pesquisa') : 'Nova pesquisa'}
+      subtitle=""
+      hideHeader={Boolean(params.id)}
+      {...(params.id
+        ? {}
+        : {
+            backHref: '/app/pesquisas',
+            backLabel: 'Voltar para pesquisas',
+            breadcrumbs: [{ label: 'Pesquisas', href: '/app/pesquisas' }, { label: 'Nova pesquisa' }],
+          })}
     >
       {surveyQuery.isError ? (
         <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
@@ -721,275 +1203,104 @@ export function SurveyBuilderPage() {
         </div>
       ) : null}
 
-      <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Criação guiada</p>
-          <h2 className="mt-1 font-display text-[22px] leading-tight text-slate-950">
-            Monte a pesquisa em um editor mais limpo e fácil de entender.
-          </h2>
-          <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
-            A ideia aqui é deixar cada bloco com uma função clara: dados da pesquisa, visual, regras e perguntas em sequência.
-          </p>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-3">
-          <div className="admin-inline-stat">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Perguntas</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{form.questions.length}</p>
-          </div>
-          <div className="admin-inline-stat">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Roleta</p>
-            <p className="mt-1 text-sm font-semibold text-slate-950">{form.rewardEnabled ? 'Ativada' : 'Desligada'}</p>
-          </div>
-          <div className="admin-inline-stat">
-            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Slug</p>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-950">{form.slug || 'Ainda não definido'}</p>
-          </div>
-        </div>
-      </section>
-
-      {false ? (
-      <section className="mb-6 overflow-hidden border border-slate-200 bg-white shadow-card" style={{ borderRadius: 8 }}>
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">PrÃ©via visual</p>
-            <p className="mt-1 text-sm text-slate-600">Acompanhe ao vivo como a identidade da pesquisa estÃ¡ ficando.</p>
-          </div>
-          <span className="builder-question-meta builder-question-meta-primary">Atualiza automaticamente</span>
-        </div>
-
-        <div className="grid gap-4 p-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <div
-            className="overflow-hidden border border-slate-200"
-            style={{
-              borderRadius: 8,
-              backgroundImage: form.bannerUrl
-                ? `linear-gradient(180deg, rgba(15,23,42,0.18) 0%, rgba(15,23,42,0.7) 100%), url(${form.bannerUrl})`
-                : `linear-gradient(135deg, ${form.primaryColor || '#0b5cff'} 0%, #0f172a 100%)`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          >
-            <div className="flex min-h-[260px] flex-col justify-between px-5 py-5 text-white">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  {form.logoUrl ? (
-                    <div className="flex h-14 w-14 items-center justify-center overflow-hidden border border-white/30 bg-white/90" style={{ borderRadius: 8 }}>
-                      <img src={form.logoUrl} alt="Logo da prÃ©via da pesquisa" className="h-full w-full object-contain" />
-                    </div>
-                  ) : (
-                    <div
-                      className="flex h-14 w-14 items-center justify-center border border-white/30 bg-white/15 text-sm font-semibold"
-                      style={{ borderRadius: 8 }}
-                    >
-                      {getBrandInitials(form.brandName)}
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-white/70">
-                      {form.brandName.trim() || 'Sua marca'}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-white/90">
-                      /s/{form.slug.trim() || 'seu-link-aqui'}
-                    </p>
-                  </div>
-                </div>
-
-                <span className="border border-white/30 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ borderRadius: 999 }}>
-                  {form.rewardEnabled ? 'Com roleta' : 'Pesquisa simples'}
-                </span>
-              </div>
-
-              <div className="max-w-2xl">
-                <h3 className="text-2xl font-semibold leading-tight sm:text-3xl">
-                  {form.title.trim() || 'O tÃ­tulo da sua pesquisa aparecerÃ¡ aqui'}
-                </h3>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-white/85">
-                  {form.description.trim() || 'Use a descriÃ§Ã£o para explicar rapidamente o objetivo da pesquisa e orientar o participante.'}
-                </p>
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                    Nome e WhatsApp obrigatÃ³rios
-                  </span>
-                  <span className="border border-white/25 bg-white/10 px-3 py-1 text-xs text-white/90" style={{ borderRadius: 999 }}>
-                    {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4">
-            <div className="border border-slate-200 bg-slate-50 p-4" style={{ borderRadius: 8 }}>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Como o participante percebe</p>
-              <div className="mt-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-                <p className="text-sm font-semibold text-slate-950">
-                  {form.questions[0]?.title?.trim() || 'A primeira pergunta aparecerÃ¡ aqui'}
-                </p>
-                <p className="mt-2 text-sm text-slate-600">
-                  {form.questions[0]?.description?.trim() || 'VocÃª pode usar a descriÃ§Ã£o de apoio para orientar a resposta do cliente.'}
-                </p>
-                <div className="mt-4 grid gap-2">
-                  <div className="h-10 border border-slate-200 bg-slate-50" style={{ borderRadius: 6 }} />
-                  <div
-                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white"
-                    style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                  >
-                    Continuar
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 8 }}>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Resumo da identidade</p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-                  <p className="text-xs text-slate-500">Cor principal</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div
-                      className="h-8 w-8 border border-slate-200"
-                      style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                    />
-                    <span className="text-sm font-medium text-slate-900">{form.primaryColor || '#0b5cff'}</span>
-                  </div>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-                  <p className="text-xs text-slate-500">Logo</p>
-                  <p className="mt-2 text-sm font-medium text-slate-900">{form.logoUrl ? 'Enviada' : 'Pendente'}</p>
-                </div>
-                <div className="border border-slate-200 bg-slate-50 p-3" style={{ borderRadius: 6 }}>
-                  <p className="text-xs text-slate-500">Banner</p>
-                  <p className="mt-2 text-sm font-medium text-slate-900">{form.bannerUrl ? 'Enviado' : 'Pendente'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-      ) : null}
-
-      {params.id && form.slug && isPublishedSurvey ? (
-        <div className="mb-6">
-          <SurveyShareCard
-            surveyId={params.id}
-            slug={form.slug}
-            linkClicks={survey?.linkClicks ?? 0}
-            qrScans={survey?.qrScans ?? 0}
-          />
-        </div>
-      ) : null}
-
-      {params.id && !isPublishedSurvey ? (
-        <div className="admin-alert mb-6 border-sky-200 bg-sky-50 text-sky-900">
-          Esta pesquisa ainda não está publicada. Use <strong>Testar pesquisa</strong> para validar a experiência antes de colocar o link no ar.
-        </div>
-      ) : null}
-
-      {params.id && isPublishedSurvey ? (
-        <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
-          Esta pesquisa está publicada. Se você voltar para rascunho, o link público sai do ar, mas as respostas já recebidas continuam salvas.
-        </div>
-      ) : null}
-
       {params.id ? (
-        <div className="mb-6">
-          <SurveyPreviewLinkCard surveyId={params.id} isDraft={!isPublishedSurvey} />
-        </div>
+        <SurveyNavBar
+          surveyId={params.id}
+          surveyTitle={survey?.title}
+          activeTab="flow"
+        />
       ) : null}
 
-      <div className="admin-alert mb-6 border-amber-200 bg-amber-50 text-amber-900">
-        <strong>Salvar rascunho</strong> salva tudo o que você fez, mas <strong>não publica</strong> a pesquisa.
-        Use <strong>Salvar e publicar</strong> somente quando o link já puder receber respostas.
-      </div>
+      <div className={params.id ? 'p-3 sm:p-4 lg:p-5' : ''}>
+      <section className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-slate-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+            {params.id ? (isPublishedSurvey ? 'Publicada' : 'Rascunho') : 'Nova pesquisa'}
+          </span>
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+            {form.questions.length} {form.questions.length === 1 ? 'pergunta' : 'perguntas'}
+          </span>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+              saveMutation.isPending
+                ? 'border border-sky-200 bg-sky-50 text-sky-700'
+                : hasUnsavedBuilderChanges
+                  ? 'border border-amber-200 bg-amber-50 text-amber-700'
+                  : 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+            }`}
+          >
+            {saveMutation.isPending ? 'Salvando...' : hasUnsavedBuilderChanges ? 'Alterações não salvas' : 'Tudo salvo'}
+          </span>
+          {form.slug ? (
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+              /s/{form.slug}
+            </span>
+          ) : null}
+        </div>
 
-      <div className="mb-6 flex flex-wrap gap-3">
-        {actionButtons}
-      </div>
-
-      <AdminModal
-        open={previewOpen}
-        title="Previa da pesquisa"
-        description="Confira como a identidade e a abertura da pesquisa estao ficando antes de publicar."
-        onClose={() => setPreviewOpen(false)}
-      >
-        {previewContent}
-      </AdminModal>
-
-      <section className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <article className="builder-step-card builder-step-card-blue">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-blue">
-              <FileText className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 1</p>
-              <p className="text-sm font-semibold text-slate-950">Dados principais</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Defina título, descrição e o nome que vai aparecer para o cliente.</p>
-        </article>
-
-        <article className="builder-step-card builder-step-card-violet">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-violet">
-              <Link2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 2</p>
-              <p className="text-sm font-semibold text-slate-950">Link e visual</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Escolha o slug, a cor principal e envie a logo e o banner da pesquisa.</p>
-        </article>
-
-        <article className="builder-step-card builder-step-card-amber">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-amber">
-              <Settings2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 3</p>
-              <p className="text-sm font-semibold text-slate-950">Perguntas</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Adicione as perguntas na ordem da resposta e ajuste opções e fluxo quando precisar.</p>
-        </article>
-
-        <article className="builder-step-card builder-step-card-emerald">
-          <div className="mb-3 flex items-center gap-3">
-            <div className="admin-icon-chip builder-chip-emerald">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Passo 4</p>
-              <p className="text-sm font-semibold text-slate-950">Salvar</p>
-            </div>
-          </div>
-          <p className="text-sm text-slate-600">Use rascunho para continuar depois. Publique somente quando o link estiver pronto.</p>
-        </article>
+        <div className="flex flex-wrap gap-2">
+          {actionButtons}
+        </div>
       </section>
 
-      <div className="builder-sheet">
+      <div className="grid gap-6">
+        <section
+          className="overflow-hidden rounded-[8px] border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#fbfdff_100%)] p-4 shadow-card"
+          style={{ background: 'linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%)' }}
+        >
+          <SurveyVisualFlowEditor
+            primaryColor={form.primaryColor}
+            questions={form.questions}
+            flowLayout={form.flowLayout}
+            hasUnsavedChanges={hasUnsavedFlowChanges}
+            isSaving={saveMutation.isPending}
+            selectedQuestionId={selectedVisualQuestionId}
+            onSelectQuestion={setSelectedVisualQuestionId}
+            onAddQuestion={addQuestion}
+            onRemoveQuestion={removeQuestionById}
+            onUpdateQuestion={updateQuestionById}
+            onUpdateFlowLayout={(layout) => updateForm('flowLayout', layout)}
+            onSaveFlow={() =>
+              void saveMutation.mutateAsync({
+                shouldPublish: false,
+                flowSnapshot: normalizeFlowDraft(currentFlowSnapshot),
+                draft: form,
+              })
+            }
+            onDiscardFlow={() => {
+              if (!savedFlowSnapshot || !hasUnsavedFlowChanges) {
+                return
+              }
+
+              if (window.confirm('Descartar as alterações do fluxo e voltar para a última versão salva?')) {
+                setForm((current) => ({
+                  ...current,
+                  questions: savedFlowSnapshot.questions.map((question) => ({
+                    ...question,
+                    options: [...question.options],
+                    flowRules: question.flowRules.map((rule) => ({ ...rule })),
+                  })),
+                  flowLayout: {
+                    ...savedFlowSnapshot.flowLayout,
+                    nodes: savedFlowSnapshot.flowLayout.nodes.map((node) => ({ ...node })),
+                    viewport: savedFlowSnapshot.flowLayout.viewport
+                      ? { ...savedFlowSnapshot.flowLayout.viewport }
+                      : undefined,
+                  },
+                }))
+                setFeedback('Alterações do fluxo descartadas.')
+              }
+            }}
+          />
+        </section>
+
         <SectionCard
           eyebrow="Configuração"
           title="Dados principais"
-          description="Preencha os dados da pesquisa em uma sequência simples, como um formulário bem guiado."
+          description="Só o essencial para deixar a pesquisa pronta e fácil de publicar."
         >
           <div className="grid gap-4">
-            <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
-              Preencha primeiro o básico. Depois ajuste o visual e finalize com as regras da pesquisa.
-            </div>
-            <div className="admin-subcard builder-subcard-blue grid gap-4">
-              <div>
-                <p className="text-sm font-semibold text-sky-950">1. Identificação da pesquisa</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Essas informações aparecem no topo da pesquisa e ajudam o cliente a entender do que se trata.
-                </p>
-              </div>
-
+            <div className="grid gap-4 lg:grid-cols-2">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Título da pesquisa</span>
                 <input
@@ -1009,7 +1320,9 @@ export function SurveyBuilderPage() {
                   onChange={(event) => updateForm('description', event.target.value)}
                 />
               </label>
+            </div>
 
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.15fr)_minmax(320px,0.9fr)]">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Nome da marca</span>
                 <input
@@ -1019,20 +1332,6 @@ export function SurveyBuilderPage() {
                   onChange={(event) => updateForm('brandName', event.target.value)}
                 />
               </label>
-            </div>
-
-            <div className="admin-subcard builder-subcard-violet grid gap-4">
-              <div className="flex items-center gap-3">
-                <div className="admin-icon-chip builder-chip-violet">
-                  <Palette className="h-4 w-4" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-violet-950">2. Link e aparência</p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Defina o endereço da pesquisa e deixe a identidade visual alinhada com a marca.
-                  </p>
-                </div>
-              </div>
 
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Slug amigável</span>
@@ -1050,189 +1349,139 @@ export function SurveyBuilderPage() {
                     )
                   }
                 />
-                <span className="text-xs text-slate-500">
-                  Link final: <strong>/s/{form.slug || 'seu-link-aqui'}</strong>
-                </span>
               </label>
 
-              <div className="grid gap-4 md:grid-cols-[120px_1fr]">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Cor principal</span>
-                  <input
-                    type="color"
-                    className="h-11 w-full cursor-pointer border border-slate-300 bg-white p-1"
-                    value={form.primaryColor}
-                    onChange={(event) => updateForm('primaryColor', event.target.value)}
-                    style={{ borderRadius: 6 }}
-                  />
-                </label>
-
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Código da cor principal</span>
-                  <div className="flex gap-3">
+              <div className="grid gap-2 text-sm">
+                <div className="flex items-center gap-2 text-slate-600">
+                  <Palette className="h-4 w-4" />
+                  <span>Cor principal</span>
+                </div>
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-3">
                     <input
-                      className="admin-input"
+                      type="color"
+                      className="h-10 w-12 cursor-pointer border border-slate-300 bg-white p-1"
+                      value={safePrimaryColor}
+                      onChange={(event) => updateForm('primaryColor', event.target.value)}
+                      style={{ borderRadius: 8 }}
+                    />
+                    <input
+                      className="admin-input h-10"
                       value={form.primaryColor}
                       placeholder="#0b5cff"
                       onChange={(event) => updateForm('primaryColor', event.target.value)}
                     />
-                    <div
-                      className="h-10 w-12 shrink-0 border border-slate-300 bg-white"
-                      style={{ borderRadius: 6, backgroundColor: form.primaryColor || '#0b5cff' }}
-                    />
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     {surveyColorPresets.map((color) => (
                       <button
                         key={color}
                         type="button"
                         aria-label={`Usar a cor ${color}`}
-                        className="h-8 w-8 border border-slate-200 transition hover:scale-105"
-                        style={{ borderRadius: 6, backgroundColor: color }}
+                        className={`h-7 w-7 border transition hover:scale-105 ${
+                          safePrimaryColor.toLowerCase() === color.toLowerCase()
+                            ? 'border-slate-950 ring-2 ring-slate-200'
+                            : 'border-slate-200'
+                        }`}
+                        style={{ borderRadius: 8, backgroundColor: color }}
                         onClick={() => updateForm('primaryColor', color)}
                       />
                     ))}
                   </div>
-                  <span className="text-xs text-slate-500">
-                    Clique na cor para abrir o seletor completo ou escolha uma cor pronta abaixo.
-                  </span>
-                </label>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Essa cor aparece nos botões, destaques e na identidade da página pública.
+                  </p>
+                </div>
               </div>
+            </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 6 }}>
-                  <div className="flex items-start gap-3">
-                    <div className="admin-icon-chip builder-chip-violet">
-                      <FileImage className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-950">Logo da pesquisa</p>
-                      <p className="mt-1 text-sm text-slate-600">Envie a logo da marca para aparecer no topo da página.</p>
-                      <p className="mt-1 text-xs text-slate-500">Medida recomendada: 320 x 120 px.</p>
-                    </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-3 rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-700">Logo da pesquisa</span>
+                  <button
+                    type="button"
+                    className="admin-button px-3 py-2 text-xs"
+                    onClick={() => void handleSurveyImageRemove('logo')}
+                    disabled={!form.logoUrl || (removeUploadMutation.isPending && removingKey === 'logo')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {removeUploadMutation.isPending && removingKey === 'logo' ? 'Removendo...' : 'Remover'}
+                  </button>
+                </div>
+
+                {form.logoUrl ? (
+                  <div className="flex h-20 items-center justify-center border border-slate-200 bg-white px-4 py-3" style={{ borderRadius: 8 }}>
+                    <img src={form.logoUrl} alt="Preview da logo da pesquisa" className="h-12 w-auto max-w-full object-contain" />
                   </div>
+                ) : (
+                  <div className="flex h-20 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 8 }}>
+                    Nenhuma logo enviada.
+                  </div>
+                )}
 
-                  {form.logoUrl ? (
-                    <div className="flex min-h-24 items-center justify-center border border-slate-200 bg-slate-50 px-4 py-3" style={{ borderRadius: 6 }}>
-                      <img src={form.logoUrl} alt="Preview da logo da pesquisa" className="h-14 w-auto max-w-full object-contain" />
-                    </div>
-                  ) : (
-                    <div className="flex min-h-24 items-center justify-center border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
-                      Nenhuma logo enviada ainda.
-                    </div>
-                  )}
-
+                <label className="grid gap-2 text-sm">
                   <input
                     key={`survey-logo-${uploadInputVersion.logo}`}
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
-                    className="block w-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
-                    style={{ borderRadius: 6 }}
+                    className="block w-full border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                    style={{ borderRadius: 8 }}
                     onChange={(event) => void handleSurveyImageUpload('logo', event.target.files?.[0])}
                   />
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="admin-button"
-                      onClick={() => void handleSurveyImageRemove('logo')}
-                      disabled={!form.logoUrl || (removeUploadMutation.isPending && removingKey === 'logo')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {removeUploadMutation.isPending && removingKey === 'logo' ? 'Removendo...' : 'Remover logo'}
-                    </button>
-                  </div>
-
                   <p className="text-xs text-slate-500">
                     {uploadingKey === 'logo' && uploadMutation.isPending
                       ? 'Enviando logo...'
-                      : form.logoUrl || 'PNG, JPG, SVG ou WEBP. Tamanho máximo de 3 MB.'}
+                      : form.logoUrl || 'PNG, JPG, SVG ou WEBP.'}
                   </p>
                   {uploadErrors.logo ? <p className="text-xs text-rose-600">{uploadErrors.logo}</p> : null}
+                </label>
+              </div>
+
+              <div className="grid gap-3 rounded-[10px] border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-slate-700">Banner da pesquisa</span>
+                  <button
+                    type="button"
+                    className="admin-button px-3 py-2 text-xs"
+                    onClick={() => void handleSurveyImageRemove('banner')}
+                    disabled={!form.bannerUrl || (removeUploadMutation.isPending && removingKey === 'banner')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {removeUploadMutation.isPending && removingKey === 'banner' ? 'Removendo...' : 'Remover'}
+                  </button>
                 </div>
 
-                <div className="grid gap-3 border border-slate-200 bg-white p-4" style={{ borderRadius: 6 }}>
-                  <div className="flex items-start gap-3">
-                    <div className="admin-icon-chip builder-chip-violet">
-                      <Upload className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-950">Banner da pesquisa</p>
-                      <p className="mt-1 text-sm text-slate-600">Envie um banner horizontal para destacar a campanha.</p>
-                      <p className="mt-1 text-xs text-slate-500">Medida recomendada: 1600 x 400 px.</p>
-                    </div>
+                {form.bannerUrl ? (
+                  <div className="flex h-24 items-center justify-center overflow-hidden border border-slate-200 bg-white" style={{ borderRadius: 8 }}>
+                    <img src={form.bannerUrl} alt="Preview do banner da pesquisa" className="h-full w-full object-cover" />
                   </div>
+                ) : (
+                  <div className="flex h-24 items-center justify-center border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 8 }}>
+                    Nenhum banner enviado.
+                  </div>
+                )}
 
-                  {form.bannerUrl ? (
-                    <div className="flex min-h-28 items-center justify-center overflow-hidden border border-slate-200 bg-slate-50" style={{ borderRadius: 6 }}>
-                      <img src={form.bannerUrl} alt="Preview do banner da pesquisa" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <div className="flex min-h-28 items-center justify-center border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-400" style={{ borderRadius: 6 }}>
-                      Nenhum banner enviado ainda.
-                    </div>
-                  )}
-
+                <label className="grid gap-2 text-sm">
                   <input
                     key={`survey-banner-${uploadInputVersion.banner}`}
                     type="file"
                     accept=".png,.jpg,.jpeg,.svg,.webp,image/png,image/jpeg,image/svg+xml,image/webp"
-                    className="block w-full border border-slate-200 bg-white px-4 py-3 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
-                    style={{ borderRadius: 6 }}
+                    className="block w-full border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none file:mr-3 file:border-0 file:bg-slate-950 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
+                    style={{ borderRadius: 8 }}
                     onChange={(event) => void handleSurveyImageUpload('banner', event.target.files?.[0])}
                   />
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      className="admin-button"
-                      onClick={() => void handleSurveyImageRemove('banner')}
-                      disabled={!form.bannerUrl || (removeUploadMutation.isPending && removingKey === 'banner')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {removeUploadMutation.isPending && removingKey === 'banner' ? 'Removendo...' : 'Remover banner'}
-                    </button>
-                  </div>
-
                   <p className="text-xs text-slate-500">
                     {uploadingKey === 'banner' && uploadMutation.isPending
                       ? 'Enviando banner...'
-                      : form.bannerUrl || 'PNG, JPG, SVG ou WEBP. Tamanho máximo de 3 MB.'}
+                      : form.bannerUrl || 'PNG, JPG, SVG ou WEBP.'}
                   </p>
                   {uploadErrors.banner ? <p className="text-xs text-rose-600">{uploadErrors.banner}</p> : null}
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Caminho interno da logo</span>
-                  <input
-                    className="admin-input"
-                    value={form.logoUrl}
-                    placeholder="A logo enviada aparece aqui automaticamente."
-                    readOnly
-                  />
-                </label>
-                <label className="grid gap-2 text-sm">
-                  <span className="text-slate-600">Caminho interno do banner</span>
-                  <input
-                    className="admin-input"
-                    value={form.bannerUrl}
-                    placeholder="O banner enviado aparece aqui automaticamente."
-                    readOnly
-                  />
                 </label>
               </div>
             </div>
 
-            <div className="admin-subcard builder-subcard-amber grid gap-4">
-              <div>
-                <p className="text-sm font-semibold text-amber-950">3. Regras e finalização</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  Aqui você define como a pesquisa funciona e qual mensagem aparece ao final da resposta.
-                </p>
-              </div>
-
+            <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
               <label className="grid gap-2 text-sm">
                 <span className="text-slate-600">Modo de participação</span>
                 <select
@@ -1242,12 +1491,9 @@ export function SurveyBuilderPage() {
                 >
                   <option value="identified">Identificada com nome e telefone</option>
                 </select>
-                <span className="text-xs text-slate-500">
-                  Esse modelo mantém nome e WhatsApp obrigatórios para facilitar relatórios e controle da roleta.
-                </span>
               </label>
 
-              <label className="admin-checkrow">
+              <label className="admin-checkrow rounded-[8px] border border-slate-200 bg-slate-50 px-4 py-3">
                 <input
                   type="checkbox"
                   checked={form.rewardEnabled}
@@ -1262,318 +1508,65 @@ export function SurveyBuilderPage() {
                 />
                 <span>
                   <span className="block font-semibold text-slate-950">Ativar roleta de prêmios</span>
-                  <span className="text-slate-500">
-                    Quando estiver ativa, a mesma pessoa pode responder novamente, mas não gira outra vez com o mesmo WhatsApp ou e-mail.
-                  </span>
+                  <span className="text-slate-500">Liga a campanha de prêmios para esta pesquisa.</span>
                 </span>
               </label>
+            </div>
 
-              <div className="admin-alert border-sky-200 bg-sky-50 text-sky-900">
-                Toda pesquisa publicada coleta <strong>nome e WhatsApp</strong> obrigatórios, além de <strong>e-mail opcional</strong> e <strong>aniversário</strong>.
-              </div>
+            <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-4">
+              <label className="admin-checkrow">
+                <input
+                  type="checkbox"
+                  checked={form.allowMultipleResponses}
+                  onChange={(event) => {
+                    setForm((current) => ({
+                      ...current,
+                      allowMultipleResponses: event.target.checked,
+                    }))
+                  }}
+                />
+                <span>
+                  <span className="block font-semibold text-slate-950">Permitir múltiplas respostas</span>
+                  <span className="text-slate-500">A mesma pessoa pode responder à pesquisa mais de uma vez.</span>
+                </span>
+              </label>
+            </div>
 
-              {form.rewardEnabled ? (
-                <div className="admin-alert border-emerald-200 bg-emerald-50 text-emerald-900">
-                  Depois de salvar a pesquisa, use o botão <strong>Configurar prêmios</strong> para cadastrar a campanha e os itens da roleta.
-                </div>
-              ) : null}
-
+            <div className="rounded-[8px] border border-slate-200 bg-slate-50 p-4">
               <label className="grid gap-2 text-sm">
-                <span className="text-slate-600">Mensagem final</span>
-                <textarea
-                  className="admin-input min-h-28"
-                  value={form.closingMessage}
-                  placeholder="Ex.: Obrigado por participar. Sua resposta foi registrada com sucesso."
-                  onChange={(event) => updateForm('closingMessage', event.target.value)}
+                <span className="font-semibold text-slate-950">Prazo para novo giro da roleta (dias)</span>
+                <span className="text-slate-500">A mesma pessoa só pode girar a roleta novamente após esse prazo.</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  className="admin-input w-32"
+                  value={form.duplicateResponseCooldownDays}
+                  onChange={(event) => {
+                    const value = Number.parseInt(event.target.value, 10)
+                    setForm((current) => ({
+                      ...current,
+                      duplicateResponseCooldownDays: Number.isNaN(value) ? current.duplicateResponseCooldownDays : Math.max(1, Math.min(365, value)),
+                    }))
+                  }}
                 />
               </label>
             </div>
-          </div>
-        </SectionCard>
 
-        <SectionCard
-          eyebrow="Estrutura"
-          title="Perguntas da pesquisa"
-          description="Cada pergunta fica em um bloco próprio para facilitar leitura, edição e revisão."
-        >
-          <div className="admin-alert mb-4 border-amber-200 bg-amber-50 text-amber-900">
-            Dica: comece pelas perguntas mais importantes. Se uma resposta precisar pular etapas, use o fluxo condicional.
-          </div>
-
-          <div className="space-y-4">
-            {form.questions.map((question, index) => (
-              (() => {
-                const nextQuestions = form.questions.slice(index + 1)
-                const flowValues = getQuestionFlowValues(question)
-                const genericFlowTarget =
-                  question.flowRules.find((rule) => rule.value === FLOW_ON_ANSWER)?.nextQuestionId ?? ''
-
-                return (
-                  <article key={question.id} className="builder-question-card">
-                    <div
-                      className="builder-section-topbar"
-                      style={{
-                        background: `linear-gradient(90deg, ${form.primaryColor || '#0b5cff'} 0%, rgba(255,255,255,0.95) 100%)`,
-                      }}
-                    />
-                    <div className="p-5">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.25em] text-slate-500">Pergunta {index + 1}</p>
-                        <p className="mt-2 font-semibold text-slate-950">{question.title || 'Sem título ainda'}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="builder-question-meta builder-question-meta-primary">{questionTypeLabels[question.type]}</span>
-                        <span className="builder-question-meta builder-question-meta-muted">
-                          {question.required ? 'Obrigatória' : 'Opcional'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeQuestion(index)}
-                          className="admin-button-danger px-3 py-1 text-xs"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Remover
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 grid gap-4">
-                      <label className="grid gap-2 text-sm">
-                        <span className="text-slate-600">Título da pergunta</span>
-                        <input
-                          className="admin-input"
-                          value={question.title}
-                          placeholder="Ex.: Como você avalia seu atendimento?"
-                          onChange={(event) =>
-                            updateQuestion(index, (current) => ({
-                              ...current,
-                              title: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      <label className="grid gap-2 text-sm">
-                        <span className="text-slate-600">Descrição de apoio</span>
-                        <textarea
-                          className="admin-input min-h-20"
-                          value={question.description}
-                          placeholder="Use esse campo se quiser orientar o cliente sobre como responder."
-                          onChange={(event) =>
-                            updateQuestion(index, (current) => ({
-                              ...current,
-                              description: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="grid gap-2 text-sm">
-                          <span className="text-slate-600">Tipo</span>
-                          <select
-                            className="admin-select"
-                            value={question.type}
-                            onChange={(event) =>
-                              updateQuestion(index, (current) => {
-                                const type = event.target.value as QuestionType
-                                const needsOptions = type === 'single_choice' || type === 'multiple_choice'
-
-                                return {
-                                  ...current,
-                                  type,
-                                  options: needsOptions ? (current.options.length ? current.options : ['']) : [],
-                                  flowRules:
-                                    type === 'yes_no' || type === 'single_choice'
-                                      ? current.flowRules
-                                      : current.flowRules.filter((rule) => rule.value === FLOW_ON_ANSWER),
-                                }
-                              })
-                            }
-                          >
-                            {questionTypes.map((item) => (
-                              <option key={item.value} value={item.value}>
-                                {item.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="admin-subcard flex items-center gap-3 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={question.required}
-                            onChange={(event) =>
-                              updateQuestion(index, (current) => ({
-                                ...current,
-                                required: event.target.checked,
-                              }))
-                            }
-                          />
-                          Obrigatória
-                        </label>
-                      </div>
-
-                      {question.type === 'single_choice' || question.type === 'multiple_choice' ? (
-                        <div className="builder-soft-panel">
-                          <div className="mb-4 flex items-center justify-between gap-3">
-                            <p className="text-sm font-semibold text-slate-950">Opções de resposta</p>
-                            <button
-                              type="button"
-                              onClick={() => addOption(index)}
-                              className="admin-button px-3 py-2 text-xs"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              Nova opção
-                            </button>
-                          </div>
-
-                          <div className="space-y-3">
-                            {question.options.map((option, optionIndex) => (
-                              <div key={`${question.id}-${optionIndex}`} className="flex gap-3">
-                                <input
-                                  className="admin-input flex-1 bg-slate-50"
-                                  value={option}
-                                  placeholder={`Opção ${optionIndex + 1}`}
-                                  onChange={(event) =>
-                                    updateQuestion(index, (current) => {
-                                      const previousValue = current.options[optionIndex] ?? ''
-                                      const nextValue = event.target.value
-
-                                      return {
-                                        ...current,
-                                        options: current.options.map((item, itemIndex) =>
-                                          itemIndex === optionIndex ? nextValue : item,
-                                        ),
-                                        flowRules: current.flowRules.map((rule) =>
-                                          rule.value === previousValue ? { ...rule, value: nextValue } : rule,
-                                        ),
-                                      }
-                                    })
-                                  }
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removeOption(index, optionIndex)}
-                                  className="admin-button-danger px-3 py-2 text-xs"
-                                >
-                                  Remover
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="builder-soft-panel">
-                        <div className="mb-4">
-                          <p className="text-sm font-semibold text-slate-950">Ação após responder</p>
-                          <p className="mt-1 text-sm text-slate-600">
-                            Defina o que acontece assim que esta pergunta for respondida: seguir normalmente, encerrar a pesquisa ou ir para outro ponto do formulário.
-                          </p>
-                        </div>
-
-                        <label className="grid gap-2 text-sm">
-                          <span className="text-slate-600">Depois que o cliente responder esta pergunta</span>
-                          <select
-                            className="admin-select"
-                            value={genericFlowTarget}
-                            onChange={(event) =>
-                              updateQuestion(index, (current) => ({
-                                ...current,
-                                flowRules: updateFlowRuleList(current.flowRules, FLOW_ON_ANSWER, event.target.value),
-                              }))
-                            }
-                          >
-                            <option value="">Seguir para a próxima pergunta normal</option>
-                            <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
-                            {nextQuestions.map((targetQuestion, targetIndex) => (
-                              <option key={`generic-${targetQuestion.id}`} value={targetQuestion.id}>
-                                Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      {supportsQuestionFlow(question.type) ? (
-                        <div className="builder-soft-panel">
-                          <div className="mb-4">
-                            <p className="text-sm font-semibold text-slate-950">Fluxo por resposta específica</p>
-                            <p className="mt-1 text-sm text-slate-600">
-                              Para perguntas de Sim/Não e Escolha única, você também pode escolher caminhos diferentes dependendo da resposta.
-                            </p>
-                          </div>
-
-                          {flowValues.length ? (
-                            <div className="space-y-3">
-                              {flowValues.map((flowValue) => {
-                                const selectedTarget =
-                                  question.flowRules.find((rule) => rule.value === flowValue)?.nextQuestionId ?? ''
-
-                                return (
-                                  <label key={`${question.id}-${flowValue}`} className="grid gap-2 text-sm">
-                                    <span className="text-slate-600">Se responder "{flowValue}", ir para</span>
-                                    <select
-                                      className="admin-select"
-                                      value={selectedTarget}
-                                      onChange={(event) =>
-                                        updateQuestion(index, (current) => ({
-                                          ...current,
-                                          flowRules: updateFlowRuleList(current.flowRules, flowValue, event.target.value),
-                                        }))
-                                      }
-                                    >
-                                      <option value="">Próxima pergunta normal</option>
-                                      <option value={FLOW_END}>Encerrar pesquisa após esta resposta</option>
-                                      {nextQuestions.map((targetQuestion, targetIndex) => (
-                                        <option key={targetQuestion.id} value={targetQuestion.id}>
-                                          Pergunta {index + targetIndex + 2}: {targetQuestion.title || 'Sem título ainda'}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                )
-                              })}
-                            </div>
-                          ) : (
-                            <div className="builder-soft-panel">
-                              Preencha as opções da pergunta para liberar o fluxo condicional.
-                            </div>
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                    </div>
-                  </article>
-                )
-              })()
-            ))}
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={addQuestion}
-              className="admin-button border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar pergunta
-            </button>
+            <label className="grid gap-2 text-sm">
+              <span className="text-slate-600">Mensagem final</span>
+              <textarea
+                className="admin-input min-h-28"
+                value={form.closingMessage}
+                placeholder="Ex.: Obrigado por participar. Sua resposta foi registrada com sucesso."
+                onChange={(event) => updateForm('closingMessage', event.target.value)}
+              />
+            </label>
           </div>
         </SectionCard>
       </div>
-
-      <div className="mt-6">
-        <div className="admin-alert mb-4 border-slate-200 bg-slate-50 text-slate-700">
-          Terminou de ajustar as perguntas? <strong>Salvar rascunho</strong> guarda a pesquisa sem publicar.{' '}
-          <strong>Salvar e publicar</strong> já coloca o link no ar.
-        </div>
-        <div className="flex flex-wrap justify-end gap-3">
-          {actionButtons}
-        </div>
       </div>
     </AppShell>
+    </>
   )
 }

@@ -38,13 +38,13 @@ export function AdminModal({ open, title, description, children, footer, onClose
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 py-6 animate-fade-in" onClick={onClose}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex max-h-[calc(100vh-48px)] w-full max-w-3xl flex-col overflow-hidden border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.22)]"
-        style={{ borderRadius: 6 }}
+        className="flex max-h-[calc(100vh-48px)] w-full max-w-3xl flex-col overflow-hidden border border-slate-200 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.22)] animate-fade-in-scale"
+        style={{ borderRadius: 12 }}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">

@@ -1,11 +1,17 @@
 export type RewardFrequencyMode = 'frequent' | 'balanced' | 'rare' | 'custom'
+export type RewardOutcomeRole = 'prize' | 'no_prize' | 'showcase'
 
 export interface RewardDrawItem {
   id: string
   title: string
+  wheel_label?: string | null
+  image_url?: string | null
   quantity_total: number
   quantity_awarded: number
   is_active?: boolean
+  show_on_wheel?: boolean
+  outcome_role?: RewardOutcomeRole
+  sort_order?: number
   frequency_mode: RewardFrequencyMode
   frequency_target: number
   next_release_spin: number
@@ -68,18 +74,28 @@ export function isRewardAvailable(item: RewardDrawItem) {
   return (item.is_active ?? true) && item.quantity_awarded < item.quantity_total
 }
 
-export function getAvailableRewardItems(items: RewardDrawItem[]) {
-  return items.filter(isRewardAvailable)
+export function isAdvancedPrizeItem(item: RewardDrawItem) {
+  return (item.outcome_role ?? 'prize') === 'prize'
 }
 
-export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number) {
-  const availableItems = getAvailableRewardItems(items).filter((item) => currentSpin >= item.next_release_spin)
+export function isAdvancedNoPrizeItem(item: RewardDrawItem) {
+  return item.outcome_role === 'no_prize'
+}
 
-  if (!availableItems.length) {
-    return null
-  }
+export function isAdvancedShowcaseItem(item: RewardDrawItem) {
+  return item.outcome_role === 'showcase'
+}
 
-  return [...availableItems].sort((left, right) => {
+export function isWheelVisibleItem(item: RewardDrawItem) {
+  return (item.is_active ?? true) && (item.show_on_wheel ?? true)
+}
+
+export function getAvailableRewardItems(items: RewardDrawItem[]) {
+  return items.filter((item) => isAdvancedPrizeItem(item) && isRewardAvailable(item))
+}
+
+export function sortRewardItemsByDuePriority(items: RewardDrawItem[]) {
+  return [...items].sort((left, right) => {
     if (left.next_release_spin !== right.next_release_spin) {
       return left.next_release_spin - right.next_release_spin
     }
@@ -89,7 +105,54 @@ export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number
     }
 
     return left.title.localeCompare(right.title)
-  })[0]
+  })
+}
+
+export function selectDueRewardItem(items: RewardDrawItem[], currentSpin: number) {
+  const availableItems = getAvailableRewardItems(items)
+    .filter((item) => currentSpin >= item.next_release_spin)
+    .filter((item) => item.last_awarded_spin === 0 || currentSpin - item.last_awarded_spin >= item.min_gap_spins)
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return sortRewardItemsByDuePriority(availableItems)[0]
+}
+
+/**
+ * Selects a prize item in guaranteed_prize mode.
+ *
+ * Tries to respect frequency scheduling first (selectDueRewardItem).
+ * If no item is due yet, falls back to the one closest to being due
+ * (smallest next_release_spin) so the guarantee still holds.
+ */
+export function selectGuaranteedPrizeItem(items: RewardDrawItem[], currentSpin: number) {
+  const availableItems = getAvailableRewardItems(items)
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return selectDueRewardItem(items, currentSpin) ?? sortRewardItemsByDuePriority(availableItems)[0]
+}
+
+export function selectAdvancedNoPrizeItem(items: RewardDrawItem[]) {
+  const availableItems = items
+    .filter((item) => isAdvancedNoPrizeItem(item) && (item.is_active ?? true))
+    .sort((left, right) => {
+      if ((left.sort_order ?? 0) !== (right.sort_order ?? 0)) {
+        return (left.sort_order ?? 0) - (right.sort_order ?? 0)
+      }
+
+      return left.title.localeCompare(right.title)
+    })
+
+  if (!availableItems.length) {
+    return null
+  }
+
+  return availableItems[randomBetween(0, availableItems.length - 1)] ?? availableItems[0]
 }
 
 export function selectNoPrizeLabel() {

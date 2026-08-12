@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { BrandingEffects } from '@/components/BrandingEffects'
+import Home from '@/pages/Home'
 import { useAuthStore } from '@/store/use-auth-store'
 
 const DashboardPage = lazy(async () => {
@@ -43,6 +44,16 @@ const ReportsPage = lazy(async () => {
 const RewardsPage = lazy(async () => {
   const module = await import('@/pages/RewardsPage')
   return { default: module.RewardsPage }
+})
+
+const DeliveryControlPage = lazy(async () => {
+  const module = await import('@/pages/DeliveryControlPage')
+  return { default: module.DeliveryControlPage }
+})
+
+const AttendantsPage = lazy(async () => {
+  const module = await import('@/pages/AttendantsPage')
+  return { default: module.AttendantsPage }
 })
 
 const SettingsPage = lazy(async () => {
@@ -166,6 +177,10 @@ export default function App() {
   const bootstrapSession = useAuthStore((state) => state.bootstrapSession)
 
   useEffect(() => {
+    sessionStorage.removeItem('app:chunk-reload-once')
+  }, [])
+
+  useEffect(() => {
     void bootstrapSession()
   }, [bootstrapSession])
 
@@ -201,7 +216,7 @@ export default function App() {
       <BrandingEffects />
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          <Route path="/" element={<Navigate to={user || isBootstrapping ? '/app' : '/login'} replace />} />
+          <Route path="/" element={user || isBootstrapping ? <Navigate to="/app" replace /> : <Home />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/criar-conta" element={<SignUpPage />} />
           <Route
@@ -289,6 +304,22 @@ export default function App() {
             element={
               <UserRoute>
                 <RewardsPage />
+              </UserRoute>
+            }
+          />
+          <Route
+            path="/app/pesquisas/:id/entregas"
+            element={
+              <UserRoute>
+                <DeliveryControlPage />
+              </UserRoute>
+            }
+          />
+          <Route
+            path="/app/pesquisas/:id/atendentes"
+            element={
+              <UserRoute>
+                <AttendantsPage />
               </UserRoute>
             }
           />
