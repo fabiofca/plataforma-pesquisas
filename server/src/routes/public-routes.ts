@@ -721,6 +721,7 @@ async function getRewardSessionState(
   let isInCooldown = false
 
   if (
+    !surveyResponse.is_test_response &&
     wheelCooldownDays > 0 &&
     survey.reward_campaign_id &&
     (surveyResponse.participant_phone || surveyResponse.browser_cookie_id || surveyResponse.browser_fingerprint)
@@ -741,7 +742,7 @@ async function getRewardSessionState(
     ? false
     : latestSpin
       ? latestSpin.outcome_type !== 'win' && retryUnlocked
-      : Boolean(surveyResponse.reward_eligible && !surveyResponse.reward_spin_completed)
+      : Boolean((surveyResponse.reward_eligible || surveyResponse.is_test_response) && !surveyResponse.reward_spin_completed)
 
   let rewardResult: RewardSessionResult | null = null
 
@@ -1013,7 +1014,9 @@ publicRouter.post('/surveys/:slug/eligibility', async (request, response) => {
     return
   }
 
-  if (!survey.allow_multiple_responses) {
+  const testPhone = isTestPhone(payload.participant.phone, survey.test_phones)
+
+  if (!survey.allow_multiple_responses && !testPhone) {
     const hasDuplicate = await hasPermanentDuplicateResponse({
       surveyId: survey.id,
       phone: payload.participant.phone,
@@ -1040,6 +1043,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
   const testPhone = isTestPhone(payload.participant.phone, survey.test_phones)
   const wheelCooldownDays = survey.duplicate_response_cooldown_days
   const blockedByRecentUsage =
+    !testPhone &&
     campaignAvailable &&
     wheelCooldownDays > 0 &&
     Boolean(survey.reward_campaign_id) &&
@@ -1055,7 +1059,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
         })
       : false
 
-  if (!survey.allow_multiple_responses) {
+  if (!survey.allow_multiple_responses && !testPhone) {
     const hasDuplicate = await hasPermanentDuplicateResponse({
       surveyId: survey.id,
       phone: payload.participant.phone,
@@ -1067,7 +1071,7 @@ publicRouter.post('/surveys/:slug/respond', async (request, response) => {
     }
   }
 
-  const rewardEligible = campaignAvailable && !blockedByRecentUsage
+  const rewardEligible = campaignAvailable && (testPhone || !blockedByRecentUsage)
   const responseId = makeId()
 
   await query(
@@ -1637,7 +1641,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       return
     }
 
-    if (currentAttempt === 1 && !surveyResponse.reward_eligible) {
+    if (currentAttempt === 1 && !surveyResponse.reward_eligible && !isTestSpin) {
       await client.query('commit')
       response.status(409).json({ message: 'A roleta não está disponível para esta participação.' })
       return
@@ -1645,6 +1649,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
 
     const wheelCooldownDays = survey.duplicate_response_cooldown_days
     if (
+      !isTestSpin &&
       wheelCooldownDays > 0 &&
       (surveyResponse.participant_phone || surveyResponse.browser_cookie_id || surveyResponse.browser_fingerprint)
     ) {
