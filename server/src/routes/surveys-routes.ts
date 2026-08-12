@@ -900,11 +900,12 @@ surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response)
   const attendantsResult = await query<{
     name: string
     is_active: boolean
+    sort_order: number
   }>(
-    `select name, is_active
+    `select name, is_active, sort_order
      from survey_attendants
      where survey_id = $1
-     order by created_at asc, name asc`,
+     order by sort_order asc, created_at asc, name asc`,
     [surveyId],
   )
 
@@ -931,6 +932,7 @@ surveysRouter.get('/:id/export', async (request: AuthenticatedRequest, response)
       attendants: attendantsResult.rows.map((attendant) => ({
         name: attendant.name,
         isActive: attendant.is_active,
+        sortOrder: attendant.sort_order,
       })),
     },
   })
@@ -1064,8 +1066,13 @@ const attendantImportSchema = z.object({
     z.object({
       name: z.string().min(1, 'Informe o nome do atendente.').max(255),
       isActive: z.boolean().optional(),
+      sortOrder: z.number().int().positive().optional(),
     }),
   ),
+})
+
+const attendantReorderSchema = z.object({
+  orderedIds: z.array(z.string().uuid('Atendente inválido.')).min(1, 'Informe a nova ordem dos atendentes.'),
 })
 
 surveysRouter.get('/:id/attendants', async (request: AuthenticatedRequest, response) => {
@@ -1082,11 +1089,12 @@ surveysRouter.get('/:id/attendants', async (request: AuthenticatedRequest, respo
     name: string
     is_active: boolean
     created_at: string
+    sort_order: number
   }>(
-    `select id, name, is_active, cast(created_at as text) as created_at
+    `select id, name, is_active, cast(created_at as text) as created_at, sort_order
      from survey_attendants
      where survey_id = $1
-     order by name asc`,
+     order by sort_order asc, created_at asc, name asc`,
     [surveyId],
   )
 
@@ -1096,6 +1104,7 @@ surveysRouter.get('/:id/attendants', async (request: AuthenticatedRequest, respo
       name: row.name,
       isActive: row.is_active,
       createdAt: row.created_at,
+      sortOrder: row.sort_order,
     })),
   )
 })
@@ -1124,10 +1133,15 @@ surveysRouter.post('/:id/attendants', async (request: AuthenticatedRequest, resp
       name: string
       is_active: boolean
       created_at: string
+      sort_order: number
     }>(
-      `insert into survey_attendants (survey_id, name)
-       values ($1, $2)
-       returning id, name, is_active, cast(created_at as text) as created_at`,
+      `insert into survey_attendants (survey_id, name, sort_order)
+       values (
+         $1,
+         $2,
+         coalesce((select max(sort_order) + 1 from survey_attendants where survey_id = $1), 1)
+       )
+       returning id, name, is_active, cast(created_at as text) as created_at, sort_order`,
       [surveyId, normalizedName],
     )
 
@@ -1138,6 +1152,7 @@ surveysRouter.post('/:id/attendants', async (request: AuthenticatedRequest, resp
       name: row.name,
       isActive: row.is_active,
       createdAt: row.created_at,
+      sortOrder: row.sort_order,
     })
   } catch (error: unknown) {
     const pgError = error as { code?: string }
@@ -1168,11 +1183,13 @@ surveysRouter.put('/:id/attendants/import', async (request: AuthenticatedRequest
   }
 
   const attendants = parsed.data.attendants
-    .map((attendant) => ({
+    .map((attendant, index) => ({
       name: attendant.name.trim(),
       isActive: attendant.isActive ?? true,
+      sortOrder: attendant.sortOrder ?? index + 1,
     }))
     .filter((attendant) => attendant.name.length > 0)
+    .sort((left, right) => left.sortOrder - right.sortOrder)
 
   const seenNames = new Set<string>()
 
@@ -1193,11 +1210,12 @@ surveysRouter.put('/:id/attendants/import', async (request: AuthenticatedRequest
     await client.query('begin')
     await client.query('delete from survey_attendants where survey_id = $1', [surveyId])
 
-    for (const attendant of attendants) {
+    for (let index = 0; index < attendants.length; index++) {
+      const attendant = attendants[index]
       await client.query(
-        `insert into survey_attendants (survey_id, name, is_active)
-         values ($1, $2, $3)`,
-        [surveyId, attendant.name, attendant.isActive],
+        `insert into survey_attendants (survey_id, name, is_active, sort_order)
+         values ($1, $2, $3, $4)`,
+        [surveyId, attendant.name, attendant.isActive, index + 1],
       )
     }
 
@@ -1214,8 +1232,70 @@ surveysRouter.put('/:id/attendants/import', async (request: AuthenticatedRequest
     attendants: attendants.map((attendant) => ({
       name: attendant.name,
       isActive: attendant.isActive,
+      sortOrder: attendant.sortOrder,
     })),
   })
+})
+
+surveysRouter.put('/:id/attendants/reorder', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const parsed = attendantReorderSchema.safeParse(request.body)
+
+  if (!parsed.success) {
+    response.status(400).json({ message: parsed.error.issues[0]?.message ?? 'Dados inválidos.' })
+    return
+  }
+
+  const orderedIds = parsed.data.orderedIds
+  const existingResult = await query<{ id: string }>(
+    `select id
+     from survey_attendants
+     where survey_id = $1`,
+    [surveyId],
+  )
+
+  if (existingResult.rows.length !== orderedIds.length) {
+    response.status(400).json({ message: 'A nova ordem precisa conter todos os atendentes da pesquisa.' })
+    return
+  }
+
+  const existingIds = new Set(existingResult.rows.map((row) => row.id))
+
+  if (new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !existingIds.has(id))) {
+    response.status(400).json({ message: 'A nova ordem informada para os atendentes é inválida.' })
+    return
+  }
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+
+    for (let index = 0; index < orderedIds.length; index++) {
+      await client.query(
+        `update survey_attendants
+         set sort_order = $1
+         where id = $2 and survey_id = $3`,
+        [index + 1, orderedIds[index], surveyId],
+      )
+    }
+
+    await client.query('commit')
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+
+  response.json({ ok: true })
 })
 
 surveysRouter.put('/:id/attendants/:attendantId', async (request: AuthenticatedRequest, response) => {
@@ -1265,11 +1345,12 @@ surveysRouter.put('/:id/attendants/:attendantId', async (request: AuthenticatedR
       name: string
       is_active: boolean
       created_at: string
+      sort_order: number
     }>(
       `update survey_attendants
        set ${updates.join(', ')}
        where id = $${paramIndex} and survey_id = $${paramIndex + 1}
-       returning id, name, is_active, cast(created_at as text) as created_at`,
+       returning id, name, is_active, cast(created_at as text) as created_at, sort_order`,
       values,
     )
 
@@ -1285,6 +1366,7 @@ surveysRouter.put('/:id/attendants/:attendantId', async (request: AuthenticatedR
       name: row.name,
       isActive: row.is_active,
       createdAt: row.created_at,
+      sortOrder: row.sort_order,
     })
   } catch (error: unknown) {
     const pgError = error as { code?: string }

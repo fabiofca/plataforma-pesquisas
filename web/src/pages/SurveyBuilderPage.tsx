@@ -83,6 +83,7 @@ type FlowDraftState = Pick<BuilderState, 'questions' | 'flowLayout'>
 type ImportedAttendantDraft = {
   name: string
   isActive: boolean
+  sortOrder?: number
 }
 type BuilderDraftState = Pick<
   BuilderState,
@@ -771,12 +772,13 @@ export function SurveyBuilderPage() {
       const importedAttendants = Array.isArray(parsed.data.attendants)
         ? parsed.data.attendants
             .filter(
-              (attendant): attendant is { name: string; isActive?: boolean } =>
+              (attendant): attendant is { name: string; isActive?: boolean; sortOrder?: number } =>
                 Boolean(attendant && typeof attendant === 'object' && typeof attendant.name === 'string'),
             )
-            .map((attendant) => ({
+            .map((attendant, index) => ({
               name: attendant.name.trim(),
               isActive: attendant.isActive ?? true,
+              sortOrder: typeof attendant.sortOrder === 'number' ? attendant.sortOrder : index + 1,
             }))
             .filter((attendant) => attendant.name.length > 0)
         : []

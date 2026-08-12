@@ -973,7 +973,10 @@ publicRouter.get('/surveys/:slug/attendants', async (request, response) => {
   }
 
   const result = await query<{ id: string; name: string }>(
-    `select id, name from survey_attendants where survey_id = $1 and is_active = true order by name asc`,
+    `select id, name
+     from survey_attendants
+     where survey_id = $1 and is_active = true
+     order by sort_order asc, created_at asc, name asc`,
     [survey.id],
   )
 

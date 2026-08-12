@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, Trash2, Check, X, Users } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Check, X, Users, GripVertical } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 
 import { AppShell } from '@/components/layout/AppShell'
@@ -13,6 +13,7 @@ type Attendant = {
   name: string
   isActive: boolean
   createdAt: string
+  sortOrder: number
 }
 
 export function AttendantsPage() {
@@ -24,6 +25,9 @@ export function AttendantsPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formName, setFormName] = useState('')
   const [formError, setFormError] = useState('')
+  const [orderedAttendants, setOrderedAttendants] = useState<Attendant[]>([])
+  const [draggedAttendantId, setDraggedAttendantId] = useState<string | null>(null)
+  const [reorderError, setReorderError] = useState('')
 
   const surveyQuery = useQuery({
     queryKey: ['survey', id],
@@ -101,11 +105,53 @@ export function AttendantsPage() {
     },
   })
 
-  const attendants = attendantsQuery.data ?? []
+  const reorderMutation = useMutation({
+    mutationFn: (orderedIds: string[]) =>
+      apiRequest<{ ok: boolean }>(`/surveys/${id}/attendants/reorder`, {
+        method: 'PUT',
+        body: JSON.stringify({ orderedIds }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attendants', id] })
+    },
+    onError: (error: unknown) => {
+      setReorderError(error instanceof ApiError ? error.message : 'Não foi possível salvar a nova ordem dos atendentes.')
+      queryClient.invalidateQueries({ queryKey: ['attendants', id] })
+    },
+  })
+
+  useEffect(() => {
+    setOrderedAttendants(attendantsQuery.data ?? [])
+  }, [attendantsQuery.data])
+
+  const attendants = orderedAttendants
 
   const filteredAttendants = attendants.filter((att) =>
     att.name.toLowerCase().includes(search.toLowerCase()),
   )
+
+  function moveAttendant(draggedId: string, targetId: string) {
+    const currentIndex = orderedAttendants.findIndex((attendant) => attendant.id === draggedId)
+    const targetIndex = orderedAttendants.findIndex((attendant) => attendant.id === targetId)
+
+    if (currentIndex === -1 || targetIndex === -1 || currentIndex === targetIndex) {
+      return
+    }
+
+    const nextAttendants = [...orderedAttendants]
+    const [movedAttendant] = nextAttendants.splice(currentIndex, 1)
+    nextAttendants.splice(targetIndex, 0, movedAttendant)
+    const previousAttendants = orderedAttendants
+
+    setReorderError('')
+    setOrderedAttendants(nextAttendants)
+    reorderMutation.mutate(nextAttendants.map((attendant) => attendant.id), {
+      onError: (error: unknown) => {
+        setOrderedAttendants(previousAttendants)
+        setReorderError(error instanceof ApiError ? error.message : 'Não foi possível salvar a nova ordem dos atendentes.')
+      },
+    })
+  }
 
   function openCreateForm() {
     setFormName('')
@@ -154,13 +200,13 @@ export function AttendantsPage() {
           <div>
             <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">Atendentes</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Cadastre os nomes dos atendentes para melhorar a precisão do relatório de desempenho.
+              Cadastre os nomes dos atendentes e arraste para definir a ordem em que eles aparecem na pesquisa pública.
             </p>
           </div>
           <button
             type="button"
             onClick={openCreateForm}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-95"
+            className="inline-flex min-w-[172px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99]"
           >
             <Plus className="h-4 w-4" />
             Novo atendente
@@ -220,6 +266,18 @@ export function AttendantsPage() {
           </div>
         </div>
 
+        {search ? (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Limpe a busca para reorganizar os atendentes por arraste.
+          </div>
+        ) : null}
+
+        {reorderError ? (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {reorderError}
+          </div>
+        ) : null}
+
         {attendantsQuery.isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
@@ -240,9 +298,46 @@ export function AttendantsPage() {
               {filteredAttendants.map((attendant) => (
                 <li
                   key={attendant.id}
-                  className="flex items-center justify-between px-4 py-3 transition hover:bg-slate-50"
+                  draggable={!search && !reorderMutation.isPending}
+                  onDragStart={() => {
+                    if (search || reorderMutation.isPending) {
+                      return
+                    }
+
+                    setDraggedAttendantId(attendant.id)
+                    setReorderError('')
+                  }}
+                  onDragOver={(event) => {
+                    if (search || reorderMutation.isPending || !draggedAttendantId) {
+                      return
+                    }
+
+                    event.preventDefault()
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+
+                    if (!draggedAttendantId || search || reorderMutation.isPending) {
+                      return
+                    }
+
+                    moveAttendant(draggedAttendantId, attendant.id)
+                    setDraggedAttendantId(null)
+                  }}
+                  onDragEnd={() => setDraggedAttendantId(null)}
+                  className={`flex items-center justify-between px-4 py-3 transition hover:bg-slate-50 ${
+                    draggedAttendantId === attendant.id ? 'bg-blue-50' : ''
+                  } ${!search ? 'cursor-grab active:cursor-grabbing' : ''}`}
                 >
                   <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={Boolean(search) || reorderMutation.isPending}
+                      title={search ? 'Limpe a busca para reorganizar' : 'Arraste para reordenar'}
+                      className="rounded-lg p-2 text-slate-300 transition hover:bg-slate-100 hover:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
                     <div
                       className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
                         attendant.isActive
