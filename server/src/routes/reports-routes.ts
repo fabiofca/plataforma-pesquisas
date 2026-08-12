@@ -27,6 +27,10 @@ type PaginationMeta = PaginationInput & {
   totalPages: number
 }
 
+type RespondentFilters = {
+  search: string
+}
+
 type RewardWinnerFilters = {
   name: string
   phone: string
@@ -303,6 +307,12 @@ function getWinnerFilters(request: AuthenticatedRequest): RewardWinnerFilters {
   }
 }
 
+function getRespondentFilters(request: AuthenticatedRequest): RespondentFilters {
+  return {
+    search: typeof request.query.search === 'string' ? request.query.search.trim() : '',
+  }
+}
+
 function toTitleCase(value: string) {
   return value
     .toLowerCase()
@@ -403,6 +413,24 @@ function formatBirthdayLabel(input: { birthDay: number | null; birthMonth: numbe
   }
 
   return `${String(input.birthDay).padStart(2, '0')}/${String(input.birthMonth).padStart(2, '0')}`
+}
+
+function formatDateBR(value: string | Date) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [year, month, day] = trimmed.split('-')
+      return `${day}/${month}/${year}`
+    }
+  }
+
+  const date = typeof value === 'string' ? new Date(value) : value
+  if (Number.isNaN(date.getTime())) return String(value)
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}/${month}/${year}`
 }
 
 function formatDateTimeBR(value: string | Date) {
@@ -626,6 +654,7 @@ async function getRespondentsReportData(
   options?: {
     pagination?: PaginationInput
     all?: boolean
+    filters?: RespondentFilters
   },
 ): Promise<{
   respondents: ReportRespondentItem[]
@@ -634,20 +663,33 @@ async function getRespondentsReportData(
 }> {
   const pagination = options?.pagination ?? { page: 1, pageSize: 20 }
   const responseScopeCondition = getResponseScopeCondition(scope)
+  const filters = options?.filters ?? { search: '' }
+  const baseValues: Array<string | number> = [surveyId, range.startDate, range.endDate]
+  const whereClauses = [
+    'survey_id = $1',
+    responseScopeCondition,
+    'submitted_at >= $2::date',
+    "submitted_at < ($3::date + interval '1 day')",
+  ]
+
+  if (filters.search) {
+    baseValues.push(`%${filters.search}%`)
+    whereClauses.push(
+      `(coalesce(participant_name, '') ilike $${baseValues.length} or coalesce(participant_phone, '') ilike $${baseValues.length} or coalesce(participant_email, '') ilike $${baseValues.length})`,
+    )
+  }
+
   const countResult = await query<{ total: string }>(
     `select cast(count(*) as text) as total
      from survey_responses
-     where survey_id = $1
-       and ${responseScopeCondition}
-       and submitted_at >= $2::date
-       and submitted_at < ($3::date + interval '1 day')`,
-    [surveyId, range.startDate, range.endDate],
+     where ${whereClauses.join('\n       and ')}`,
+    baseValues,
   )
   const totalItems = Number(countResult.rows[0]?.total ?? 0)
   const meta = buildPaginationMeta(totalItems, pagination)
   const offset = (meta.page - 1) * meta.pageSize
 
-  const values: Array<string | number> = [surveyId, range.startDate, range.endDate]
+  const values = [...baseValues]
   let paginationSql = ''
 
   if (!options?.all) {
@@ -673,10 +715,7 @@ async function getRespondentsReportData(
         participant_birth_day,
         participant_birth_month
      from survey_responses
-     where survey_id = $1
-       and ${responseScopeCondition}
-       and submitted_at >= $2::date
-       and submitted_at < ($3::date + interval '1 day')
+     where ${whereClauses.join('\n       and ')}
      order by submitted_at desc${paginationSql}`,
     values,
   )
@@ -1375,8 +1414,8 @@ function buildCsvReportContent(input: {
 }) {
   const lines: string[][] = [
     ['Relatório', input.title],
-    ['Período inicial', input.range.startDate],
-    ['Período final', input.range.endDate],
+    ['Período inicial', formatDateBR(input.range.startDate)],
+    ['Período final', formatDateBR(input.range.endDate)],
     ['Total de respostas', input.summary.total_responses],
     ['Participação identificada', input.summary.identified_responses],
     ['Prêmios entregues', input.summary.reward_wins],
@@ -1404,7 +1443,7 @@ function buildCsvReportContent(input: {
     ['Local de retirada', input.rewards.pickupAddress ?? 'Não informado'],
     [],
     ['Dia', 'Acessos', 'Respostas'],
-    ...input.period.map((item) => [item.day, item.visits, item.responses]),
+    ...input.period.map((item) => [formatDateBR(item.day), item.visits, item.responses]),
   ]
 
   if (input.questions.length) {
@@ -1464,8 +1503,8 @@ function buildCsvReportContent(input: {
 
     for (const winner of input.rewards.winners) {
       lines.push([
-        winner.awardedAt,
-        winner.expiresAt,
+        formatDateTimeBR(winner.awardedAt),
+        formatDateBR(winner.expiresAt),
         winner.isExpired ? 'Sim' : 'Não',
         winner.name ?? '',
         winner.phone ?? '',
@@ -1473,7 +1512,7 @@ function buildCsvReportContent(input: {
         winner.itemTitle,
         winner.couponCode,
         winner.redemptionStatus,
-        winner.deliveredAt ?? '',
+        winner.deliveredAt ? formatDateTimeBR(winner.deliveredAt) : '',
         winner.redemptionNotes ?? '',
       ])
     }
@@ -1557,7 +1596,7 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
 
   document.fontSize(20).fillColor('#0f172a').text(input.title)
   document.moveDown(0.4)
-  document.fontSize(11).fillColor('#475569').text(`Período: ${input.range.startDate} até ${input.range.endDate}`)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
   document.moveDown()
 
   document.fontSize(14).fillColor('#0f172a').text('Resumo')
@@ -1576,7 +1615,7 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
       document
         .fontSize(10)
         .fillColor('#111827')
-        .text(`${item.day}: ${item.visits} acessos | ${item.responses} respostas`)
+        .text(`${formatDateBR(item.day)}: ${item.visits} acessos | ${item.responses} respostas`)
     }
   } else {
     document.fontSize(10).fillColor('#64748b').text('Nenhum dado disponível para o período selecionado.')
@@ -1700,8 +1739,8 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
       document
         .fontSize(10)
         .fillColor('#111827')
-        .text(`Data: ${winner.awardedAt}`)
-        .text(`Validade: ${winner.expiresAt}`)
+        .text(`Data: ${formatDateTimeBR(winner.awardedAt)}`)
+        .text(`Validade: ${formatDateBR(winner.expiresAt)}`)
         .text(`Expirado: ${winner.isExpired ? 'Sim' : 'Não'}`)
         .text(`Nome: ${winner.name ?? '-'}`)
         .text(`WhatsApp: ${winner.phone ?? '-'}`)
@@ -1709,7 +1748,7 @@ function buildPdfReport(document: PDFKit.PDFDocument, input: {
         .text(`Prêmio: ${winner.itemTitle}`)
         .text(`Protocolo: ${winner.couponCode}`)
         .text(`Status: ${winner.redemptionStatus}`)
-        .text(`Retirado em: ${winner.deliveredAt ?? '-'}`)
+        .text(`Retirado em: ${winner.deliveredAt ? formatDateTimeBR(winner.deliveredAt) : '-'}`)
         .text(`Observações: ${winner.redemptionNotes ?? '-'}`)
       document.moveDown(0.6)
     })
@@ -1788,6 +1827,7 @@ reportsRouter.get('/surveys/:id/reports/questions', async (request: Authenticate
 reportsRouter.get('/surveys/:id/reports/respondents', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1798,6 +1838,7 @@ reportsRouter.get('/surveys/:id/reports/respondents', async (request: Authentica
   response.json(
     await getRespondentsReportData(surveyId, getReportRange(request), scope, {
       pagination: getPaginationQuery(request),
+      filters,
     }),
   )
 })
@@ -1941,10 +1982,12 @@ function buildParticipantsCsvContent(input: {
   title: string
   range: ReportRange
   respondents: ReportRespondentItem[]
+  search?: string
 }) {
   const lines: string[][] = [
     ['Participantes da pesquisa', input.title],
-    ['Período', `${input.range.startDate} até ${input.range.endDate}`],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    ['Busca aplicada', input.search?.trim() ? input.search.trim() : 'Todas'],
     ['Total de participantes', String(input.respondents.length)],
     [],
     ['Nome', 'WhatsApp', 'Aniversário', 'E-mail', 'Data de participação'],
@@ -1966,6 +2009,7 @@ function buildParticipantsCsvContent(input: {
 reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1987,11 +2031,16 @@ reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request
   const range = getReportRange(request)
   const [title, respondentsData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRespondentsReportData(surveyId, range, scope, { all: true, filters }),
   ])
 
   const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
-  const csv = buildParticipantsCsvContent({ title, range, respondents: respondentsData.respondents })
+  const csv = buildParticipantsCsvContent({
+    title,
+    range,
+    respondents: respondentsData.respondents,
+    search: filters.search,
+  })
 
   response.setHeader('Content-Type', 'text/csv; charset=utf-8')
   response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
@@ -2002,12 +2051,14 @@ function buildParticipantsTxtContent(input: {
   title: string
   range: ReportRange
   respondents: ReportRespondentItem[]
+  search?: string
 }) {
   const separator = '─'.repeat(70)
   const lines: string[] = [
     separator,
     `  PARTICIPANTES DA PESQUISA: ${input.title}`,
-    `  Período: ${input.range.startDate} até ${input.range.endDate}`,
+    `  Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`,
+    `  Busca aplicada: ${input.search?.trim() ? input.search.trim() : 'Todas'}`,
     `  Total de participantes: ${input.respondents.length}`,
     separator,
     '',
@@ -2031,47 +2082,89 @@ function buildParticipantsPdfDocument(document: PDFKit.PDFDocument, input: {
   title: string
   range: ReportRange
   respondents: ReportRespondentItem[]
+  search?: string
 }) {
   document.fontSize(18).fillColor('#0f172a').text(`Participantes — ${input.title}`)
   document.moveDown(0.3)
-  document.fontSize(11).fillColor('#475569').text(`Período: ${input.range.startDate} até ${input.range.endDate}`)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.fontSize(11).fillColor('#475569').text(`Busca aplicada: ${input.search?.trim() ? input.search.trim() : 'Todas'}`)
   document.fontSize(11).fillColor('#475569').text(`Total: ${input.respondents.length} participante(s)`)
   document.moveDown()
 
-  // Table header
-  const colX = { name: 40, phone: 180, birthday: 290, email: 350, date: 490 }
-  ensurePdfSpace(document, 40)
+  const columns = [
+    { key: 'name', label: 'Nome', x: 40, width: 170 },
+    { key: 'phone', label: 'WhatsApp', x: 210, width: 95 },
+    { key: 'birthday', label: 'Aniv.', x: 305, width: 55 },
+    { key: 'email', label: 'E-mail', x: 360, width: 110 },
+    { key: 'date', label: 'Data', x: 470, width: 85 },
+  ] as const
+  const tableWidth = 515
+
+  ensurePdfSpace(document, 48)
+  const headerY = document.y
   document.fontSize(9).fillColor('#64748b').font('Helvetica-Bold')
-  document.text('Nome', colX.name, undefined, { width: 130 })
-  document.text('WhatsApp', colX.phone, undefined, { width: 100 })
-  document.text('Aniv.', colX.birthday, undefined, { width: 50 })
-  document.text('E-mail', colX.email, undefined, { width: 130 })
-  document.text('Data', colX.date, undefined, { width: 100 })
-  document.moveDown(0.3)
+  for (const column of columns) {
+    document.text(column.label, column.x, headerY, {
+      width: column.width,
+      lineBreak: false,
+    })
+  }
 
-  // Divider line
-  const pageWidth = document.page.width - 80
-  document.moveTo(40, document.y).lineTo(40 + pageWidth, document.y).strokeColor('#e2e8f0').lineWidth(0.5).stroke()
-  document.moveDown(0.3)
+  const headerBottomY = headerY + 16
+  document
+    .moveTo(40, headerBottomY)
+    .lineTo(40 + tableWidth, headerBottomY)
+    .strokeColor('#e2e8f0')
+    .lineWidth(0.5)
+    .stroke()
 
-  document.font('Helvetica')
+  document.font('Helvetica').fontSize(8).fillColor('#111827')
+  document.y = headerBottomY + 8
 
   for (const r of input.respondents) {
-    ensurePdfSpace(document, 36)
-    const startY = document.y
-    document.fontSize(8).fillColor('#111827')
-    document.text(r.name ?? 'Não informado', colX.name, startY, { width: 130, lineBreak: false })
-    document.text(r.phone ?? '-', colX.phone, startY, { width: 100, lineBreak: false })
-    document.text(r.birthdayLabel ?? '-', colX.birthday, startY, { width: 50, lineBreak: false })
-    document.text(r.email ?? '-', colX.email, startY, { width: 130, lineBreak: false })
-    document.text(r.submittedAt, colX.date, startY, { width: 100 })
-    document.moveDown(0.2)
+    const values = {
+      name: r.name ?? 'Não informado',
+      phone: r.phone ?? '-',
+      birthday: r.birthdayLabel ?? '-',
+      email: r.email ?? '-',
+      date: r.submittedAt,
+    }
+    const rowHeight = Math.max(
+      16,
+      ...columns.map((column) =>
+        document.heightOfString(values[column.key], {
+          width: column.width,
+          align: 'left',
+        }),
+      ),
+    )
+
+    ensurePdfSpace(document, rowHeight + 12)
+    const rowY = document.y
+
+    for (const column of columns) {
+      document.text(values[column.key], column.x, rowY, {
+        width: column.width,
+        lineBreak: false,
+      })
+    }
+
+    const rowBottomY = rowY + rowHeight + 4
+    document
+      .moveTo(40, rowBottomY)
+      .lineTo(40 + tableWidth, rowBottomY)
+      .strokeColor('#f1f5f9')
+      .lineWidth(0.5)
+      .stroke()
+
+    document.y = rowBottomY + 6
   }
 }
 
 reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -2093,11 +2186,16 @@ reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request
   const range = getReportRange(request)
   const [title, respondentsData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRespondentsReportData(surveyId, range, scope, { all: true, filters }),
   ])
 
   const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.txt`
-  const txt = buildParticipantsTxtContent({ title, range, respondents: respondentsData.respondents })
+  const txt = buildParticipantsTxtContent({
+    title,
+    range,
+    respondents: respondentsData.respondents,
+    search: filters.search,
+  })
 
   response.setHeader('Content-Type', 'text/plain; charset=utf-8')
   response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
@@ -2107,6 +2205,7 @@ reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request
 reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
   const scope = getReportScope(request)
+  const filters = getRespondentFilters(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -2128,7 +2227,7 @@ reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request
   const range = getReportRange(request)
   const [title, respondentsData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRespondentsReportData(surveyId, range, scope, { all: true, filters }),
   ])
 
   const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
@@ -2137,7 +2236,550 @@ reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request
 
   const document = new PDFDocument({ margin: 40, size: 'A4' })
   document.pipe(response)
-  buildParticipantsPdfDocument(document, { title, range, respondents: respondentsData.respondents })
+  buildParticipantsPdfDocument(document, {
+    title,
+    range,
+    respondents: respondentsData.respondents,
+    search: filters.search,
+  })
+  document.end()
+})
+
+function buildQuestionCsvContent(input: {
+  title: string
+  range: ReportRange
+  question: ReportQuestionItem
+  questionIndex: number
+}) {
+  const lines: string[][] = [
+    ['Pergunta da pesquisa', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    ['Pergunta', `Pergunta ${input.questionIndex}`],
+    ['Título', input.question.title],
+    ['Tipo', formatQuestionTypeLabel(input.question.type)],
+    ['Total de respostas', String(input.question.totalAnswers)],
+    ['Taxa de conclusão', `${input.question.completionRate}%`],
+  ]
+
+  if (input.question.averageScore !== undefined) {
+    lines.push(['Média', String(input.question.averageScore)])
+  }
+
+  if (input.question.nps) {
+    lines.push(['NPS', String(input.question.nps.score)])
+    lines.push(['Promotores', String(input.question.nps.promoters)])
+    lines.push(['Neutros', String(input.question.nps.neutrals)])
+    lines.push(['Detratores', String(input.question.nps.detractors)])
+  }
+
+  if (input.question.description) {
+    lines.push(['Descrição', input.question.description])
+  }
+
+  if (input.question.distribution?.length) {
+    lines.push([])
+    lines.push(['Distribuição'])
+    lines.push(['Opção', 'Quantidade', 'Percentual'])
+    for (const item of input.question.distribution) {
+      lines.push([item.label, String(item.count), `${item.percentage}%`])
+    }
+  }
+
+  if (input.question.textSamples?.length) {
+    lines.push([])
+    lines.push(['Amostras de resposta'])
+    lines.push(['Texto'])
+    for (const sample of input.question.textSamples) {
+      lines.push([sample])
+    }
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+function buildQuestionPdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  question: ReportQuestionItem
+  questionIndex: number
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Pergunta ${input.questionIndex} — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.moveDown()
+  document.fontSize(14).fillColor('#0f172a').text(input.question.title)
+  document.moveDown(0.2)
+  document.fontSize(10).fillColor('#475569').text(`Tipo: ${formatQuestionTypeLabel(input.question.type)}`)
+  document.fontSize(10).fillColor('#111827').text(`Respostas: ${input.question.totalAnswers}`)
+  document.fontSize(10).fillColor('#111827').text(`Conclusão: ${input.question.completionRate}%`)
+
+  if (input.question.description) {
+    document.moveDown(0.3)
+    document.fontSize(10).fillColor('#111827').text(`Descrição: ${input.question.description}`)
+  }
+
+  if (input.question.averageScore !== undefined) {
+    document.fontSize(10).fillColor('#111827').text(`Média: ${input.question.averageScore}`)
+  }
+
+  if (input.question.nps) {
+    document
+      .fontSize(10)
+      .fillColor('#111827')
+      .text(
+        `NPS: ${input.question.nps.score} | Promotores: ${input.question.nps.promoters} | Neutros: ${input.question.nps.neutrals} | Detratores: ${input.question.nps.detractors}`,
+      )
+  }
+
+  if (input.question.distribution?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 120)
+    document.fontSize(13).fillColor('#0f172a').text('Distribuição')
+    document.moveDown(0.3)
+    for (const item of input.question.distribution) {
+      ensurePdfSpace(document, 24)
+      document.fontSize(10).fillColor('#111827').text(`${item.label}: ${item.count} resposta(s) (${item.percentage}%)`)
+    }
+  }
+
+  if (input.question.textSamples?.length) {
+    document.moveDown()
+    ensurePdfSpace(document, 120)
+    document.fontSize(13).fillColor('#0f172a').text('Amostras de resposta')
+    document.moveDown(0.3)
+    for (const sample of input.question.textSamples) {
+      ensurePdfSpace(document, 36)
+      document.fontSize(10).fillColor('#111827').text(`- ${sample}`)
+    }
+  }
+}
+
+function buildMissingProductsCsvContent(input: {
+  title: string
+  range: ReportRange
+  reports: MissingProductsResponse[]
+}) {
+  const lines: string[][] = [
+    ['Produtos em falta', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    [],
+    ['Pergunta', 'Produto', 'Menções', 'Percentual'],
+  ]
+
+  for (const report of input.reports) {
+    for (const item of report.items) {
+      lines.push([report.questionTitle, item.product, String(item.count), `${item.percentage}%`])
+    }
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+function buildMissingProductsPdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  reports: MissingProductsResponse[]
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Produtos em falta — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.moveDown()
+
+  if (!input.reports.length) {
+    document.fontSize(10).fillColor('#64748b').text('Nenhuma métrica de produtos em falta encontrada para o período selecionado.')
+    return
+  }
+
+  for (const report of input.reports) {
+    ensurePdfSpace(document, 120)
+    document.fontSize(13).fillColor('#0f172a').text(report.questionTitle)
+    document.fontSize(10).fillColor('#475569').text(`Total de respostas no período: ${report.totalResponses}`)
+    document.moveDown(0.3)
+
+    if (!report.items.length) {
+      document.fontSize(10).fillColor('#64748b').text('Nenhum produto mencionado neste recorte.')
+      document.moveDown(0.5)
+      continue
+    }
+
+    for (const item of report.items) {
+      ensurePdfSpace(document, 24)
+      document.fontSize(10).fillColor('#111827').text(`${item.product}: ${item.count} menções (${item.percentage}%)`)
+    }
+
+    document.moveDown(0.6)
+  }
+}
+
+function buildAttendantPerformanceCsvContent(input: {
+  title: string
+  range: ReportRange
+  reports: AttendantPerformanceResponse[]
+}) {
+  const lines: string[][] = [
+    ['Desempenho dos atendentes', input.title],
+    ['Período', `${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`],
+    [],
+    ['Pergunta de atendente', 'Pergunta de nota', 'Atendente', 'Nota média', 'Avaliações', 'Nota mínima', 'Nota máxima'],
+  ]
+
+  for (const report of input.reports) {
+    for (const attendant of report.attendants) {
+      lines.push([
+        report.nameQuestionTitle,
+        report.ratingQuestionTitle,
+        attendant.name,
+        String(attendant.averageRating),
+        String(attendant.ratingCount),
+        String(attendant.minRating),
+        String(attendant.maxRating),
+      ])
+    }
+  }
+
+  return lines.map((line) => line.map(escapeCsvValue).join(',')).join('\n')
+}
+
+function buildAttendantPerformancePdfDocument(document: PDFKit.PDFDocument, input: {
+  title: string
+  range: ReportRange
+  reports: AttendantPerformanceResponse[]
+}) {
+  document.fontSize(18).fillColor('#0f172a').text(`Desempenho dos atendentes — ${input.title}`)
+  document.moveDown(0.3)
+  document.fontSize(11).fillColor('#475569').text(`Período: ${formatDateBR(input.range.startDate)} até ${formatDateBR(input.range.endDate)}`)
+  document.moveDown()
+
+  if (!input.reports.length) {
+    document.fontSize(10).fillColor('#64748b').text('Nenhuma métrica de desempenho dos atendentes encontrada para o período selecionado.')
+    return
+  }
+
+  for (const report of input.reports) {
+    ensurePdfSpace(document, 140)
+    document.fontSize(13).fillColor('#0f172a').text(report.nameQuestionTitle)
+    document.fontSize(10).fillColor('#475569').text(`Pergunta de nota: ${report.ratingQuestionTitle}`)
+    document.fontSize(10).fillColor('#475569').text(`Total de avaliações: ${report.totalEvaluations}`)
+    document.moveDown(0.3)
+
+    if (!report.attendants.length) {
+      document.fontSize(10).fillColor('#64748b').text('Nenhum atendente avaliado neste recorte.')
+      document.moveDown(0.5)
+      continue
+    }
+
+    for (let index = 0; index < report.attendants.length; index++) {
+      const attendant = report.attendants[index]
+      ensurePdfSpace(document, 28)
+      document
+        .fontSize(10)
+        .fillColor('#111827')
+        .text(
+          `${index + 1}º ${attendant.name}: nota média ${attendant.averageRating} | ${attendant.ratingCount} avaliação(ões) | faixa ${attendant.minRating}-${attendant.maxRating}`,
+        )
+    }
+
+    document.moveDown(0.6)
+  }
+}
+
+reportsRouter.get('/surveys/:id/reports/export-question.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  if (!questionId) {
+    response.status(400).json({ message: 'Informe a pergunta que deve ser exportada.' })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, questionsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getQuestionReportData(surveyId, range, scope),
+  ])
+  const questionIndex = questionsData.questions.findIndex((question) => question.id === questionId)
+
+  if (questionIndex === -1) {
+    response.status(404).json({ message: 'Pergunta não encontrada para exportação.' })
+    return
+  }
+
+  const question = questionsData.questions[questionIndex]
+  const fileName = `pergunta-${questionIndex + 1}-${sanitizeFileName(question.title)}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildQuestionCsvContent({
+    title,
+    range,
+    question,
+    questionIndex: questionIndex + 1,
+  })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-question.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  if (!questionId) {
+    response.status(400).json({ message: 'Informe a pergunta que deve ser exportada.' })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, questionsData] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getQuestionReportData(surveyId, range, scope),
+  ])
+  const questionIndex = questionsData.questions.findIndex((question) => question.id === questionId)
+
+  if (questionIndex === -1) {
+    response.status(404).json({ message: 'Pergunta não encontrada para exportação.' })
+    return
+  }
+
+  const question = questionsData.questions[questionIndex]
+  const fileName = `pergunta-${questionIndex + 1}-${sanitizeFileName(question.title)}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildQuestionPdfDocument(document, {
+    title,
+    range,
+    question,
+    questionIndex: questionIndex + 1,
+  })
+  document.end()
+})
+
+reportsRouter.get('/surveys/:id/reports/export-missing-products.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getMissingProductsReportData(surveyId, range, scope),
+  ])
+  const filteredReports = questionId ? reports.filter((report) => report.questionId === questionId) : reports
+
+  if (questionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de produtos em falta não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `produtos-em-falta-${sanitizeFileName(filteredReports[0].questionTitle)}`
+      : 'produtos-em-falta'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildMissingProductsCsvContent({ title, range, reports: filteredReports })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-missing-products.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const questionId = typeof request.query.questionId === 'string' ? request.query.questionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getMissingProductsReportData(surveyId, range, scope),
+  ])
+  const filteredReports = questionId ? reports.filter((report) => report.questionId === questionId) : reports
+
+  if (questionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de produtos em falta não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `produtos-em-falta-${sanitizeFileName(filteredReports[0].questionTitle)}`
+      : 'produtos-em-falta'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildMissingProductsPdfDocument(document, { title, range, reports: filteredReports })
+  document.end()
+})
+
+reportsRouter.get('/surveys/:id/reports/export-attendant-performance.csv', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const nameQuestionId = typeof request.query.nameQuestionId === 'string' ? request.query.nameQuestionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_csv',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getAttendantPerformanceReportData(surveyId, range, scope),
+  ])
+  const filteredReports = nameQuestionId
+    ? reports.filter((report) => report.nameQuestionId === nameQuestionId)
+    : reports
+
+  if (nameQuestionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de desempenho dos atendentes não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `desempenho-atendentes-${sanitizeFileName(filteredReports[0].nameQuestionTitle)}`
+      : 'desempenho-atendentes'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
+  const csv = buildAttendantPerformanceCsvContent({ title, range, reports: filteredReports })
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+  response.send(`\ufeff${csv}`)
+})
+
+reportsRouter.get('/surveys/:id/reports/export-attendant-performance.pdf', async (request: AuthenticatedRequest, response) => {
+  const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
+  const nameQuestionId = typeof request.query.nameQuestionId === 'string' ? request.query.nameQuestionId.trim() : ''
+  const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
+
+  if (!access.ok) {
+    response.status(access.status).json({ message: access.message })
+    return
+  }
+
+  const featureAccess = await ensureFeatureAccess(
+    request.auth!.userId,
+    request.auth!.roleCode,
+    'reports_export_pdf',
+  )
+
+  if (!featureAccess.ok) {
+    response.status(featureAccess.status).json({ message: featureAccess.message })
+    return
+  }
+
+  const range = getReportRange(request)
+  const [title, reports] = await Promise.all([
+    getSurveyReportTitle(surveyId),
+    getAttendantPerformanceReportData(surveyId, range, scope),
+  ])
+  const filteredReports = nameQuestionId
+    ? reports.filter((report) => report.nameQuestionId === nameQuestionId)
+    : reports
+
+  if (nameQuestionId && !filteredReports.length) {
+    response.status(404).json({ message: 'Métrica de desempenho dos atendentes não encontrada para exportação.' })
+    return
+  }
+
+  const fileLabel =
+    filteredReports.length === 1
+      ? `desempenho-atendentes-${sanitizeFileName(filteredReports[0].nameQuestionTitle)}`
+      : 'desempenho-atendentes'
+  const fileName = `${fileLabel}-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
+  response.setHeader('Content-Type', 'application/pdf')
+  response.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+
+  const document = new PDFDocument({ margin: 40, size: 'A4' })
+  document.pipe(response)
+  buildAttendantPerformancePdfDocument(document, { title, range, reports: filteredReports })
   document.end()
 })
 

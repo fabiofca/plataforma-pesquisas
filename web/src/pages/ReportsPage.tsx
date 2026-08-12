@@ -400,8 +400,14 @@ export function ReportsPage() {
   const [customEndDate, setCustomEndDate] = useState(defaultEndDate)
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'pdf' | null>(null)
   const [exportFeedback, setExportFeedback] = useState('')
+  const [respondentSearchInput, setRespondentSearchInput] = useState('')
+  const [respondentSearch, setRespondentSearch] = useState('')
   const [exportingParticipants, setExportingParticipants] = useState<'csv' | 'pdf' | 'txt' | null>(null)
   const [participantsExportFeedback, setParticipantsExportFeedback] = useState('')
+  const [exportingQuestionKey, setExportingQuestionKey] = useState<string | null>(null)
+  const [questionExportFeedback, setQuestionExportFeedback] = useState('')
+  const [exportingBusinessCardKey, setExportingBusinessCardKey] = useState<string | null>(null)
+  const [businessExportFeedback, setBusinessExportFeedback] = useState('')
   const [reportScope, setReportScope] = useState<ReportScope>('production')
   const [respondentsPage, setRespondentsPage] = useState(1)
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
@@ -440,8 +446,11 @@ export function ReportsPage() {
 
   useEffect(() => {
     setExportFeedback('')
+    setParticipantsExportFeedback('')
+    setQuestionExportFeedback('')
+    setBusinessExportFeedback('')
     setRespondentsPage(1)
-  }, [activeRange.endDate, activeRange.startDate, preset, reportScope])
+  }, [activeRange.endDate, activeRange.startDate, preset, reportScope, respondentSearch])
 
   useEffect(() => {
     setRespondentsPage(1)
@@ -468,10 +477,11 @@ export function ReportsPage() {
   })
 
   const respondentsQuery = useQuery({
-    queryKey: ['reports-respondents', id, activeRange.startDate, activeRange.endDate, reportScope, respondentsPage, respondentsPageSize],
+    queryKey: ['reports-respondents', id, activeRange.startDate, activeRange.endDate, reportScope, respondentSearch, respondentsPage, respondentsPageSize],
     queryFn: async () => {
       const params = buildReportParams(activeRange, {
         scope: reportScope,
+        search: respondentSearch,
         page: respondentsPage,
         pageSize: respondentsPageSize,
       })
@@ -583,7 +593,10 @@ export function ReportsPage() {
     setParticipantsExportFeedback('')
 
     try {
-      const params = buildReportParams(activeRange, { scope: reportScope })
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        search: respondentSearch,
+      })
 
       await downloadApiFile(
         `/surveys/${id}/reports/export-participants.${format}?${params.toString()}`,
@@ -596,6 +609,90 @@ export function ReportsPage() {
       setParticipantsExportFeedback(message)
     } finally {
       setExportingParticipants(null)
+    }
+  }
+
+  async function handleExportQuestion(question: QuestionReport, questionIndex: number, format: 'csv' | 'pdf') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingQuestionKey(`${question.id}:${format}`)
+    setQuestionExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        questionId: question.id,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-question.${format}?${params.toString()}`,
+        `pergunta-${questionIndex + 1}-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar esta pergunta agora.'
+
+      setQuestionExportFeedback(message)
+    } finally {
+      setExportingQuestionKey(null)
+    }
+  }
+
+  async function handleExportMissingProducts(questionId: string, format: 'csv' | 'pdf') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingBusinessCardKey(`missing:${questionId}:${format}`)
+    setBusinessExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        questionId,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-missing-products.${format}?${params.toString()}`,
+        `produtos-em-falta-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar os produtos em falta agora.'
+
+      setBusinessExportFeedback(message)
+    } finally {
+      setExportingBusinessCardKey(null)
+    }
+  }
+
+  async function handleExportAttendantPerformance(nameQuestionId: string, format: 'csv' | 'pdf') {
+    if (!id || isInvalidCustomRange || !hasReportData) {
+      return
+    }
+
+    setExportingBusinessCardKey(`attendant:${nameQuestionId}:${format}`)
+    setBusinessExportFeedback('')
+
+    try {
+      const params = buildReportParams(activeRange, {
+        scope: reportScope,
+        nameQuestionId,
+      })
+
+      await downloadApiFile(
+        `/surveys/${id}/reports/export-attendant-performance.${format}?${params.toString()}`,
+        `desempenho-atendentes-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+      )
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Não foi possível exportar o desempenho dos atendentes agora.'
+
+      setBusinessExportFeedback(message)
+    } finally {
+      setExportingBusinessCardKey(null)
     }
   }
 
@@ -1011,59 +1108,94 @@ export function ReportsPage() {
           title="Dados coletados"
           description="Nome, WhatsApp, email e aniversário ficam disponíveis aqui para leitura operacional e futuras campanhas."
         >
-          {respondentsQuery.isPending ? (
-            <div className="admin-empty-state py-16">Carregando participantes...</div>
-          ) : respondentsQuery.data?.pagination.totalItems ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-3">
                 <div className="report-summary-strip">
-                  Total coletado no período: <strong>{respondentsQuery.data.pagination.totalItems}</strong> participante(s).
+                  Total coletado no período: <strong>{respondentsQuery.data?.pagination.totalItems ?? 0}</strong> participante(s).
                 </div>
 
-                {(canExportCsv || canExportPdf) ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-medium text-slate-500">Exportar:</span>
-                    {canExportCsv ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => void handleExportParticipants('csv')}
-                          disabled={exportingParticipants !== null}
-                          className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <FileSpreadsheet className="h-3.5 w-3.5" />
-                          {exportingParticipants === 'csv' ? 'Exportando...' : 'CSV'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleExportParticipants('txt')}
-                          disabled={exportingParticipants !== null}
-                          className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                          {exportingParticipants === 'txt' ? 'Exportando...' : 'TXT'}
-                        </button>
-                      </>
-                    ) : null}
-                    {canExportPdf ? (
+                <form
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    setRespondentSearch(respondentSearchInput.trim())
+                  }}
+                >
+                  <input
+                    type="search"
+                    value={respondentSearchInput}
+                    onChange={(event) => setRespondentSearchInput(event.target.value)}
+                    placeholder="Buscar por nome, WhatsApp ou e-mail"
+                    className="admin-input min-w-[280px]"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" className="admin-button-primary">
+                      Buscar
+                    </button>
+                    {respondentSearch || respondentSearchInput ? (
                       <button
                         type="button"
-                        onClick={() => void handleExportParticipants('pdf')}
+                        onClick={() => {
+                          setRespondentSearchInput('')
+                          setRespondentSearch('')
+                        }}
+                        className="admin-button"
+                      >
+                        Limpar
+                      </button>
+                    ) : null}
+                  </div>
+                </form>
+              </div>
+
+              {(canExportCsv || canExportPdf) ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500">Exportar:</span>
+                  {canExportCsv ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportParticipants('csv')}
+                        disabled={exportingParticipants !== null}
+                        className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        {exportingParticipants === 'csv' ? 'Exportando...' : 'CSV'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleExportParticipants('txt')}
                         disabled={exportingParticipants !== null}
                         className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <Download className="h-3.5 w-3.5" />
-                        {exportingParticipants === 'pdf' ? 'Exportando...' : 'PDF'}
+                        {exportingParticipants === 'txt' ? 'Exportando...' : 'TXT'}
                       </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              {participantsExportFeedback ? (
-                <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{participantsExportFeedback}</div>
+                    </>
+                  ) : null}
+                  {canExportPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportParticipants('pdf')}
+                      disabled={exportingParticipants !== null}
+                      className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportingParticipants === 'pdf' ? 'Exportando...' : 'PDF'}
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
+            </div>
 
+            {participantsExportFeedback ? (
+              <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{participantsExportFeedback}</div>
+            ) : null}
+
+            {respondentsQuery.isPending ? (
+              <div className="admin-empty-state py-16">Carregando participantes...</div>
+            ) : respondentsQuery.data?.pagination.totalItems ? (
               <div className="admin-table-shell">
                 <div className="report-table-head hidden grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)_120px_minmax(0,1fr)_220px] gap-3 lg:grid">
                   <div>Participante</div>
@@ -1128,12 +1260,14 @@ export function ReportsPage() {
                   onPageSizeChange={setRespondentsPageSize}
                 />
               </div>
-            </div>
-          ) : (
-            <div className="admin-empty-state py-16">
-              Nenhum participante disponível para o período selecionado.
-            </div>
-          )}
+            ) : (
+              <div className="admin-empty-state py-16">
+                {respondentSearch
+                  ? 'Nenhum participante encontrado para a busca aplicada neste período.'
+                  : 'Nenhum participante disponível para o período selecionado.'}
+              </div>
+            )}
+          </div>
         </SectionCard>
       </div>
 
@@ -1147,6 +1281,10 @@ export function ReportsPage() {
             <div className="admin-empty-state py-16">Carregando desempenho por pergunta...</div>
           ) : questionsQuery.data?.questions.length ? (
             <div className="space-y-3">
+              {questionExportFeedback ? (
+                <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">{questionExportFeedback}</div>
+              ) : null}
+
               {questionsQuery.data.questions.map((question, index) => (
                 <article key={question.id} className="report-filter-panel">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1161,27 +1299,56 @@ export function ReportsPage() {
                       {question.description ? <p className="mt-1 text-sm text-slate-600">{question.description}</p> : null}
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[420px] xl:grid-cols-4">
-                      <div className="admin-subcard px-3 py-2">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Respostas</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-950">{question.totalAnswers}</p>
-                      </div>
-                      <div className="admin-subcard px-3 py-2">
-                        <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Conclusão</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-950">{question.completionRate}%</p>
-                      </div>
-                      {question.averageScore !== undefined ? (
-                        <div className="admin-subcard px-3 py-2">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Média</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.averageScore}</p>
+                    <div className="space-y-2 xl:min-w-[420px]">
+                      {canExportCsv || canExportPdf ? (
+                        <div className="flex justify-end gap-2">
+                          {canExportCsv ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleExportQuestion(question, index, 'csv')}
+                              disabled={exportingQuestionKey !== null}
+                              className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                              {exportingQuestionKey === `${question.id}:csv` ? 'Exportando CSV...' : 'CSV'}
+                            </button>
+                          ) : null}
+                          {canExportPdf ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleExportQuestion(question, index, 'pdf')}
+                              disabled={exportingQuestionKey !== null}
+                              className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              {exportingQuestionKey === `${question.id}:pdf` ? 'Exportando PDF...' : 'PDF'}
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
-                      {question.nps ? (
+
+                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="admin-subcard px-3 py-2">
-                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">NPS</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.nps.score}</p>
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Respostas</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.totalAnswers}</p>
                         </div>
-                      ) : null}
+                        <div className="admin-subcard px-3 py-2">
+                          <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Conclusão</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-950">{question.completionRate}%</p>
+                        </div>
+                        {question.averageScore !== undefined ? (
+                          <div className="admin-subcard px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Média</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-950">{question.averageScore}</p>
+                          </div>
+                        ) : null}
+                        {question.nps ? (
+                          <div className="admin-subcard px-3 py-2">
+                            <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">NPS</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-950">{question.nps.score}</p>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
 
@@ -1238,8 +1405,33 @@ export function ReportsPage() {
       </div>
 
       {/* Missing Products Report */}
-      {missingProductsQuery.data && missingProductsQuery.data.length > 0 ? (
+      {missingProductsQuery.isError ? (
         <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Produtos em falta"
+            description="Leitura das menções de produtos que os clientes procuraram e não encontraram."
+          >
+            <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">
+              Não foi possível carregar as métricas de produtos em falta agora.
+            </div>
+          </SectionCard>
+        </div>
+      ) : missingProductsQuery.isPending ? (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Produtos em falta"
+            description="Leitura das menções de produtos que os clientes procuraram e não encontraram."
+          >
+            <div className="admin-empty-state py-8">Carregando métricas de produtos em falta...</div>
+          </SectionCard>
+        </div>
+      ) : missingProductsQuery.data && missingProductsQuery.data.length > 0 ? (
+        <div className="mt-6">
+          {businessExportFeedback ? (
+            <div className="admin-alert mb-3 border-rose-200 bg-rose-50 text-rose-900">{businessExportFeedback}</div>
+          ) : null}
           {missingProductsQuery.data.map((report) => (
             <SectionCard
               key={report.questionId}
@@ -1247,6 +1439,33 @@ export function ReportsPage() {
               title={`Produtos em falta — ${report.questionTitle}`}
               description={`${report.items.length} produto(s) mencionado(s) por clientes. Total de respostas: ${report.totalResponses}.`}
             >
+              {canExportCsv || canExportPdf ? (
+                <div className="mb-4 flex justify-end gap-2">
+                  {canExportCsv ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportMissingProducts(report.questionId, 'csv')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `missing:${report.questionId}:csv` ? 'Exportando CSV...' : 'CSV'}
+                    </button>
+                  ) : null}
+                  {canExportPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportMissingProducts(report.questionId, 'pdf')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `missing:${report.questionId}:pdf` ? 'Exportando PDF...' : 'PDF'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
               {report.items.length ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -1306,11 +1525,46 @@ export function ReportsPage() {
             </SectionCard>
           ))}
         </div>
-      ) : null}
+      ) : (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Produtos em falta"
+            description="Leitura das menções de produtos que os clientes procuraram e não encontraram."
+          >
+            <div className="admin-empty-state py-8">Nenhuma métrica de produtos em falta foi encontrada nesta pesquisa.</div>
+          </SectionCard>
+        </div>
+      )}
 
       {/* Attendant Performance Report */}
-      {attendantPerformanceQuery.data && attendantPerformanceQuery.data.length > 0 ? (
+      {attendantPerformanceQuery.isError ? (
         <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Desempenho dos atendentes"
+            description="Leitura das notas cruzadas com o nome do atendente para ajudar a operação."
+          >
+            <div className="admin-alert border-rose-200 bg-rose-50 text-rose-900">
+              Não foi possível carregar as métricas de desempenho dos atendentes agora.
+            </div>
+          </SectionCard>
+        </div>
+      ) : attendantPerformanceQuery.isPending ? (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Desempenho dos atendentes"
+            description="Leitura das notas cruzadas com o nome do atendente para ajudar a operação."
+          >
+            <div className="admin-empty-state py-8">Carregando métricas de desempenho dos atendentes...</div>
+          </SectionCard>
+        </div>
+      ) : attendantPerformanceQuery.data && attendantPerformanceQuery.data.length > 0 ? (
+        <div className="mt-6">
+          {businessExportFeedback ? (
+            <div className="admin-alert mb-3 border-rose-200 bg-rose-50 text-rose-900">{businessExportFeedback}</div>
+          ) : null}
           {attendantPerformanceQuery.data.map((report) => (
             <SectionCard
               key={report.nameQuestionId}
@@ -1318,6 +1572,33 @@ export function ReportsPage() {
               title={`Desempenho dos atendentes — ${report.nameQuestionTitle}`}
               description={`${report.totalEvaluations} avaliação(ões) cruzadas com a pergunta de nota.`}
             >
+              {canExportCsv || canExportPdf ? (
+                <div className="mb-4 flex justify-end gap-2">
+                  {canExportCsv ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportAttendantPerformance(report.nameQuestionId, 'csv')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `attendant:${report.nameQuestionId}:csv` ? 'Exportando CSV...' : 'CSV'}
+                    </button>
+                  ) : null}
+                  {canExportPdf ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleExportAttendantPerformance(report.nameQuestionId, 'pdf')}
+                      disabled={exportingBusinessCardKey !== null}
+                      className="admin-button disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {exportingBusinessCardKey === `attendant:${report.nameQuestionId}:pdf` ? 'Exportando PDF...' : 'PDF'}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+
               {report.attendants.length ? (
                 <>
                 <div className="overflow-x-auto">
@@ -1403,7 +1684,17 @@ export function ReportsPage() {
             </SectionCard>
           ))}
         </div>
-      ) : null}
+      ) : (
+        <div className="mt-6">
+          <SectionCard
+            eyebrow="Métrica de negócio"
+            title="Desempenho dos atendentes"
+            description="Leitura das notas cruzadas com o nome do atendente para ajudar a operação."
+          >
+            <div className="admin-empty-state py-8">Nenhuma métrica de desempenho dos atendentes foi encontrada nesta pesquisa.</div>
+          </SectionCard>
+        </div>
+      )}
 
       </div>
     </AppShell>
