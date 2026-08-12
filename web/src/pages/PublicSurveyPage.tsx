@@ -782,6 +782,10 @@ export function PublicSurveyPage() {
           reward_redemption_expiration_days?: number | null
           reward_retry_unlock_enabled?: boolean
           reward_retry_tasks?: RewardRetryTask[]
+          attendants?: Array<{
+            id: string
+            name: string
+          }>
           reward_items?: Array<{
             id: string
             title: string
@@ -934,29 +938,13 @@ export function PublicSurveyPage() {
 
   // Fetch attendant suggestions when survey loads
   useEffect(() => {
-    if (!survey?.slug || previewMode) {
+    if (!survey) {
       setAttendantSuggestions([])
       return
     }
 
-    let cancelled = false
-
-    apiRequest<Array<{ id: string; name: string }>>(`/public/surveys/${survey.slug}/attendants`)
-      .then((attendants) => {
-        if (!cancelled) {
-          setAttendantSuggestions(attendants.map((a) => a.name))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAttendantSuggestions([])
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [survey?.slug, previewMode])
+    setAttendantSuggestions((survey.attendants ?? []).map((attendant) => attendant.name))
+  }, [survey])
 
   function clearPersistedSurveySnapshots() {
     removePersistedSurveySessionSnapshot(surveyDraftStorageKey)

@@ -254,6 +254,14 @@ async function getSurveyBySlug(slug: string) {
     [survey.id],
   )
 
+  const attendants = await query<{ id: string; name: string }>(
+    `select id, name
+     from survey_attendants
+     where survey_id = $1 and is_active = true
+     order by sort_order asc, created_at asc, name asc`,
+    [survey.id],
+  )
+
   const rewardItems =
     survey.reward_enabled && survey.reward_campaign_id
       ? await loadRewardPreviewItems({
@@ -268,6 +276,7 @@ async function getSurveyBySlug(slug: string) {
       ...question,
       options: options.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
     })),
+    attendants: attendants.rows,
     reward_items: rewardItems.rows,
     reward_neutral_labels: DEFAULT_NO_PRIZE_LABELS.slice(0, 6),
     reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,
@@ -344,6 +353,14 @@ async function getSurveyPreviewById(surveyId: string) {
     [survey.id],
   )
 
+  const attendants = await query<{ id: string; name: string }>(
+    `select id, name
+     from survey_attendants
+     where survey_id = $1 and is_active = true
+     order by sort_order asc, created_at asc, name asc`,
+    [survey.id],
+  )
+
   const rewardItems =
     survey.reward_enabled && survey.reward_campaign_id
       ? await loadRewardPreviewItems({
@@ -358,6 +375,7 @@ async function getSurveyPreviewById(surveyId: string) {
       ...question,
       options: options.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
     })),
+    attendants: attendants.rows,
     reward_items: rewardItems.rows,
     reward_neutral_labels: DEFAULT_NO_PRIZE_LABELS.slice(0, 6),
     reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,

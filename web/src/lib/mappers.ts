@@ -170,6 +170,10 @@ export function mapApiSurvey(item: {
     title: string
     url: string
   }>
+  attendants?: Array<{
+    id: string
+    name: string
+  }>
 }): SurveyItem {
   return {
     id: item.id,
@@ -220,5 +224,6 @@ export function mapApiSurvey(item: {
     rewardRedemptionMethod: item.reward_redemption_method ?? undefined,
     rewardRedemptionExpirationDays: item.reward_redemption_expiration_days ?? undefined,
     rewardRetryTasks: item.reward_retry_tasks ?? [],
+    attendants: item.attendants ?? [],
   }
 }

@@ -133,6 +133,10 @@ export interface SurveyItem {
     title: string
     url: string
   }>
+  attendants?: Array<{
+    id: string
+    name: string
+  }>
 }
 
 export interface RewardItem {

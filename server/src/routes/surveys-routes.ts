@@ -242,9 +242,21 @@ async function loadSurveyPreview(surveyId: string) {
         )
       : { rows: [] }
 
+  const attendants = await query<{
+    id: string
+    name: string
+  }>(
+    `select id, name
+     from survey_attendants
+     where survey_id = $1 and is_active = true
+     order by sort_order asc, created_at asc, name asc`,
+    [survey.id],
+  )
+
   return {
     ...survey,
     questions: await loadSurveyQuestions(survey.id),
+    attendants: attendants.rows,
     reward_items: rewardItems.rows,
     reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,
     reward_retry_tasks: normalizeRewardRetryTasks(survey.reward_retry_unlock_tasks_json),
