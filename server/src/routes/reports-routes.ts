@@ -15,6 +15,8 @@ type ReportRange = {
   endDate: string
 }
 
+type ReportScope = 'production' | 'test' | 'all'
+
 type PaginationInput = {
   page: number
   pageSize: number
@@ -178,6 +180,52 @@ function getReportRange(request: AuthenticatedRequest): ReportRange {
     startDate: rawRange.startDate ?? defaultRange.startDate,
     endDate: rawRange.endDate ?? defaultRange.endDate,
   }
+}
+
+function getReportScope(request: AuthenticatedRequest): ReportScope {
+  const scope = typeof request.query.scope === 'string' ? request.query.scope : ''
+
+  if (scope === 'test' || scope === 'all') {
+    return scope
+  }
+
+  return 'production'
+}
+
+function getResponseScopeCondition(scope: ReportScope, alias = 'survey_responses') {
+  if (scope === 'test') {
+    return `${alias}.is_test_response = true`
+  }
+
+  if (scope === 'all') {
+    return '1 = 1'
+  }
+
+  return `${alias}.is_test_response = false`
+}
+
+function getRewardWinScopeCondition(scope: ReportScope, alias = 'reward_wins') {
+  if (scope === 'test') {
+    return `${alias}.is_test_win = true`
+  }
+
+  if (scope === 'all') {
+    return '1 = 1'
+  }
+
+  return `${alias}.is_test_win = false`
+}
+
+function getRewardSpinScopeCondition(scope: ReportScope, alias = 'reward_spin_logs') {
+  if (scope === 'test') {
+    return `${alias}.is_test_spin = true`
+  }
+
+  if (scope === 'all') {
+    return '1 = 1'
+  }
+
+  return `${alias}.is_test_spin = false`
 }
 
 function parsePositiveInt(value: unknown, fallback: number, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
@@ -411,11 +459,14 @@ async function getSummaryReportData(
   surveyId: string,
   range: ReportRange,
   canViewTracking: boolean,
+  scope: ReportScope,
 ): Promise<{
   summary: ReportSummary
   period: ReportPeriodItem[]
   range: ReportRange
 }> {
+  const responseScopeCondition = getResponseScopeCondition(scope)
+  const rewardWinScopeCondition = getRewardWinScopeCondition(scope)
   const summary = await query<ReportSummary>(
     `with metrics as (
         select
@@ -423,6 +474,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and submitted_at >= $2::date
               and submitted_at < ($3::date + interval '1 day')
           ) as total_responses,
@@ -430,6 +482,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and participant_name is not null
               and submitted_at >= $2::date
               and submitted_at < ($3::date + interval '1 day')
@@ -439,7 +492,7 @@ async function getSummaryReportData(
             from reward_wins
             join survey_responses on reward_wins.response_id = survey_responses.id
             where survey_responses.survey_id = $1
-              and reward_wins.is_test_win = false
+              and ${rewardWinScopeCondition}
               and survey_responses.submitted_at >= $2::date
               and survey_responses.submitted_at < ($3::date + interval '1 day')
           ) as reward_wins,
@@ -447,6 +500,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and participant_email is not null
               and submitted_at >= $2::date
               and submitted_at < ($3::date + interval '1 day')
@@ -455,6 +509,7 @@ async function getSummaryReportData(
             select count(*)::numeric
             from survey_responses
             where survey_id = $1
+              and ${responseScopeCondition}
               and participant_birth_day is not null
               and participant_birth_month is not null
               and submitted_at >= $2::date
@@ -508,6 +563,7 @@ async function getSummaryReportData(
         select date_trunc('day', submitted_at) as day
         from survey_responses
         where survey_id = $1
+          and ${responseScopeCondition}
           and submitted_at >= $2::date
           and submitted_at < ($3::date + interval '1 day')
         union
@@ -521,6 +577,7 @@ async function getSummaryReportData(
         select date_trunc('day', submitted_at) as day, count(*) as total
         from survey_responses
         where survey_id = $1
+          and ${responseScopeCondition}
           and submitted_at >= $2::date
           and submitted_at < ($3::date + interval '1 day')
         group by 1
@@ -544,17 +601,19 @@ async function getSummaryReportData(
     [surveyId, range.startDate, range.endDate],
   )
 
+  const allowTrackingMetrics = canViewTracking && scope !== 'test'
+
   return {
     summary: {
       ...summary.rows[0],
-      link_clicks: canViewTracking ? summary.rows[0].link_clicks : '0',
-      qr_scans: canViewTracking ? summary.rows[0].qr_scans : '0',
-      total_visits: canViewTracking ? summary.rows[0].total_visits : '0',
-      conversion_rate: canViewTracking ? summary.rows[0].conversion_rate : '0',
+      link_clicks: allowTrackingMetrics ? summary.rows[0].link_clicks : '0',
+      qr_scans: allowTrackingMetrics ? summary.rows[0].qr_scans : '0',
+      total_visits: allowTrackingMetrics ? summary.rows[0].total_visits : '0',
+      conversion_rate: allowTrackingMetrics ? summary.rows[0].conversion_rate : '0',
     },
     period: period.rows.map((item) => ({
       ...item,
-      visits: canViewTracking ? item.visits : '0',
+      visits: allowTrackingMetrics ? item.visits : '0',
     })),
     range,
   }
@@ -563,6 +622,7 @@ async function getSummaryReportData(
 async function getRespondentsReportData(
   surveyId: string,
   range: ReportRange,
+  scope: ReportScope,
   options?: {
     pagination?: PaginationInput
     all?: boolean
@@ -573,10 +633,12 @@ async function getRespondentsReportData(
   range: ReportRange
 }> {
   const pagination = options?.pagination ?? { page: 1, pageSize: 20 }
+  const responseScopeCondition = getResponseScopeCondition(scope)
   const countResult = await query<{ total: string }>(
     `select cast(count(*) as text) as total
      from survey_responses
      where survey_id = $1
+       and ${responseScopeCondition}
        and submitted_at >= $2::date
        and submitted_at < ($3::date + interval '1 day')`,
     [surveyId, range.startDate, range.endDate],
@@ -612,6 +674,7 @@ async function getRespondentsReportData(
         participant_birth_month
      from survey_responses
      where survey_id = $1
+       and ${responseScopeCondition}
        and submitted_at >= $2::date
        and submitted_at < ($3::date + interval '1 day')
      order by submitted_at desc${paginationSql}`,
@@ -647,15 +710,18 @@ async function getRespondentsReportData(
 async function getQuestionReportData(
   surveyId: string,
   range: ReportRange,
+  scope: ReportScope,
 ): Promise<{
   questions: ReportQuestionItem[]
   totalResponses: number
   range: ReportRange
 }> {
+  const responseScopeCondition = getResponseScopeCondition(scope)
   const totalResponsesResult = await query<{ total: string }>(
     `select cast(count(*) as text) as total
      from survey_responses
      where survey_id = $1
+       and ${responseScopeCondition}
        and submitted_at >= $2::date
        and submitted_at < ($3::date + interval '1 day')`,
     [surveyId, range.startDate, range.endDate],
@@ -702,6 +768,7 @@ async function getQuestionReportData(
       from response_answers
       join survey_responses on survey_responses.id = response_answers.response_id
       where survey_responses.survey_id = $1
+        and ${responseScopeCondition}
         and survey_responses.submitted_at >= $2::date
         and survey_responses.submitted_at < ($3::date + interval '1 day')
       order by survey_responses.submitted_at desc`,
@@ -886,6 +953,7 @@ async function getRewardReportData(
   surveyId: string,
   range: ReportRange,
   options?: {
+    scope?: ReportScope
     winnerFilters?: RewardWinnerFilters
     winnerPagination?: PaginationInput
     includeAllWinners?: boolean
@@ -933,6 +1001,9 @@ async function getRewardReportData(
     }
   }
 
+  const scope = options?.scope ?? 'production'
+  const rewardWinScopeCondition = getRewardWinScopeCondition(scope)
+  const rewardSpinScopeCondition = getRewardSpinScopeCondition(scope)
   const winnerFilters = options?.winnerFilters ?? {
     name: '',
     phone: '',
@@ -945,7 +1016,7 @@ async function getRewardReportData(
   const winnerPagination = options?.winnerPagination ?? { page: 1, pageSize: 20 }
   const winnerWhereClauses = [
     'reward_wins.campaign_id = $1',
-    'reward_wins.is_test_win = false',
+    rewardWinScopeCondition,
     'reward_wins.awarded_at >= $2::date',
     "reward_wins.awarded_at < ($3::date + interval '1 day')",
   ]
@@ -1012,26 +1083,26 @@ async function getRewardReportData(
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
-              and is_test_win = false
+              and ${rewardWinScopeCondition}
               and redemption_status = 'pending'
           ) as pending_redemptions,
           (
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
-              and is_test_win = false
+              and ${rewardWinScopeCondition}
               and redemption_status = 'delivered'
           ) as delivered_redemptions,
           (
             select cast(count(*) as text)
             from reward_wins
             where campaign_id = $1
-              and is_test_win = false
+              and ${rewardWinScopeCondition}
               and redemption_status = 'cancelled'
           ) as cancelled_redemptions
        from reward_spin_logs
        where campaign_id = $1
-         and is_test_spin = false
+         and ${rewardSpinScopeCondition}
          and created_at >= $2::date
          and created_at < ($3::date + interval '1 day')`,
       [campaignId, range.startDate, range.endDate],
@@ -1051,7 +1122,7 @@ async function getRewardReportData(
           cast(count(reward_wins.id) filter (
             where reward_wins.awarded_at >= $2::date
               and reward_wins.awarded_at < ($3::date + interval '1 day')
-              and reward_wins.is_test_win = false
+              and ${rewardWinScopeCondition}
           ) as text) as wins_in_range
        from reward_items
        left join reward_wins on reward_wins.reward_item_id = reward_items.id
@@ -1098,7 +1169,7 @@ async function getRewardReportData(
       `select wheel_label as label, cast(count(*) as text) as count
        from reward_spin_logs
        where campaign_id = $1
-         and is_test_spin = false
+         and ${rewardSpinScopeCondition}
          and outcome_type = 'no_prize'
          and created_at >= $2::date
          and created_at < ($3::date + interval '1 day')
@@ -1684,6 +1755,7 @@ reportsRouter.use(requireAuth)
 
 reportsRouter.get('/surveys/:id/reports/summary', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1697,11 +1769,12 @@ reportsRouter.get('/surveys/:id/reports/summary', async (request: AuthenticatedR
     'survey_share_tracking',
   )
 
-  response.json(await getSummaryReportData(surveyId, getReportRange(request), canViewTracking))
+  response.json(await getSummaryReportData(surveyId, getReportRange(request), canViewTracking, scope))
 })
 
 reportsRouter.get('/surveys/:id/reports/questions', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1709,11 +1782,12 @@ reportsRouter.get('/surveys/:id/reports/questions', async (request: Authenticate
     return
   }
 
-  response.json(await getQuestionReportData(surveyId, getReportRange(request)))
+  response.json(await getQuestionReportData(surveyId, getReportRange(request), scope))
 })
 
 reportsRouter.get('/surveys/:id/reports/respondents', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1722,7 +1796,7 @@ reportsRouter.get('/surveys/:id/reports/respondents', async (request: Authentica
   }
 
   response.json(
-    await getRespondentsReportData(surveyId, getReportRange(request), {
+    await getRespondentsReportData(surveyId, getReportRange(request), scope, {
       pagination: getPaginationQuery(request),
     }),
   )
@@ -1730,6 +1804,7 @@ reportsRouter.get('/surveys/:id/reports/respondents', async (request: Authentica
 
 reportsRouter.get('/surveys/:id/reports/rewards', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1739,6 +1814,7 @@ reportsRouter.get('/surveys/:id/reports/rewards', async (request: AuthenticatedR
 
   response.json(
     await getRewardReportData(surveyId, getReportRange(request), {
+      scope,
       winnerFilters: getWinnerFilters(request),
       winnerPagination: getPaginationQuery(request),
     }),
@@ -1747,6 +1823,7 @@ reportsRouter.get('/surveys/:id/reports/rewards', async (request: AuthenticatedR
 
 reportsRouter.get('/surveys/:id/reports/export.csv', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1773,12 +1850,12 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
   )
   const [title, summaryData, questionsData, respondentsData, rewardsData, missingProductsData, attendantPerformanceData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getSummaryReportData(surveyId, range, canViewTracking),
-    getQuestionReportData(surveyId, range),
-    getRespondentsReportData(surveyId, range, { all: true }),
-    getRewardReportData(surveyId, range, { includeAllWinners: true }),
-    getMissingProductsReportData(surveyId, range),
-    getAttendantPerformanceReportData(surveyId, range),
+    getSummaryReportData(surveyId, range, canViewTracking, scope),
+    getQuestionReportData(surveyId, range, scope),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRewardReportData(surveyId, range, { includeAllWinners: true, scope }),
+    getMissingProductsReportData(surveyId, range, scope),
+    getAttendantPerformanceReportData(surveyId, range, scope),
   ])
 
   const fileName = `relatorio-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
@@ -1801,6 +1878,7 @@ reportsRouter.get('/surveys/:id/reports/export.csv', async (request: Authenticat
 
 reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1827,12 +1905,12 @@ reportsRouter.get('/surveys/:id/reports/export.pdf', async (request: Authenticat
   )
   const [title, summaryData, questionsData, respondentsData, rewardsData, missingProductsData, attendantPerformanceData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getSummaryReportData(surveyId, range, canViewTracking),
-    getQuestionReportData(surveyId, range),
-    getRespondentsReportData(surveyId, range, { all: true }),
-    getRewardReportData(surveyId, range, { includeAllWinners: true }),
-    getMissingProductsReportData(surveyId, range),
-    getAttendantPerformanceReportData(surveyId, range),
+    getSummaryReportData(surveyId, range, canViewTracking, scope),
+    getQuestionReportData(surveyId, range, scope),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
+    getRewardReportData(surveyId, range, { includeAllWinners: true, scope }),
+    getMissingProductsReportData(surveyId, range, scope),
+    getAttendantPerformanceReportData(surveyId, range, scope),
   ])
 
   const fileName = `relatorio-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
@@ -1887,6 +1965,7 @@ function buildParticipantsCsvContent(input: {
 
 reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -1908,7 +1987,7 @@ reportsRouter.get('/surveys/:id/reports/export-participants.csv', async (request
   const range = getReportRange(request)
   const [title, respondentsData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getRespondentsReportData(surveyId, range, { all: true }),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
   ])
 
   const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.csv`
@@ -1992,6 +2071,7 @@ function buildParticipantsPdfDocument(document: PDFKit.PDFDocument, input: {
 
 reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -2013,7 +2093,7 @@ reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request
   const range = getReportRange(request)
   const [title, respondentsData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getRespondentsReportData(surveyId, range, { all: true }),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
   ])
 
   const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.txt`
@@ -2026,6 +2106,7 @@ reportsRouter.get('/surveys/:id/reports/export-participants.txt', async (request
 
 reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -2047,7 +2128,7 @@ reportsRouter.get('/surveys/:id/reports/export-participants.pdf', async (request
   const range = getReportRange(request)
   const [title, respondentsData] = await Promise.all([
     getSurveyReportTitle(surveyId),
-    getRespondentsReportData(surveyId, range, { all: true }),
+    getRespondentsReportData(surveyId, range, scope, { all: true }),
   ])
 
   const fileName = `participantes-${sanitizeFileName(title)}-${range.startDate}-${range.endDate}.pdf`
@@ -2101,6 +2182,7 @@ type MissingProductsResponse = {
 async function getMissingProductsReportData(
   surveyId: string,
   range: ReportRange,
+  scope: ReportScope,
 ): Promise<MissingProductsResponse[]> {
   // Find questions marked as missing_product
   const metricQuestions = await query<{
@@ -2120,10 +2202,12 @@ async function getMissingProductsReportData(
     return []
   }
 
+  const responseScopeCondition = getResponseScopeCondition(scope, 'sr')
   const totalResponsesResult = await query<{ total: string }>(
     `select cast(count(*) as text) as total
      from survey_responses
      where survey_id = $1
+       and ${getResponseScopeCondition(scope)}
        and submitted_at >= $2::date
        and submitted_at < ($3::date + interval '1 day')`,
     [surveyId, range.startDate, range.endDate],
@@ -2139,6 +2223,7 @@ async function getMissingProductsReportData(
        join survey_responses sr on sr.id = ra.response_id
        where ra.question_id = $1
          and sr.survey_id = $2
+         and ${responseScopeCondition}
          and sr.submitted_at >= $3::date
          and sr.submitted_at < ($4::date + interval '1 day')`,
       [q.id, surveyId, range.startDate, range.endDate],
@@ -2195,6 +2280,7 @@ type AttendantPerformanceResponse = {
 async function getAttendantPerformanceReportData(
   surveyId: string,
   range: ReportRange,
+  scope: ReportScope,
 ): Promise<AttendantPerformanceResponse[]> {
   // Find questions marked as attendant_rating (they link to the attendant_name question)
   const ratingQuestions = await query<{
@@ -2214,6 +2300,7 @@ async function getAttendantPerformanceReportData(
     return []
   }
 
+  const responseScopeCondition = getResponseScopeCondition(scope, 'sr')
   const results: AttendantPerformanceResponse[] = []
 
   for (const rq of ratingQuestions.rows) {
@@ -2270,6 +2357,7 @@ async function getAttendantPerformanceReportData(
        join survey_responses sr on sr.id = ra_name.response_id
        where ra_name.question_id = $1
          and sr.survey_id = $3
+         and ${responseScopeCondition}
          and sr.submitted_at >= $4::date
          and sr.submitted_at < ($5::date + interval '1 day')`,
       [nq.id, rq.id, surveyId, range.startDate, range.endDate],
@@ -2330,6 +2418,7 @@ async function getAttendantPerformanceReportData(
 
 reportsRouter.get('/surveys/:id/reports/missing-products', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -2337,11 +2426,12 @@ reportsRouter.get('/surveys/:id/reports/missing-products', async (request: Authe
     return
   }
 
-  response.json(await getMissingProductsReportData(surveyId, getReportRange(request)))
+  response.json(await getMissingProductsReportData(surveyId, getReportRange(request), scope))
 })
 
 reportsRouter.get('/surveys/:id/reports/attendant-performance', async (request: AuthenticatedRequest, response) => {
   const surveyId = String(request.params.id)
+  const scope = getReportScope(request)
   const access = await ensureSurveyAccess(surveyId, request.auth!.userId, request.auth!.roleCode)
 
   if (!access.ok) {
@@ -2349,5 +2439,5 @@ reportsRouter.get('/surveys/:id/reports/attendant-performance', async (request: 
     return
   }
 
-  response.json(await getAttendantPerformanceReportData(surveyId, getReportRange(request)))
+  response.json(await getAttendantPerformanceReportData(surveyId, getReportRange(request), scope))
 })

@@ -12,6 +12,7 @@ import { hasFeatureAccess } from '@/lib/features'
 import { useAuthStore } from '@/store/use-auth-store'
 
 type PeriodPreset = 'today' | '7d' | '30d' | 'custom'
+type ReportScope = 'production' | 'test' | 'all'
 
 type PaginationMeta = {
   page: number
@@ -260,6 +261,26 @@ function buildReportParams(
   return params
 }
 
+function getReportScopeLabel(scope: ReportScope) {
+  const labels: Record<ReportScope, string> = {
+    production: 'Somente produção',
+    test: 'Somente teste',
+    all: 'Produção + teste',
+  }
+
+  return labels[scope]
+}
+
+function getReportScopeFileSlug(scope: ReportScope) {
+  const labels: Record<ReportScope, string> = {
+    production: 'producao',
+    test: 'teste',
+    all: 'todos',
+  }
+
+  return labels[scope]
+}
+
 function getPaginationWindow(pagination: PaginationMeta) {
   if (!pagination.totalItems) {
     return { start: 0, end: 0 }
@@ -381,6 +402,7 @@ export function ReportsPage() {
   const [exportFeedback, setExportFeedback] = useState('')
   const [exportingParticipants, setExportingParticipants] = useState<'csv' | 'pdf' | 'txt' | null>(null)
   const [participantsExportFeedback, setParticipantsExportFeedback] = useState('')
+  const [reportScope, setReportScope] = useState<ReportScope>('production')
   const [respondentsPage, setRespondentsPage] = useState(1)
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
   const canExportCsv = hasFeatureAccess(user, 'reports_export_csv')
@@ -419,16 +441,16 @@ export function ReportsPage() {
   useEffect(() => {
     setExportFeedback('')
     setRespondentsPage(1)
-  }, [activeRange.endDate, activeRange.startDate, preset])
+  }, [activeRange.endDate, activeRange.startDate, preset, reportScope])
 
   useEffect(() => {
     setRespondentsPage(1)
   }, [respondentsPageSize])
 
   const summaryQuery = useQuery({
-    queryKey: ['reports-summary', id, activeRange.startDate, activeRange.endDate],
+    queryKey: ['reports-summary', id, activeRange.startDate, activeRange.endDate, reportScope],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<SummaryResponse>(`/surveys/${id}/reports/summary?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -436,9 +458,9 @@ export function ReportsPage() {
   })
 
   const questionsQuery = useQuery({
-    queryKey: ['reports-questions', id, activeRange.startDate, activeRange.endDate],
+    queryKey: ['reports-questions', id, activeRange.startDate, activeRange.endDate, reportScope],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<QuestionsResponse>(`/surveys/${id}/reports/questions?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -446,9 +468,10 @@ export function ReportsPage() {
   })
 
   const respondentsQuery = useQuery({
-    queryKey: ['reports-respondents', id, activeRange.startDate, activeRange.endDate, respondentsPage, respondentsPageSize],
+    queryKey: ['reports-respondents', id, activeRange.startDate, activeRange.endDate, reportScope, respondentsPage, respondentsPageSize],
     queryFn: async () => {
       const params = buildReportParams(activeRange, {
+        scope: reportScope,
         page: respondentsPage,
         pageSize: respondentsPageSize,
       })
@@ -465,9 +488,10 @@ export function ReportsPage() {
       id,
       activeRange.startDate,
       activeRange.endDate,
+      reportScope,
     ],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<RewardsResponse>(`/surveys/${id}/reports/rewards?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -475,9 +499,9 @@ export function ReportsPage() {
   })
 
   const missingProductsQuery = useQuery({
-    queryKey: ['reports-missing-products', id, activeRange.startDate, activeRange.endDate],
+    queryKey: ['reports-missing-products', id, activeRange.startDate, activeRange.endDate, reportScope],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<MissingProductsResponse>(`/surveys/${id}/reports/missing-products?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -485,9 +509,9 @@ export function ReportsPage() {
   })
 
   const attendantPerformanceQuery = useQuery({
-    queryKey: ['reports-attendant-performance', id, activeRange.startDate, activeRange.endDate],
+    queryKey: ['reports-attendant-performance', id, activeRange.startDate, activeRange.endDate, reportScope],
     queryFn: async () => {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
       return apiRequest<AttendantPerformanceResponse>(`/surveys/${id}/reports/attendant-performance?${params.toString()}`)
     },
     enabled: Boolean(id) && !isInvalidCustomRange,
@@ -534,11 +558,11 @@ export function ReportsPage() {
     setExportFeedback('')
 
     try {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
 
       await downloadApiFile(
         `/surveys/${id}/reports/export.${format}?${params.toString()}`,
-        `relatorio-pesquisa-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+        `relatorio-pesquisa-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
       )
     } catch (error) {
       const message =
@@ -559,11 +583,11 @@ export function ReportsPage() {
     setParticipantsExportFeedback('')
 
     try {
-      const params = buildReportParams(activeRange)
+      const params = buildReportParams(activeRange, { scope: reportScope })
 
       await downloadApiFile(
         `/surveys/${id}/reports/export-participants.${format}?${params.toString()}`,
-        `participantes-${activeRange.startDate}-${activeRange.endDate}.${format}`,
+        `participantes-${getReportScopeFileSlug(reportScope)}-${activeRange.startDate}-${activeRange.endDate}.${format}`,
       )
     } catch (error) {
       const message =
@@ -608,7 +632,7 @@ export function ReportsPage() {
       <SectionCard
         eyebrow="Período"
         title="Filtro do relatório"
-        description="Escolha um recorte rápido ou defina um intervalo personalizado para comparar acessos, respostas e desempenho das perguntas."
+        description="Escolha o período e o escopo do relatório para comparar produção real, testes internos ou a visão consolidada."
       >
         <div className="flex flex-wrap gap-3">
           {[
@@ -631,6 +655,31 @@ export function ReportsPage() {
               {label}
             </button>
           ))}
+        </div>
+
+        <div className="mt-4">
+          <p className="text-sm font-medium text-slate-700">Escopo dos dados</p>
+          <div className="mt-2 flex flex-wrap gap-3">
+            {[
+              ['production', 'Somente produção'],
+              ['test', 'Somente teste'],
+              ['all', 'Produção + teste'],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setReportScope(value as ReportScope)}
+                className={`px-4 py-2 text-sm font-semibold transition ${
+                  reportScope === value
+                    ? 'bg-slate-950 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+                style={{ borderRadius: 8 }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {preset === 'custom' ? (
@@ -658,8 +707,14 @@ export function ReportsPage() {
         ) : null}
 
         <div className="admin-alert mt-4 border-slate-200 bg-slate-50 text-slate-600">
-          Exibindo dados de <strong>{formatPeriodDate(activeRange.startDate)}</strong> até <strong>{formatPeriodDate(activeRange.endDate)}</strong>.
+          Exibindo dados de <strong>{formatPeriodDate(activeRange.startDate)}</strong> até <strong>{formatPeriodDate(activeRange.endDate)}</strong>, no escopo <strong>{getReportScopeLabel(reportScope)}</strong>.
         </div>
+
+        {reportScope === 'test' ? (
+          <div className="admin-alert mt-4 border-amber-200 bg-amber-50 text-amber-900">
+            No escopo de teste, as métricas de acesso ficam zeradas para não misturar visitas reais com uso interno.
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap gap-3">
           {canExportCsv ? (
