@@ -14,6 +14,80 @@ function mapParticipationMode(mode: string): SurveyItem['participationMode'] {
   return mode === 'identified' ? 'Identificada' : 'Anônima'
 }
 
+function normalizeFlowRules(
+  flowRules:
+    | Array<{
+        value: string
+        nextQuestionId: string
+      }>
+    | unknown,
+) {
+  if (!Array.isArray(flowRules)) {
+    return []
+  }
+
+  return flowRules.filter(
+    (rule): rule is { value: string; nextQuestionId: string } =>
+      Boolean(
+        rule &&
+          typeof rule === 'object' &&
+          typeof rule.value === 'string' &&
+          typeof rule.nextQuestionId === 'string',
+      ),
+  )
+}
+
+function normalizeFlowLayout(
+  flowLayout:
+    | {
+        version?: number
+        nodes?: Array<{
+          id: string
+          x: number
+          y: number
+        }>
+        viewport?: {
+          x: number
+          y: number
+          zoom: number
+        }
+      }
+    | null
+    | undefined,
+) {
+  if (!flowLayout || typeof flowLayout !== 'object') {
+    return undefined
+  }
+
+  const nodes = Array.isArray(flowLayout.nodes)
+    ? flowLayout.nodes.filter(
+        (node): node is { id: string; x: number; y: number } =>
+          Boolean(
+            node &&
+              typeof node === 'object' &&
+              typeof node.id === 'string' &&
+              Number.isFinite(node.x) &&
+              Number.isFinite(node.y),
+          ),
+      )
+    : []
+
+  const viewport =
+    flowLayout.viewport &&
+    typeof flowLayout.viewport === 'object' &&
+    Number.isFinite(flowLayout.viewport.x) &&
+    Number.isFinite(flowLayout.viewport.y) &&
+    Number.isFinite(flowLayout.viewport.zoom)
+      ? flowLayout.viewport
+      : undefined
+
+  return {
+    version: flowLayout.version ?? 1,
+    nodes,
+    viewport,
+  }
+}
+
 function mapSurveyKind(item: {
   survey_kind?: string
   questions?: Array<{
@@ -82,7 +156,7 @@ export function mapApiQuestion(item: {
     type: item.type as SurveyQuestion['type'],
     required: item.is_required ?? item.required ?? false,
     options: item.options ?? [],
-    flowRules: item.settings_json?.flowRules ?? [],
+    flowRules: normalizeFlowRules(item.settings_json?.flowRules),
     businessMetric: (item.settings_json?.businessMetric as BusinessMetric) ?? null,
     linkedQuestionId: item.settings_json?.linkedQuestionId ?? null,
   }
@@ -186,13 +260,7 @@ export function mapApiSurvey(item: {
     participationMode: mapParticipationMode(item.participation_mode ?? item.participationMode ?? 'anonymous'),
     rewardEnabled: item.reward_enabled ?? item.rewardEnabled ?? false,
     builderMode: item.builder_mode ?? 'classic',
-    flowLayout: item.flow_json
-      ? {
-          version: item.flow_json.version ?? 1,
-          nodes: item.flow_json.nodes ?? [],
-          viewport: item.flow_json.viewport,
-        }
-      : undefined,
+    flowLayout: normalizeFlowLayout(item.flow_json),
     primaryColor: item.primary_color ?? item.primaryColor ?? '#0b5cff',
     updatedAt: 'Atualizada agora',
     questions: (item.questions ?? []).map(mapApiQuestion),

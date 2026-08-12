@@ -5,6 +5,23 @@ const DEFAULT_Y = 140
 const GAP_X = 360
 const GAP_Y = 300
 
+function getSafeNodes(layout: SurveyFlowLayout | undefined): SurveyFlowNodeLayout[] {
+  if (!Array.isArray(layout?.nodes)) {
+    return []
+  }
+
+  return layout.nodes.filter(
+    (node): node is SurveyFlowNodeLayout =>
+      Boolean(
+        node &&
+          typeof node === 'object' &&
+          typeof node.id === 'string' &&
+          Number.isFinite(node.x) &&
+          Number.isFinite(node.y),
+      ),
+  )
+}
+
 export function makeDefaultFlowLayout(questionIds: string[], nodeHeights?: number[]): SurveyFlowLayout {
   return {
     version: 1,
@@ -17,7 +34,7 @@ export function makeDefaultFlowLayout(questionIds: string[], nodeHeights?: numbe
 }
 
 export function mergeFlowLayout(questionIds: string[], current?: SurveyFlowLayout): SurveyFlowLayout {
-  const currentNodes = current?.nodes ?? []
+  const currentNodes = getSafeNodes(current)
   const mergedNodes: SurveyFlowNodeLayout[] = []
 
   questionIds.forEach((id, index) => {
@@ -48,10 +65,11 @@ export function updateNodePosition(
   position: { x: number; y: number },
 ): SurveyFlowLayout {
   const baseLayout = layout ?? { version: 1, nodes: [] }
+  const baseNodes = getSafeNodes(baseLayout)
 
   return {
     ...baseLayout,
-    nodes: baseLayout.nodes.map((node) =>
+    nodes: baseNodes.map((node) =>
       node.id === nodeId
         ? {
             ...node,
@@ -64,7 +82,7 @@ export function updateNodePosition(
 }
 
 export function getNodePosition(layout: SurveyFlowLayout | undefined, nodeId: string, index: number) {
-  const existing = layout?.nodes.find((node) => node.id === nodeId)
+  const existing = getSafeNodes(layout).find((node) => node.id === nodeId)
 
   if (existing) {
     return existing
@@ -78,9 +96,11 @@ export function getNodePosition(layout: SurveyFlowLayout | undefined, nodeId: st
 }
 
 export function sortIdsByFlowLayout(questionIds: string[], layout: SurveyFlowLayout | undefined) {
+  const safeNodes = getSafeNodes(layout)
+
   return [...questionIds].sort((leftId, rightId) => {
-    const left = layout?.nodes.find((node) => node.id === leftId)
-    const right = layout?.nodes.find((node) => node.id === rightId)
+    const left = safeNodes.find((node) => node.id === leftId)
+    const right = safeNodes.find((node) => node.id === rightId)
 
     if (left && right) {
       if (left.y !== right.y) {

@@ -107,6 +107,10 @@ const surveyColorPresets = ['#0b5cff', '#11284a', '#0f766e', '#7c3aed', '#d97706
 
 type SurveyUploadTarget = 'logo' | 'banner'
 
+function normalizeHexColor(value: string | undefined | null, fallback = '#0b5cff') {
+  return typeof value === 'string' && /^#([0-9a-f]{6})$/i.test(value) ? value : fallback
+}
+
 function makeQuestion(type: QuestionType = 'short_text'): BuilderQuestion {
   return {
     id: crypto.randomUUID(),
@@ -322,7 +326,7 @@ function mapSurveyToBuilderState(survey: SurveyItem): BuilderState {
     slug: survey.slug,
     brandName: survey.brandName ?? 'Minha marca',
     logoUrl: survey.logoUrl ?? '',
-    primaryColor: survey.primaryColor,
+    primaryColor: normalizeHexColor(survey.primaryColor),
     bannerUrl: survey.bannerUrl ?? '',
     closingMessage: survey.closingMessage ?? 'Obrigado por participar. Sua resposta foi registrada com sucesso.',
     participationMode: 'identified',
@@ -413,6 +417,7 @@ export function SurveyBuilderPage() {
 
   const survey = useMemo(() => surveyQuery.data, [surveyQuery.data])
   const isPublishedSurvey = survey?.status === 'Publicada'
+  const safePrimaryColor = normalizeHexColor(form.primaryColor)
 
   useEffect(() => {
     if (survey) {
@@ -1356,7 +1361,7 @@ export function SurveyBuilderPage() {
                     <input
                       type="color"
                       className="h-10 w-12 cursor-pointer border border-slate-300 bg-white p-1"
-                      value={form.primaryColor}
+                      value={safePrimaryColor}
                       onChange={(event) => updateForm('primaryColor', event.target.value)}
                       style={{ borderRadius: 8 }}
                     />
@@ -1374,7 +1379,7 @@ export function SurveyBuilderPage() {
                         type="button"
                         aria-label={`Usar a cor ${color}`}
                         className={`h-7 w-7 border transition hover:scale-105 ${
-                          form.primaryColor.toLowerCase() === color.toLowerCase()
+                          safePrimaryColor.toLowerCase() === color.toLowerCase()
                             ? 'border-slate-950 ring-2 ring-slate-200'
                             : 'border-slate-200'
                         }`}
