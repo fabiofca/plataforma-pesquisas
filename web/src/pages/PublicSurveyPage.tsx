@@ -2761,7 +2761,7 @@ export function PublicSurveyPage() {
                           {question.required ? <span className="ml-1 text-rose-500">*</span> : null}
                         </h2>
                         {question.description ? (
-                          <p className="mt-1 text-sm text-slate-500">{question.description}</p>
+                          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-500">{question.description}</p>
                         ) : null}
                         {validationState?.target === `question:${question.id}` ? (
                           <p className="mt-2 text-sm font-medium text-rose-600">{validationState.message}</p>
