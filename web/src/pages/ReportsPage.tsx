@@ -11,7 +11,7 @@ import { apiRequest, downloadApiFile } from '@/lib/api-client'
 import { hasFeatureAccess } from '@/lib/features'
 import { useAuthStore } from '@/store/use-auth-store'
 
-type PeriodPreset = 'today' | '7d' | '30d' | 'custom'
+type PeriodPreset = 'today' | '7d' | '30d' | 'all_time' | 'custom'
 type ReportScope = 'production' | 'test' | 'all'
 
 type PaginationMeta = {
@@ -180,6 +180,20 @@ function formatDateInput(date: Date) {
   const day = String(date.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
+}
+
+function formatApiDateToInput(value?: string | null) {
+  if (!value) {
+    return ''
+  }
+
+  const parsed = new Date(value)
+
+  if (Number.isNaN(parsed.getTime())) {
+    return ''
+  }
+
+  return formatDateInput(parsed)
 }
 
 function getDateDaysAgo(daysAgo: number) {
@@ -384,18 +398,19 @@ function TextSamplesList({ samples, questionId }: { samples: string[]; questionI
 export function ReportsPage() {
   const { id } = useParams()
   const user = useAuthStore((state) => state.user)
+  const [showAdvancedScope, setShowAdvancedScope] = useState(false)
 
-  const surveyTitleQuery = useQuery({
-    queryKey: ['survey-title', id],
+  const surveyMetaQuery = useQuery({
+    queryKey: ['survey-meta', id],
     queryFn: async () => {
-      const response = await apiRequest<{ survey: { title: string } }>(`/surveys/${id}`)
-      return response.survey.title
+      const response = await apiRequest<{ survey: { title: string; created_at?: string | null } }>(`/surveys/${id}`)
+      return response.survey
     },
     enabled: Boolean(id),
   })
   const defaultEndDate = formatDateInput(getDateDaysAgo(0))
   const defaultStartDate = formatDateInput(getDateDaysAgo(29))
-  const [preset, setPreset] = useState<PeriodPreset>('30d')
+  const [preset, setPreset] = useState<PeriodPreset>('all_time')
   const [customStartDate, setCustomStartDate] = useState(defaultStartDate)
   const [customEndDate, setCustomEndDate] = useState(defaultEndDate)
   const [exportingFormat, setExportingFormat] = useState<'csv' | 'pdf' | null>(null)
@@ -413,6 +428,7 @@ export function ReportsPage() {
   const [respondentsPageSize, setRespondentsPageSize] = useState(20)
   const canExportCsv = hasFeatureAccess(user, 'reports_export_csv')
   const canExportPdf = hasFeatureAccess(user, 'reports_export_pdf')
+  const surveyCreatedDate = formatApiDateToInput(surveyMetaQuery.data?.created_at)
 
   const activeRange = useMemo(() => {
     if (preset === 'today') {
@@ -434,11 +450,18 @@ export function ReportsPage() {
       }
     }
 
+    if (preset === 'all_time') {
+      return {
+        startDate: surveyCreatedDate || defaultStartDate,
+        endDate: formatDateInput(getDateDaysAgo(0)),
+      }
+    }
+
     return {
       startDate: customStartDate,
       endDate: customEndDate,
     }
-  }, [customEndDate, customStartDate, preset])
+  }, [customEndDate, customStartDate, defaultStartDate, preset, surveyCreatedDate])
 
   const isInvalidCustomRange =
     preset === 'custom' &&
@@ -704,7 +727,7 @@ export function ReportsPage() {
     >
       <SurveyNavBar
         surveyId={id!}
-        surveyTitle={surveyTitleQuery.data}
+        surveyTitle={surveyMetaQuery.data?.title}
         activeTab="results"
       />
 
@@ -729,13 +752,14 @@ export function ReportsPage() {
       <SectionCard
         eyebrow="Período"
         title="Filtro do relatório"
-        description="Escolha o período e o escopo do relatório para comparar produção real, testes internos ou a visão consolidada."
+        description="Escolha o período do relatório. A tela abre por padrão mostrando somente os dados reais de produção."
       >
         <div className="flex flex-wrap gap-3">
           {[
             ['today', 'Hoje'],
             ['7d', '7 dias'],
             ['30d', '30 dias'],
+            ['all_time', 'Desde a criação'],
             ['custom', 'Personalizado'],
           ].map(([value, label]) => (
             <button
@@ -755,27 +779,41 @@ export function ReportsPage() {
         </div>
 
         <div className="mt-4">
-          <p className="text-sm font-medium text-slate-700">Escopo dos dados</p>
-          <div className="mt-2 flex flex-wrap gap-3">
-            {[
-              ['production', 'Somente produção'],
-              ['test', 'Somente teste'],
-              ['all', 'Produção + teste'],
-            ].map(([value, label]) => (
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-medium text-slate-700">Escopo dos dados</p>
               <button
-                key={value}
                 type="button"
-                onClick={() => setReportScope(value as ReportScope)}
-                className={`px-4 py-2 text-sm font-semibold transition ${
-                  reportScope === value
-                    ? 'bg-slate-950 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-                style={{ borderRadius: 8 }}
+                onClick={() => setShowAdvancedScope((current) => !current)}
+                className="admin-button self-start"
               >
-                {label}
+                {showAdvancedScope ? 'Ocultar filtros avançados' : 'Mostrar filtros avançados'}
               </button>
-            ))}
+            </div>
+
+            {showAdvancedScope ? (
+              <div className="flex flex-wrap gap-3">
+                {[
+                  ['production', 'Somente produção'],
+                  ['test', 'Somente teste'],
+                  ['all', 'Produção + teste'],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setReportScope(value as ReportScope)}
+                    className={`px-4 py-2 text-sm font-semibold transition ${
+                      reportScope === value
+                        ? 'bg-slate-950 text-white'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                    style={{ borderRadius: 8 }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -804,8 +842,15 @@ export function ReportsPage() {
         ) : null}
 
         <div className="admin-alert mt-4 border-slate-200 bg-slate-50 text-slate-600">
-          Exibindo dados de <strong>{formatPeriodDate(activeRange.startDate)}</strong> até <strong>{formatPeriodDate(activeRange.endDate)}</strong>, no escopo <strong>{getReportScopeLabel(reportScope)}</strong>.
+          Exibindo dados de <strong>{formatPeriodDate(activeRange.startDate)}</strong> até <strong>{formatPeriodDate(activeRange.endDate)}</strong>
+          {reportScope === 'production' ? '.' : <> no escopo <strong>{getReportScopeLabel(reportScope)}</strong>.</>}
         </div>
+
+        {preset === 'all_time' && surveyCreatedDate ? (
+          <div className="admin-alert mt-4 border-sky-200 bg-sky-50 text-sky-900">
+            Este relatório está considerando todo o histórico da pesquisa desde <strong>{formatPeriodDate(surveyCreatedDate)}</strong>.
+          </div>
+        ) : null}
 
         {reportScope === 'test' ? (
           <div className="admin-alert mt-4 border-amber-200 bg-amber-50 text-amber-900">
