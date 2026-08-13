@@ -5,6 +5,7 @@ export interface RewardDrawItem {
   id: string
   title: string
   wheel_label?: string | null
+  description?: string | null
   image_url?: string | null
   quantity_total: number
   quantity_awarded: number

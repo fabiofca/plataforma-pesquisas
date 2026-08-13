@@ -113,6 +113,7 @@ export interface SurveyItem {
     id: string
     title: string
     wheelLabel?: string
+    description?: string
     imageUrl?: string
     outcomeRole?: 'prize' | 'no_prize' | 'showcase'
     showOnWheel?: boolean

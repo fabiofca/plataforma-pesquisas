@@ -224,6 +224,7 @@ export function mapApiSurvey(item: {
     id: string
     title: string
     wheel_label?: string | null
+    description?: string | null
     image_url?: string | null
     outcome_role?: 'prize' | 'no_prize' | 'showcase'
     show_on_wheel?: boolean
@@ -277,6 +278,7 @@ export function mapApiSurvey(item: {
       id: rewardItem.id,
       title: rewardItem.title,
       wheelLabel: rewardItem.wheel_label ?? rewardItem.title,
+      description: rewardItem.description ?? undefined,
       imageUrl: rewardItem.image_url ?? undefined,
       outcomeRole: rewardItem.outcome_role ?? 'prize',
       showOnWheel: rewardItem.show_on_wheel ?? true,

@@ -83,6 +83,7 @@ type SurveyAnswerMap = Record<string, string | string[] | number>
 type RewardResultState = {
   won: boolean
   item?: string
+  itemDescription?: string
   landedLabel?: string
   landedSegmentId?: string
   itemImageUrl?: string
@@ -150,6 +151,7 @@ type PublicRewardPreviewItem = {
   id: string
   title: string
   wheelLabel?: string
+  description?: string
   imageUrl?: string
   outcomeRole?: 'prize' | 'no_prize' | 'showcase'
   showOnWheel?: boolean
@@ -789,6 +791,7 @@ export function PublicSurveyPage() {
           reward_items?: Array<{
             id: string
             title: string
+            description?: string | null
             wheel_label?: string | null
             image_url?: string | null
             outcome_role?: 'prize' | 'no_prize' | 'showcase'
@@ -870,6 +873,14 @@ export function PublicSurveyPage() {
     redemptionMethod: rewardRedemptionMethod,
     hasWhatsApp: Boolean(rewardContactWhatsAppUrl),
   })
+  const rewardItemDescription =
+    rewardResult?.itemDescription ??
+    (rewardResult?.landedSegmentId
+      ? survey?.rewardPreviewItems?.find((item) => item.id === rewardResult.landedSegmentId)?.description
+      : undefined) ??
+    (rewardResult?.item
+      ? survey?.rewardPreviewItems?.find((item) => item.title === rewardResult.item)?.description
+      : undefined)
   const currentRetryTask = useMemo(() => {
     if (!rewardResult?.retryAvailable) {
       return null
@@ -3042,6 +3053,12 @@ export function PublicSurveyPage() {
                       <p className="winner-copy-rise text-xs text-slate-500 sm:text-sm" style={{ animationDelay: '180ms' }}>Você ganhou:</p>
                       <p className="winner-prize-pop font-display text-2xl font-bold text-slate-950 sm:text-4xl" style={{ animationDelay: '220ms' }}>{rewardResult.item}</p>
                     </div>
+
+                    {rewardItemDescription ? (
+                      <p className="winner-copy-rise mx-auto mt-3 max-w-md whitespace-pre-line text-sm leading-relaxed text-slate-600 sm:text-base" style={{ animationDelay: '250ms' }}>
+                        {rewardItemDescription}
+                      </p>
+                    ) : null}
 
                     {rewardInstructionText ? (
                       <p className="winner-copy-rise mx-auto mt-2 max-w-xs text-xs leading-relaxed text-slate-500 sm:text-sm" style={{ animationDelay: '280ms' }}>{rewardInstructionText}</p>

@@ -87,20 +87,41 @@ const confettiRainPieces = Array.from({ length: 22 }, (_, index) => {
   }
 })
 
-function splitSegmentLabel(label: string) {
-  const words = label.trim().split(/\s+/).filter(Boolean)
+function truncateSegmentText(value: string, maxLength: number) {
+  const normalized = value.trim()
 
-  if (words.length <= 1) {
-    return [label]
+  if (normalized.length <= maxLength) {
+    return normalized
   }
+
+  return `${normalized.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`
+}
+
+function splitSegmentLabel(
+  label: string,
+  options: {
+    maxCharsPerLine: number
+    maxLines: number
+  },
+) {
+  const normalized = label.trim().replace(/\s+/g, ' ')
+
+  if (!normalized) {
+    return ['']
+  }
+
+  const safeWords = normalized
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => truncateSegmentText(word, options.maxCharsPerLine))
 
   const lines: string[] = []
   let currentLine = ''
 
-  for (const word of words) {
+  for (const word of safeWords) {
     const nextLine = currentLine ? `${currentLine} ${word}` : word
 
-    if (nextLine.length <= 11) {
+    if (nextLine.length <= options.maxCharsPerLine) {
       currentLine = nextLine
       continue
     }
@@ -108,6 +129,7 @@ function splitSegmentLabel(label: string) {
     if (currentLine) {
       lines.push(currentLine)
     }
+
     currentLine = word
   }
 
@@ -115,34 +137,15 @@ function splitSegmentLabel(label: string) {
     lines.push(currentLine)
   }
 
-  return lines.slice(0, 2)
-}
-
-function getWheelDisplayLabel(label: string) {
-  const normalized = label.trim().replace(/\s+/g, ' ')
-
-  if (normalized.length <= 22) {
-    return normalized
+  if (lines.length <= options.maxLines) {
+    return lines
   }
 
-  const words = normalized.split(' ')
-  let shortened = ''
+  const visibleLines = lines.slice(0, options.maxLines - 1)
+  const remaining = lines.slice(options.maxLines - 1).join(' ')
+  visibleLines.push(truncateSegmentText(remaining, options.maxCharsPerLine + 2))
 
-  for (const word of words) {
-    const nextValue = shortened ? `${shortened} ${word}` : word
-
-    if (nextValue.length > 18) {
-      break
-    }
-
-    shortened = nextValue
-  }
-
-  if (!shortened) {
-    return `${normalized.slice(0, 16).trimEnd()}...`
-  }
-
-  return `${shortened}...`
+  return visibleLines
 }
 
 function getSegmentColors(segment: PrizeWheelSegment, index: number, primaryColor: string) {
@@ -224,11 +227,6 @@ export function PrizeWheel({
   const dividerOverlay = buildWheelOverlay(segments)
   const compactWheel = segments.length >= 6
   const rewardLikeSegments = segments.filter((segment) => segment.kind !== 'neutral').length
-  const labelWidth = isFullscreen
-    ? compactWheel
-      ? 'clamp(86px, 13vw, 120px)'
-      : 'clamp(96px, 15vw, 132px)'
-    : '124px'
   const pointerBaseClass = isFullscreen
     ? 'absolute left-1/2 top-[-18px] z-40 h-[56px] w-[44px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#b91c1c_0%,#7f1d1d_60%,#450a0a_100%)] shadow-[0_10px_22px_rgba(185,28,28,0.35)] sm:top-[-24px] sm:h-[64px] sm:w-[52px]'
     : 'absolute left-1/2 top-[-16px] z-40 h-[50px] w-[40px] -translate-x-1/2 rounded-t-[24px] rounded-b-[10px] bg-[linear-gradient(180deg,#b91c1c_0%,#7f1d1d_60%,#450a0a_100%)] shadow-[0_10px_22px_rgba(185,28,28,0.35)]'
@@ -502,7 +500,11 @@ export function PrizeWheel({
               const isActive = activeSegmentId === segment.id
               const isRewardSegment = segment.kind === 'reward'
               const isRetrySegment = segment.kind === 'retry'
-              const labelLines = splitSegmentLabel(getWheelDisplayLabel(segment.label))
+              const maxCharsPerLine = segments.length <= 6 ? 11 : segments.length <= 8 ? 10 : 9
+              const labelLines = splitSegmentLabel(segment.label, {
+                maxCharsPerLine,
+                maxLines: 3,
+              })
               const { text } = getSegmentColors(segment, index, primaryColor)
               const radiusPercent = isFullscreen
                 ? segment.kind === 'neutral'
@@ -518,6 +520,21 @@ export function PrizeWheel({
               const segmentLeft = `${50 + Math.sin(centerRadians) * radiusPercent}%`
               const segmentTop = `${50 - Math.cos(centerRadians) * radiusPercent}%`
               const segmentRotation = centerAngle > 180 ? centerAngle + 180 : centerAngle
+              const segmentLabelWidth = isFullscreen
+                ? compactWheel
+                  ? segment.kind === 'neutral'
+                    ? 'clamp(82px, 11.5vw, 104px)'
+                    : 'clamp(94px, 13vw, 126px)'
+                  : segment.kind === 'neutral'
+                    ? 'clamp(88px, 12vw, 110px)'
+                    : 'clamp(102px, 14vw, 138px)'
+                : compactWheel
+                  ? segment.kind === 'neutral'
+                    ? '92px'
+                    : '112px'
+                  : segment.kind === 'neutral'
+                    ? '98px'
+                    : '122px'
               const textShadow =
                 isRewardSegment || isRetrySegment
                   ? text === '#1f2937' || text === '#e11d48'
@@ -545,13 +562,9 @@ export function PrizeWheel({
                       width:
                         isFullscreen && rewardLikeSegments <= 3
                           ? segment.kind === 'neutral'
-                            ? 'clamp(72px, 11vw, 96px)'
-                            : 'clamp(90px, 14vw, 118px)'
-                          : isFullscreen
-                            ? segment.kind === 'neutral'
-                              ? 'clamp(68px, 10vw, 92px)'
-                              : labelWidth
-                            : undefined,
+                            ? 'clamp(76px, 11vw, 98px)'
+                            : 'clamp(94px, 14vw, 122px)'
+                          : segmentLabelWidth,
                       color: text,
                       textShadow: isActive
                         ? `${textShadow}, 0 0 14px rgba(255,255,255,0.5)`
@@ -560,16 +573,28 @@ export function PrizeWheel({
                         isRewardSegment || isRetrySegment
                           ? isFullscreen
                             ? compactWheel
-                              ? 'clamp(11px, 1.55vmin, 17px)'
-                              : 'clamp(12px, 1.8vmin, 20px)'
-                            : 'clamp(12px, 1.28vw, 18px)'
+                              ? labelLines.length >= 3
+                                ? 'clamp(10px, 1.38vmin, 15px)'
+                                : 'clamp(11px, 1.55vmin, 17px)'
+                              : labelLines.length >= 3
+                                ? 'clamp(11px, 1.55vmin, 17px)'
+                                : 'clamp(12px, 1.8vmin, 20px)'
+                            : labelLines.length >= 3
+                              ? 'clamp(10px, 1.08vw, 15px)'
+                              : 'clamp(12px, 1.28vw, 18px)'
                           : isFullscreen
                             ? compactWheel
-                              ? 'clamp(10px, 1.25vmin, 14px)'
-                              : 'clamp(10px, 1.35vmin, 15px)'
-                            : 'clamp(9px, 0.95vw, 14px)',
+                              ? labelLines.length >= 3
+                                ? 'clamp(9px, 1.08vmin, 12px)'
+                                : 'clamp(10px, 1.25vmin, 14px)'
+                              : labelLines.length >= 3
+                                ? 'clamp(9px, 1.16vmin, 13px)'
+                                : 'clamp(10px, 1.35vmin, 15px)'
+                            : labelLines.length >= 3
+                              ? 'clamp(8px, 0.82vw, 12px)'
+                              : 'clamp(9px, 0.95vw, 14px)',
                       fontWeight: isRewardSegment || isRetrySegment ? '900' : '700',
-                      lineHeight: isRewardSegment || isRetrySegment ? '1.02' : '1',
+                      lineHeight: labelLines.length >= 3 ? '0.96' : isRewardSegment || isRetrySegment ? '1.02' : '1',
                       letterSpacing: isRewardSegment || isRetrySegment ? '0.02em' : '0.015em',
                       opacity: isRewardSegment || isRetrySegment ? '1' : '0.9',
                     }}

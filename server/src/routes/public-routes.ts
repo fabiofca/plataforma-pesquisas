@@ -68,6 +68,7 @@ type RewardRetryTask = {
 type RewardSessionResult = {
   won: boolean
   item?: string
+  itemDescription?: string
   landedLabel?: string
   landedSegmentId?: string
   itemImageUrl?: string
@@ -99,6 +100,7 @@ type RewardPreviewItemRecord = {
   id: string
   title: string
   wheel_label: string | null
+  description: string | null
   image_url: string | null
   outcome_role: 'prize' | 'no_prize' | 'showcase'
   show_on_wheel: boolean
@@ -144,6 +146,7 @@ async function loadRewardPreviewItems(input: {
           id,
           title,
           wheel_label,
+          description,
           image_url,
           outcome_role,
           show_on_wheel,
@@ -165,6 +168,7 @@ async function loadRewardPreviewItems(input: {
         id,
         title,
         wheel_label,
+        description,
         image_url,
         outcome_role,
         show_on_wheel,
@@ -277,7 +281,10 @@ async function getSurveyBySlug(slug: string) {
       options: options.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
     })),
     attendants: attendants.rows,
-    reward_items: rewardItems.rows,
+    reward_items: rewardItems.rows.map((item) => ({
+      ...item,
+      description: item.description ?? '',
+    })),
     reward_neutral_labels: DEFAULT_NO_PRIZE_LABELS.slice(0, 6),
     reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,
     reward_retry_tasks: normalizeRewardRetryTasks(survey.reward_retry_unlock_tasks_json),
@@ -376,7 +383,10 @@ async function getSurveyPreviewById(surveyId: string) {
       options: options.rows.filter((option) => option.question_id === question.id).map((option) => option.label),
     })),
     attendants: attendants.rows,
-    reward_items: rewardItems.rows,
+    reward_items: rewardItems.rows.map((item) => ({
+      ...item,
+      description: item.description ?? '',
+    })),
     reward_neutral_labels: DEFAULT_NO_PRIZE_LABELS.slice(0, 6),
     reward_retry_unlock_enabled: survey.reward_retry_unlock_enabled ?? false,
     reward_retry_tasks: normalizeRewardRetryTasks(survey.reward_retry_unlock_tasks_json),
@@ -694,6 +704,7 @@ async function getRewardSessionState(
     awarded_at: string | null
     redemption_expires_at: string | null
     item_title: string | null
+    item_description: string | null
     image_url: string | null
     pickup_address: string | null
     contact_whatsapp: string | null
@@ -708,6 +719,7 @@ async function getRewardSessionState(
         cast(reward_wins.awarded_at as text) as awarded_at,
         cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
         reward_items.title as item_title,
+        reward_items.description as item_description,
         reward_items.image_url,
         reward_campaigns.pickup_address,
         reward_campaigns.contact_whatsapp,
@@ -768,6 +780,7 @@ async function getRewardSessionState(
     rewardResult = {
       won: true,
       item: latestSpin.item_title ?? undefined,
+      itemDescription: latestSpin.item_description ?? undefined,
       landedLabel: latestSpin.wheel_label,
       landedSegmentId: latestSpin.reward_item_id ?? undefined,
       itemImageUrl: latestSpin.image_url ?? undefined,
@@ -838,6 +851,7 @@ async function getRewardSessionState(
       awarded_at: string | null
       redemption_expires_at: string | null
       item_title: string | null
+      item_description: string | null
       image_url: string | null
       reward_item_id: string | null
     }>(
@@ -846,6 +860,7 @@ async function getRewardSessionState(
           cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
           reward_wins.coupon_code,
           reward_items.title as item_title,
+          reward_items.description as item_description,
           reward_items.image_url,
           cast(reward_wins.reward_item_id as text) as reward_item_id
        from reward_wins
@@ -862,6 +877,7 @@ async function getRewardSessionState(
       rewardResult = {
         won: true,
         item: winFallback.item_title ?? undefined,
+        itemDescription: winFallback.item_description ?? undefined,
         landedLabel: winFallback.item_title ?? undefined,
         landedSegmentId: winFallback.reward_item_id ?? undefined,
         itemImageUrl: winFallback.image_url ?? undefined,
@@ -1484,6 +1500,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       awarded_at: string | null
       redemption_expires_at: string | null
       item_title: string | null
+      item_description: string | null
       image_url: string | null
       pickup_address: string | null
       contact_whatsapp: string | null
@@ -1498,6 +1515,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           cast(reward_wins.awarded_at as text) as awarded_at,
           cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
           reward_items.title as item_title,
+          reward_items.description as item_description,
           reward_items.image_url,
           reward_campaigns.pickup_address,
           reward_campaigns.contact_whatsapp,
@@ -1527,6 +1545,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       response.json({
         won: latestSpin?.outcome_type === 'win',
         item: latestSpin?.item_title ?? undefined,
+        itemDescription: latestSpin?.item_description ?? undefined,
         landedLabel: latestSpin?.wheel_label,
         landedSegmentId: latestSpin?.reward_item_id ?? undefined,
         itemImageUrl: latestSpin?.image_url ?? undefined,
@@ -1552,6 +1571,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
       response.json({
         won: true,
         item: latestSpin.item_title ?? undefined,
+        itemDescription: latestSpin.item_description ?? undefined,
         landedLabel: latestSpin.wheel_label,
         landedSegmentId: latestSpin.reward_item_id ?? undefined,
         itemImageUrl: latestSpin.image_url ?? undefined,
@@ -1613,6 +1633,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         awarded_at: string | null
         redemption_expires_at: string | null
         item_title: string | null
+        item_description: string | null
         image_url: string | null
         reward_item_id: string | null
       }>(
@@ -1621,6 +1642,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
             cast(reward_wins.redemption_expires_at as text) as redemption_expires_at,
             reward_wins.coupon_code,
             reward_items.title as item_title,
+            reward_items.description as item_description,
             reward_items.image_url,
             cast(reward_wins.reward_item_id as text) as reward_item_id
          from reward_wins
@@ -1638,6 +1660,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
         response.json({
           won: true,
           item: existingWin.item_title ?? undefined,
+          itemDescription: existingWin.item_description ?? undefined,
           landedLabel: existingWin.item_title ?? undefined,
           landedSegmentId: existingWin.reward_item_id ?? undefined,
           itemImageUrl: existingWin.image_url ?? undefined,
@@ -1790,6 +1813,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
           id,
           title,
           wheel_label,
+          description,
           image_url,
           quantity_total,
           quantity_awarded,
@@ -2059,6 +2083,7 @@ publicRouter.post('/surveys/:slug/spin', async (request, response) => {
     response.json({
       won: true,
       item: selectedItem.title,
+      itemDescription: selectedItem.description ?? undefined,
       landedLabel: selectedItem.wheel_label ?? selectedItem.title,
       landedSegmentId: selectedItem.id,
       itemImageUrl: selectedItem.image_url ?? undefined,
