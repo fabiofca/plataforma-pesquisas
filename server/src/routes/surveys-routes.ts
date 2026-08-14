@@ -985,10 +985,25 @@ surveysRouter.delete('/:id', async (request: AuthenticatedRequest, response) => 
     return
   }
 
+  const client = await pool.connect()
+
+  try {
+    await client.query('begin')
+
+    // Preserve audit history while releasing the FK that can block survey deletion.
+    await client.query('update audit_logs set survey_id = null where survey_id = $1', [surveyId])
+    await client.query('delete from surveys where id = $1', [surveyId])
+
+    await client.query('commit')
+  } catch (error) {
+    await client.query('rollback')
+    throw error
+  } finally {
+    client.release()
+  }
+
   removeManagedSurveyFile(survey.logo_url)
   removeManagedSurveyFile(survey.banner_url)
-
-  await query('delete from surveys where id = $1', [surveyId])
 
   response.json({ ok: true })
 })
