@@ -169,7 +169,36 @@ function formatPeriodDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parsed)
 }
 
-function getDistributionBarColor(index: number) {
+function getRatingScaleColor(value: number) {
+  if (value >= 4) {
+    return {
+      bar: 'bg-blue-500',
+      badge: 'bg-blue-100 text-blue-700',
+    }
+  }
+
+  if (value >= 2) {
+    return {
+      bar: 'bg-amber-500',
+      badge: 'bg-amber-100 text-amber-700',
+    }
+  }
+
+  return {
+    bar: 'bg-rose-500',
+    badge: 'bg-rose-100 text-rose-700',
+  }
+}
+
+function getDistributionBarColor(index: number, questionType?: string, label?: string) {
+  if (questionType === 'rating_1_5') {
+    const numericLabel = Number(String(label ?? '').trim())
+
+    if (!Number.isNaN(numericLabel)) {
+      return getRatingScaleColor(numericLabel).bar
+    }
+  }
+
   const colors = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500', 'bg-teal-500', 'bg-sky-500', 'bg-orange-500']
   return colors[index % colors.length]
 }
@@ -1426,7 +1455,7 @@ export function ReportsPage() {
                           </div>
                           <div className="h-2 overflow-hidden bg-slate-100" style={{ borderRadius: 999 }}>
                             <div
-                              className={`h-full ${getDistributionBarColor(barIndex)}`}
+                              className={`h-full ${getDistributionBarColor(barIndex, question.type, item.label)}`}
                               style={{ width: `${Math.max(item.percentage, item.count > 0 ? 2 : 0)}%`, borderRadius: 999 }}
                             />
                           </div>
@@ -1682,15 +1711,11 @@ export function ReportsPage() {
                             <div className="flex items-center justify-end gap-2">
                               <div className="h-1.5 w-16 overflow-hidden rounded-full bg-slate-100">
                                 <div
-                                  className={`h-full rounded-full ${attendant.averageRating >= 4 ? 'bg-emerald-500' : attendant.averageRating >= 3 ? 'bg-amber-500' : 'bg-rose-500'}`}
+                                  className={`h-full rounded-full ${getRatingScaleColor(attendant.averageRating).bar}`}
                                   style={{ width: `${(attendant.averageRating / 5) * 100}%` }}
                                 />
                               </div>
-                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                                attendant.averageRating >= 4 ? 'bg-emerald-100 text-emerald-700' :
-                                attendant.averageRating >= 3 ? 'bg-amber-100 text-amber-700' :
-                                'bg-rose-100 text-rose-700'
-                              }`}>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${getRatingScaleColor(attendant.averageRating).badge}`}>
                                 {attendant.averageRating.toFixed(1)}
                               </span>
                             </div>
