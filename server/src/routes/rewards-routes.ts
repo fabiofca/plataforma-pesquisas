@@ -85,6 +85,7 @@ async function ensureRewardItemLimit(input: { campaignId: string; currentItemId?
           ,cast(count(*) filter (where outcome_role = 'prize') as text) as real_total
      from reward_items
      where campaign_id = $1
+       and archived_by_import = false
        and ($2::uuid is null or id <> $2::uuid)`,
     [input.campaignId, input.currentItemId ?? null],
   )
@@ -205,6 +206,7 @@ rewardsRouter.get('/surveys/:id/rewards', async (request: AuthenticatedRequest, 
         frequency_target
      from reward_items
      where campaign_id = $1
+       and archived_by_import = false
      order by sort_order asc, created_at asc`,
     [campaign.id],
   )
@@ -414,7 +416,8 @@ rewardsRouter.post('/surveys/:id/rewards/items', async (request: AuthenticatedRe
   const sortOrderResult = await query<{ next_sort_order: string }>(
     `select cast(coalesce(max(sort_order), 0) + 1 as text) as next_sort_order
      from reward_items
-     where campaign_id = $1`,
+     where campaign_id = $1
+       and archived_by_import = false`,
     [campaign.id],
   )
   const nextSortOrder = Number(sortOrderResult.rows[0]?.next_sort_order ?? 1)
@@ -882,6 +885,7 @@ rewardsRouter.get('/surveys/:id/rewards/export', async (request: AuthenticatedRe
      where campaign_id = (
        select id from reward_campaigns where survey_id = $1
      )
+       and archived_by_import = false
      order by sort_order asc`,
     [surveyId],
   )
@@ -975,6 +979,7 @@ rewardsRouter.post('/surveys/:id/rewards/import', async (request: AuthenticatedR
   const isActive = status === 'active'
 
   const client = await pool.connect()
+  const removableImages: string[] = []
 
   try {
     await client.query('begin')
@@ -1002,7 +1007,68 @@ rewardsRouter.post('/surveys/:id/rewards/import', async (request: AuthenticatedR
         ],
       )
 
-      await client.query('delete from reward_items where campaign_id = $1', [campaignId])
+      const removableItemsResult = await client.query<{ image_url: string | null }>(
+        `select reward_items.image_url
+         from reward_items
+         where reward_items.campaign_id = $1
+           and reward_items.archived_by_import = false
+           and not exists (
+             select 1
+             from reward_wins
+             where reward_wins.reward_item_id = reward_items.id
+           )
+           and not exists (
+             select 1
+             from reward_spin_logs
+             where reward_spin_logs.reward_item_id = reward_items.id
+           )`,
+        [campaignId],
+      )
+
+      removableImages.push(
+        ...removableItemsResult.rows
+          .map((item) => item.image_url)
+          .filter((imageUrl): imageUrl is string => Boolean(imageUrl)),
+      )
+
+      await client.query(
+        `update reward_items
+         set archived_by_import = true,
+             is_active = false,
+             show_on_wheel = false
+         where reward_items.campaign_id = $1
+           and reward_items.archived_by_import = false
+           and (
+             exists (
+               select 1
+               from reward_wins
+               where reward_wins.reward_item_id = reward_items.id
+             )
+             or exists (
+               select 1
+               from reward_spin_logs
+               where reward_spin_logs.reward_item_id = reward_items.id
+             )
+           )`,
+        [campaignId],
+      )
+
+      await client.query(
+        `delete from reward_items
+         where reward_items.campaign_id = $1
+           and reward_items.archived_by_import = false
+           and not exists (
+             select 1
+             from reward_wins
+             where reward_wins.reward_item_id = reward_items.id
+           )
+           and not exists (
+             select 1
+             from reward_spin_logs
+             where reward_spin_logs.reward_item_id = reward_items.id
+           )`,
+        [campaignId],
+      )
     } else {
       campaignId = makeId()
       await client.query(
@@ -1062,6 +1128,11 @@ rewardsRouter.post('/surveys/:id/rewards/import', async (request: AuthenticatedR
     }
 
     await client.query('commit')
+
+    for (const imageUrl of removableImages) {
+      removeManagedRewardImage(imageUrl)
+    }
+
     response.json({ ok: true, itemsImported: itemsList.length })
   } catch (error) {
     await client.query('rollback')
