@@ -96,11 +96,11 @@ export function DeliveryControlPage() {
   const { id } = useParams()
   const queryClient = useQueryClient()
 
-  const surveyTitleQuery = useQuery({
+  const surveyMetaQuery = useQuery({
     queryKey: ['survey-title', id],
     queryFn: async () => {
-      const response = await apiRequest<{ survey: { title: string } }>(`/surveys/${id}`)
-      return response.survey.title
+      const response = await apiRequest<{ survey: { title: string; created_at?: string | null } }>(`/surveys/${id}`)
+      return response.survey
     },
     enabled: Boolean(id),
   })
@@ -109,7 +109,7 @@ export function DeliveryControlPage() {
   const defaultStartDate = formatDateInput(getDateDaysAgo(29))
   const [startDate, setStartDate] = useState(defaultStartDate)
   const [endDate, setEndDate] = useState(defaultEndDate)
-  const [useFullPeriod, setUseFullPeriod] = useState(false)
+  const [useFullPeriod, setUseFullPeriod] = useState(true)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -125,13 +125,27 @@ export function DeliveryControlPage() {
 
   useEffect(() => { setPage(1) }, [debouncedSearch, statusFilter, sortField, sortDirection, pageSize, startDate, endDate, useFullPeriod])
 
+  useEffect(() => {
+    const createdAt = surveyMetaQuery.data?.created_at
+
+    if (!createdAt) {
+      return
+    }
+
+    const normalizedCreatedAt = formatDateInput(new Date(createdAt))
+
+    if (normalizedCreatedAt && normalizedCreatedAt !== 'NaN-NaN-NaN') {
+      setStartDate(normalizedCreatedAt)
+    }
+  }, [surveyMetaQuery.data?.created_at])
+
   // Debounce search to avoid losing input focus on every keystroke
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 400)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const effectiveStartDate = useFullPeriod ? '2020-01-01' : startDate
+  const effectiveStartDate = useFullPeriod ? startDate : startDate
   const effectiveEndDate = useFullPeriod ? defaultEndDate : endDate
   const isInvalidRange = !useFullPeriod && (!startDate || !endDate || startDate > endDate)
 
@@ -180,10 +194,11 @@ export function DeliveryControlPage() {
   const pendingCount = Number(rewardsQuery.data?.summary.pending_redemptions ?? 0)
   const deliveredCount = Number(rewardsQuery.data?.summary.delivered_redemptions ?? 0)
   const pickupAddress = rewardsQuery.data?.pickupAddress
+  const surveyCreatedLabel = useMemo(() => formatDateLabel(surveyMetaQuery.data?.created_at ?? startDate), [startDate, surveyMetaQuery.data?.created_at])
 
   return (
     <AppShell title="Controle de entrega" subtitle="" hideHeader>
-      <SurveyNavBar surveyId={id!} surveyTitle={surveyTitleQuery.data} activeTab="delivery" />
+      <SurveyNavBar surveyId={id!} surveyTitle={surveyMetaQuery.data?.title} activeTab="delivery" />
 
       <div className="p-3 sm:p-4 lg:p-5">
         <SectionCard
@@ -195,73 +210,113 @@ export function DeliveryControlPage() {
             <div className="admin-empty-state py-16">Carregando...</div>
           ) : (
             <div className="space-y-4">
-              {/* Date range */}
-              <div className="flex flex-wrap items-end gap-3">
-                <label className="flex cursor-pointer items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={useFullPeriod}
-                    onChange={(e) => setUseFullPeriod(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
-                  />
-                  <span className="font-medium text-slate-700">Período da campanha</span>
-                </label>
-                {!useFullPeriod && (
-                  <>
-                    <label className="grid gap-1.5 text-sm">
-                      <span className="text-slate-600">De</span>
-                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="admin-input" />
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(320px,1fr)]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Filtro principal</p>
+                      <p className="text-sm text-slate-600">
+                        Por padrão esta tela mostra os resgates desde a criação da pesquisa.
+                      </p>
+                    </div>
+                    <label className="flex cursor-pointer items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={useFullPeriod}
+                        onChange={(e) => setUseFullPeriod(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                      />
+                      <span className="font-medium">Desde a criação</span>
                     </label>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_180px_180px]">
                     <label className="grid gap-1.5 text-sm">
-                      <span className="text-slate-600">Até</span>
-                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="admin-input" />
+                      <span className="text-slate-600">Buscar ganhador</span>
+                      <input
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Nome, telefone, prêmio ou 4 últimos dígitos do protocolo"
+                        className="admin-input"
+                      />
                     </label>
-                  </>
-                )}
-              </div>
 
-              {/* Unified search + filters */}
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_180px_180px_160px]">
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Buscar ganhador</span>
-                  <input
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Nome, telefone, prêmio ou 4 últimos dígitos do protocolo"
-                    className="admin-input"
-                  />
-                </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Status</span>
-                  <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as WinnerStatusFilter)} className="admin-select">
-                    <option value="all">Todos</option>
-                    <option value="pending">Pendentes</option>
-                    <option value="delivered">Entregues</option>
-                    <option value="cancelled">Cancelados</option>
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Ordenar por</span>
-                  <select value={sortField} onChange={(e) => setSortField(e.target.value as WinnerSortField)} className="admin-select">
-                    <option value="awardedAt">Data da premiação</option>
-                    <option value="name">Nome</option>
-                    <option value="itemTitle">Prêmio</option>
-                  </select>
-                </label>
-                <label className="grid gap-1.5 text-sm">
-                  <span className="text-slate-600">Direção</span>
-                  <select value={sortDirection} onChange={(e) => setSortDirection(e.target.value as WinnerSortDirection)} className="admin-select">
-                    <option value="desc">Decrescente</option>
-                    <option value="asc">Crescente</option>
-                  </select>
-                </label>
-              </div>
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="text-slate-600">Status</span>
+                      <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as WinnerStatusFilter)} className="admin-select">
+                        <option value="all">Todos</option>
+                        <option value="pending">Pendentes</option>
+                        <option value="delivered">Entregues</option>
+                        <option value="cancelled">Cancelados</option>
+                      </select>
+                    </label>
 
-              {/* Summary strip */}
-              <div className="report-summary-strip">
-                Exibindo <strong>{pagination?.totalItems ?? 0}</strong> ganhador(es).
-                {' '}Pendentes: <strong>{pendingCount}</strong>. Entregues: <strong>{deliveredCount}</strong>.
-                {' '}Local de retirada: <strong>{pickupAddress || 'Não informado'}</strong>.
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="text-slate-600">Ordenação</span>
+                      <select value={sortField} onChange={(e) => setSortField(e.target.value as WinnerSortField)} className="admin-select">
+                        <option value="awardedAt">Data da premiação</option>
+                        <option value="name">Nome</option>
+                        <option value="itemTitle">Prêmio</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[180px_180px_160px]">
+                    <label className="grid gap-1.5 text-sm">
+                      <span className="text-slate-600">Direção</span>
+                      <select value={sortDirection} onChange={(e) => setSortDirection(e.target.value as WinnerSortDirection)} className="admin-select">
+                        <option value="desc">Decrescente</option>
+                        <option value="asc">Crescente</option>
+                      </select>
+                    </label>
+
+                    {!useFullPeriod && (
+                      <>
+                        <label className="grid gap-1.5 text-sm">
+                          <span className="text-slate-600">De</span>
+                          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="admin-input" />
+                        </label>
+                        <label className="grid gap-1.5 text-sm">
+                          <span className="text-slate-600">Até</span>
+                          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="admin-input" />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Período analisado</p>
+                    <p className="mt-2 text-lg font-semibold text-slate-950">
+                      {useFullPeriod ? `Desde ${surveyCreatedLabel}` : `${formatDateLabel(startDate)} até ${formatDateLabel(endDate)}`}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {useFullPeriod ? 'Toda a campanha desde a criação da pesquisa.' : 'Janela manual definida para a consulta atual.'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2 lg:col-span-1 xl:col-span-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Resumo rápido</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <p className="text-2xl font-semibold text-slate-950">{pagination?.totalItems ?? 0}</p>
+                        <p className="text-sm text-slate-500">Ganhadores exibidos</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold text-amber-600">{pendingCount}</p>
+                        <p className="text-sm text-slate-500">Pendentes</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold text-emerald-600">{deliveredCount}</p>
+                        <p className="text-sm text-slate-500">Entregues</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      Local de retirada: <strong>{pickupAddress || 'Não informado'}</strong>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Table */}
@@ -322,11 +377,12 @@ export function DeliveryControlPage() {
                           </div>
 
                           {/* Mobile */}
-                          <div className="grid gap-2 xl:hidden">
+                          <div className="grid gap-3 xl:hidden">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Ganhador</p>
-                                <p className="truncate text-sm font-semibold text-slate-950">{winner.name || 'Sem nome informado'}</p>
+                                <p className="text-sm font-semibold text-slate-950 break-words">{winner.name || 'Sem nome informado'}</p>
+                                <p className="mt-1 text-xs text-slate-500">{formatDateTimeLabel(winner.awardedAt)}</p>
                                 <div className="mt-2 flex flex-wrap items-center gap-2">
                                   <span className={`admin-badge ${expirationClass}`}>{expirationLabel}</span>
                                   <span className="text-xs text-slate-500">Válido até {formatDateLabel(winner.expiresAt)}</span>
@@ -334,14 +390,33 @@ export function DeliveryControlPage() {
                               </div>
                               <span className={`admin-badge ${statusClass}`}>{statusLabel}</span>
                             </div>
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p><p className="text-sm text-slate-700">{winner.phone || '-'}</p></div>
-                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p><p className="truncate text-sm text-slate-700">{winner.itemTitle}</p></div>
-                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p><p className="text-sm font-medium text-slate-900 break-all">{winner.couponCode}</p></div>
-                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p><p className="text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</p></div>
-                              <div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Recebido por</p><p className="text-sm text-slate-700">{winner.receivedBy || '-'}</p></div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">WhatsApp</p>
+                                <p className="mt-1 text-sm text-slate-700 break-all">{winner.phone || '-'}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">E-mail</p>
+                                <p className="mt-1 text-sm text-slate-700 break-all">{winner.email || '-'}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Prêmio</p>
+                                <p className="mt-1 text-sm text-slate-700 break-words">{winner.itemTitle}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Protocolo</p>
+                                <p className="mt-1 text-sm font-medium text-slate-900 break-all">{winner.couponCode}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Retirado em</p>
+                                <p className="mt-1 text-sm text-slate-500">{formatDateTimeLabel(winner.deliveredAt)}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Recebido por</p>
+                                <p className="mt-1 text-sm text-slate-700 break-words">{winner.receivedBy || '-'}</p>
+                              </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="grid gap-2 sm:grid-cols-3">
                               <button type="button" disabled={isUpdating} onClick={() => void updateRedemptionMutation.mutateAsync({ winId: winner.id, status: 'pending' })} className="admin-button disabled:opacity-60">Pendente</button>
                               <button type="button" disabled={isUpdating} onClick={() => {
                                 if (requireReceiverIdentity) {

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   ArrowRight,
   BarChart3,
+  ClipboardCheck,
   CreditCard,
   FileBarChart2,
   Gift,
@@ -28,6 +29,10 @@ type QuickActionItem = {
   description: string
   to: string
   icon: typeof LayoutDashboard
+}
+
+function dedupeSurveysById<T extends { id: string }>(surveys: T[]) {
+  return Array.from(new Map(surveys.map((survey) => [survey.id, survey])).values())
 }
 
 type NpsOverview = {
@@ -118,7 +123,14 @@ export function DashboardPage() {
     enabled: user?.roleCode !== 'master',
   })
 
-  const surveyItems = surveysQuery.data ?? []
+  const allSurveyItems = useMemo(() => dedupeSurveysById(surveysQuery.data ?? []), [surveysQuery.data])
+  const surveyItems = useMemo(() => allSurveyItems.filter((survey) => survey.kind === 'custom'), [allSurveyItems])
+  const npsSurveyItems = useMemo(() => allSurveyItems.filter((survey) => survey.kind === 'nps'), [allSurveyItems])
+  const totalSurveyCount = allSurveyItems.length
+  const customSurveyCount = surveyItems.length
+  const npsSurveyCount = npsSurveyItems.length
+  const totalResponsesAll = allSurveyItems.reduce((sum, survey) => sum + survey.responses, 0)
+  const publishedSurveyCount = allSurveyItems.filter((survey) => survey.status === 'Publicada').length
   const totalResponses = surveyItems.reduce((sum, survey) => sum + survey.responses, 0)
   const publishedSurveys = surveyItems.filter((survey) => survey.status === 'Publicada').length
   const rewardSurveys = surveyItems.filter((survey) => survey.rewardEnabled).length
@@ -144,6 +156,7 @@ export function DashboardPage() {
     ],
     [rewardSurveys, surveyItems.length],
   )
+  const featuredSurvey = prioritySurveys[0] ?? surveyItems[0] ?? null
   const topResponsesChartData = useMemo(
     () =>
       prioritySurveys
@@ -206,46 +219,58 @@ export function DashboardPage() {
       : surveysQuery.data
         ? [
             {
-              label: 'Pesquisas',
-              value: String(surveyItems.length),
+              label: 'Pesquisas personalizadas',
+              value: String(customSurveyCount),
               change: 'Seu painel',
-              detail: 'Pesquisas no painel',
+              detail: 'Campanhas personalizadas',
               tone: 'blue' as const,
               icon: BarChart3,
+              to: '/app/pesquisas',
+            },
+            {
+              label: 'NPS',
+              value: String(npsSurveyCount),
+              change: 'Modelo pronto',
+              detail: 'Pesquisas NPS',
+              tone: 'violet' as const,
+              icon: FileBarChart2,
+              to: '/app/pesquisas/nps',
             },
             {
               label: 'Respostas',
-              value: String(totalResponses),
+              value: String(totalResponsesAll),
               change: 'Base total',
-              detail: 'Total das suas pesquisas',
+              detail: 'Total geral das pesquisas',
               tone: 'emerald' as const,
               icon: FileBarChart2,
-            },
-            {
-              label: 'Roleta',
-              value: String(rewardSurveys),
-              change: 'Campanhas',
-              detail: 'Pesquisas com prêmio',
-              tone: 'violet' as const,
-              icon: Gift,
+              to: '/app/pesquisas',
             },
             {
               label: 'Publicadas',
-              value: String(publishedSurveys),
+              value: String(publishedSurveyCount),
               change: 'No ar',
-              detail: 'Pesquisas prontas',
+              detail: 'Personalizadas e NPS',
               tone: 'amber' as const,
               icon: Users2,
+              to: '/app/pesquisas',
             },
           ]
         : [
             {
-              label: 'Pesquisas',
+              label: 'Pesquisas personalizadas',
               value: '-',
               change: 'Carregando',
               detail: 'Buscando dados',
               tone: 'blue' as const,
               icon: BarChart3,
+            },
+            {
+              label: 'NPS',
+              value: '-',
+              change: 'Carregando',
+              detail: 'Buscando dados',
+              tone: 'violet' as const,
+              icon: FileBarChart2,
             },
             {
               label: 'Respostas',
@@ -256,20 +281,12 @@ export function DashboardPage() {
               icon: FileBarChart2,
             },
             {
-              label: 'Usuários',
-              value: '-',
-              change: 'Carregando',
-              detail: 'Buscando dados',
-              tone: 'violet' as const,
-              icon: Users2,
-            },
-            {
-              label: 'Prêmios',
+              label: 'Publicadas',
               value: '-',
               change: 'Carregando',
               detail: 'Buscando dados',
               tone: 'amber' as const,
-              icon: Gift,
+              icon: Users2,
             },
           ]
 
@@ -298,21 +315,27 @@ export function DashboardPage() {
       : [
           {
             title: 'Pesquisas',
-            description: 'Abrir lista e editar campanhas.',
-            to: '/app/pesquisas',
+            description: featuredSurvey
+              ? `Abrir ${featuredSurvey.title} e ajustar a pesquisa.`
+              : 'Abrir lista e editar campanhas.',
+            to: featuredSurvey ? `/app/pesquisas/${featuredSurvey.id}` : '/app/pesquisas',
             icon: BarChart3,
           },
           {
-            title: 'NPS',
-            description: 'Modelo pronto e leitura simples da recomendação.',
-            to: '/app/pesquisas/nps',
+            title: 'Resultados',
+            description: featuredSurvey
+              ? `Ver os resultados de ${featuredSurvey.title}.`
+              : 'Abrir relatórios da campanha principal.',
+            to: featuredSurvey ? `/app/pesquisas/${featuredSurvey.id}/relatorios` : '/app/pesquisas',
             icon: FileBarChart2,
           },
           {
-            title: 'Aniversário',
-            description: 'Fila e contatos salvos.',
-            to: '/app/automacoes/aniversario',
-            icon: Gift,
+            title: 'Entregas',
+            description: featuredSurvey
+              ? `Ir direto ao controle de entrega de ${featuredSurvey.title}.`
+              : 'Abrir o controle de entrega da campanha principal.',
+            to: featuredSurvey ? `/app/pesquisas/${featuredSurvey.id}/entregas` : '/app/pesquisas',
+            icon: ClipboardCheck,
           },
         ]
 
@@ -407,6 +430,11 @@ export function DashboardPage() {
           <p className="mt-2 max-w-2xl text-[13px] text-slate-600">
             Um painel mais elegante e direto para acompanhar campanhas, respostas, NPS e pontos que pedem ação.
           </p>
+          {user?.roleCode !== 'master' ? (
+            <p className="mt-2 text-[12px] text-slate-500">
+              Total atual: {totalSurveyCount} pesquisa(s), sendo {customSurveyCount} personalizada(s) e {npsSurveyCount} NPS.
+            </p>
+          ) : null}
         </div>
 
         <div className="grid gap-2 sm:grid-cols-3">
@@ -425,8 +453,11 @@ export function DashboardPage() {
               Pesquisas
             </p>
             <p className="mt-1 text-sm font-semibold text-slate-950">
-              {user?.roleCode === 'master' ? globalQuery.data?.surveys ?? '-' : surveyItems.length}
+              {user?.roleCode === 'master' ? globalQuery.data?.surveys ?? '-' : totalSurveyCount}
             </p>
+            {user?.roleCode !== 'master' ? (
+              <p className="mt-1 text-[11px] text-slate-500">{customSurveyCount} personalizadas • {npsSurveyCount} NPS</p>
+            ) : null}
           </div>
           <div className="admin-inline-stat border-slate-200 bg-white">
             <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">
@@ -796,6 +827,30 @@ export function DashboardPage() {
                       <p className="text-[11px] uppercase tracking-[0.12em] text-slate-500">Atualização</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">{survey.updatedAt}</p>
                     </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 md:grid-cols-3">
+                    <Link
+                      to={`/app/pesquisas/${survey.id}`}
+                      className="inline-flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                    >
+                      <span>Pesquisa</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      to={`/app/pesquisas/${survey.id}/relatorios`}
+                      className="inline-flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                    >
+                      <span>Resultados</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      to={`/app/pesquisas/${survey.id}/entregas`}
+                      className="inline-flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950"
+                    >
+                      <span>Controle de entrega</span>
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
                   </div>
                 </article>
               ))}

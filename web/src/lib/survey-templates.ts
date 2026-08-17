@@ -15,6 +15,21 @@ export function slugify(value: string) {
     .replace(/^-+|-+$/g, '')
 }
 
+export function buildSuggestedNpsSlug(brandName: string, title = 'Pesquisa NPS') {
+  const normalizedBrand = slugify(brandName.trim())
+  const normalizedTitle = slugify(title.trim())
+
+  if (normalizedBrand) {
+    return slugify(`nps-${normalizedBrand}`)
+  }
+
+  if (normalizedTitle && normalizedTitle !== 'nps') {
+    return slugify(`nps-${normalizedTitle}`)
+  }
+
+  return 'nps-pesquisa'
+}
+
 export function createEmptySurveyForm(defaults?: Partial<SurveyCreateFormState>): SurveyCreateFormState {
   return {
     title: '',

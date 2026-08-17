@@ -174,6 +174,10 @@ export function SurveysPage() {
                 }}
                 required
               />
+              <span className="text-xs text-slate-500">
+                O endereço público será{' '}
+                <span className="font-medium text-slate-700">/{createForm.slug || 'sua-pesquisa'}</span>
+              </span>
             </label>
 
             <label className="grid gap-2 text-sm">

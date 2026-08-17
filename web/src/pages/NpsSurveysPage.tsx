@@ -1,14 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart3, ChevronRight, ClipboardList, MessageSquareText, ThumbsDown, ThumbsUp } from 'lucide-react'
+import {
+  AlertCircle,
+  BarChart3,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Loader2,
+  MessageSquareText,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
+} from 'lucide-react'
 
 import { AppShell } from '@/components/layout/AppShell'
 import { AdminModal } from '@/components/ui/AdminModal'
 import { SectionCard } from '@/components/ui/SectionCard'
 import { apiRequest } from '@/lib/api-client'
 import { mapApiSurvey } from '@/lib/mappers'
-import { buildNpsSurveyPayload, createEmptySurveyForm, slugify, type SurveyCreateFormState } from '@/lib/survey-templates'
+import {
+  buildNpsSurveyPayload,
+  buildSuggestedNpsSlug,
+  createEmptySurveyForm,
+  slugify,
+  type SurveyCreateFormState,
+} from '@/lib/survey-templates'
 
 type NpsOverview = {
   surveys: number
@@ -31,6 +48,7 @@ type NpsOverview = {
 const emptySurveyForm = createEmptySurveyForm({
   title: 'Pesquisa NPS',
   description: 'Modelo NPS para medir recomendação com pergunta principal e espaço para comentário.',
+  slug: buildSuggestedNpsSlug('Minha marca', 'Pesquisa NPS'),
 })
 
 function getNpsTone(score: number) {
@@ -54,8 +72,14 @@ export function NpsSurveysPage() {
   const queryClient = useQueryClient()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [isSlugDirty, setIsSlugDirty] = useState(false)
-  const [feedback, setFeedback] = useState('')
   const [createForm, setCreateForm] = useState<SurveyCreateFormState>(emptySurveyForm)
+  const [centeredFeedback, setCenteredFeedback] = useState<{
+    type: 'success' | 'error' | 'loading'
+    title: string
+    message: string
+    key: number
+  } | null>(null)
+  const centeredFeedbackTimeoutRef = useRef<number | null>(null)
 
   const surveysQuery = useQuery({
     queryKey: ['surveys'],
@@ -93,14 +117,14 @@ export function NpsSurveysPage() {
 
   const createSurveyMutation = useMutation({
     mutationFn: async () => {
-      const created = await apiRequest<{ id: string }>('/surveys', {
+      const created = await apiRequest<{ id: string; slug: string; slugAdjusted?: boolean }>('/surveys', {
         method: 'POST',
         body: JSON.stringify(buildNpsSurveyPayload(createForm)),
       })
 
-      return created.id
+      return created
     },
-    onSuccess: async (surveyId) => {
+    onSuccess: async (created) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['surveys'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
@@ -109,12 +133,61 @@ export function NpsSurveysPage() {
       setIsCreateModalOpen(false)
       setIsSlugDirty(false)
       setCreateForm(emptySurveyForm)
-      navigate(`/app/pesquisas/${surveyId}/editar`, {
-        state: { feedback: 'Pesquisa NPS criada com boas práticas. Agora você pode ajustar os detalhes finais.' },
+      navigate(`/app/pesquisas/${created.id}/editar`, {
+        state: {
+          feedback: created.slugAdjusted
+            ? `Pesquisa NPS criada com boas práticas. O slug publico foi ajustado para /${created.slug} porque o anterior ja estava em uso.`
+            : 'Pesquisa NPS criada com boas práticas. Agora você pode ajustar os detalhes finais.',
+        },
       })
     },
     onError: (error) => {
-      setFeedback(error instanceof Error ? error.message : 'Não foi possível criar a pesquisa NPS.')
+      setCenteredFeedback({
+        type: 'error',
+        title: 'Não foi possível concluir',
+        message: error instanceof Error ? error.message : 'Não foi possível criar a pesquisa NPS.',
+        key: Date.now(),
+      })
+    },
+  })
+
+  const deleteSurveyMutation = useMutation({
+    onMutate: () => {
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+      setCenteredFeedback({
+        type: 'loading',
+        title: 'Processando',
+        message: 'Excluindo a pesquisa NPS e atualizando a lista.',
+        key: Date.now(),
+      })
+    },
+    mutationFn: async (surveyId: string) => {
+      await apiRequest<{ ok: boolean }>(`/surveys/${surveyId}`, {
+        method: 'DELETE',
+      })
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'surveys'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard', 'nps-overview'] }),
+      ])
+      setCenteredFeedback({
+        type: 'success',
+        title: 'Tudo certo',
+        message: 'Pesquisa NPS excluída com sucesso.',
+        key: Date.now(),
+      })
+    },
+    onError: (error) => {
+      setCenteredFeedback({
+        type: 'error',
+        title: 'Não foi possível concluir',
+        message: error instanceof Error ? error.message : 'Não foi possível excluir a pesquisa NPS.',
+        key: Date.now(),
+      })
     },
   })
 
@@ -122,7 +195,6 @@ export function NpsSurveysPage() {
   const overview = overviewQuery.data
 
   function handleOpenCreateModal() {
-    setFeedback('')
     setIsSlugDirty(false)
     setCreateForm(emptySurveyForm)
     setIsCreateModalOpen(true)
@@ -134,17 +206,91 @@ export function NpsSurveysPage() {
     setCreateForm(emptySurveyForm)
   }
 
+  function handleDeleteSurvey(surveyId: string, surveyTitle: string) {
+    if (!window.confirm(`Deseja excluir a pesquisa "${surveyTitle}"? Essa ação remove campanha, perguntas e resultados vinculados.`)) {
+      return
+    }
+
+    void deleteSurveyMutation.mutateAsync(surveyId)
+  }
+
+  useEffect(() => {
+    if (!centeredFeedback || centeredFeedback.type === 'loading') {
+      return
+    }
+
+    if (centeredFeedbackTimeoutRef.current) {
+      window.clearTimeout(centeredFeedbackTimeoutRef.current)
+    }
+
+    centeredFeedbackTimeoutRef.current = window.setTimeout(() => {
+      setCenteredFeedback(null)
+    }, 2200)
+
+    return () => {
+      if (centeredFeedbackTimeoutRef.current) {
+        window.clearTimeout(centeredFeedbackTimeoutRef.current)
+      }
+    }
+  }, [centeredFeedback])
+
   return (
-    <AppShell
-      title="Pesquisas NPS"
-      subtitle="Página separada para NPS, com modelo pronto, leitura simples e indicadores fáceis de entender."
-      backHref="/app/pesquisas"
-      backLabel="Voltar para pesquisas"
-      breadcrumbs={[
-        { label: 'Pesquisas', href: '/app/pesquisas' },
-        { label: 'NPS' },
-      ]}
-    >
+    <>
+      {centeredFeedback ? (
+        <div className="pointer-events-none fixed inset-0 z-[140] flex items-center justify-center px-4">
+          <div
+            key={centeredFeedback.key}
+            className={`animate-fade-in-scale rounded-[24px] border bg-white/95 px-6 py-5 text-center shadow-[0_28px_80px_rgba(15,23,42,0.18)] backdrop-blur-sm ${
+              centeredFeedback.type === 'success'
+                ? 'border-emerald-200'
+                : centeredFeedback.type === 'error'
+                  ? 'border-rose-200'
+                  : 'border-sky-200'
+            }`}
+          >
+            <div
+              className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full shadow-[0_12px_30px_rgba(15,23,42,0.12)] ${
+                centeredFeedback.type === 'success'
+                  ? 'bg-emerald-100 text-emerald-600'
+                  : centeredFeedback.type === 'error'
+                    ? 'bg-rose-100 text-rose-600'
+                    : 'bg-sky-100 text-sky-600'
+              }`}
+            >
+              {centeredFeedback.type === 'success' ? (
+                <CheckCircle2 className="h-7 w-7" />
+              ) : centeredFeedback.type === 'error' ? (
+                <AlertCircle className="h-7 w-7" />
+              ) : (
+                <Loader2 className="h-7 w-7 animate-spin" />
+              )}
+            </div>
+            <p
+              className={`mt-3 text-xs font-bold uppercase tracking-[0.22em] ${
+                centeredFeedback.type === 'success'
+                  ? 'text-emerald-700'
+                  : centeredFeedback.type === 'error'
+                    ? 'text-rose-700'
+                    : 'text-sky-700'
+              }`}
+            >
+              {centeredFeedback.title}
+            </p>
+            <p className="mt-2 max-w-md text-base font-semibold text-slate-950 sm:text-lg">{centeredFeedback.message}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <AppShell
+        title="Pesquisas NPS"
+        subtitle="Página separada para NPS, com modelo pronto, leitura simples e indicadores fáceis de entender."
+        backHref="/app/pesquisas"
+        backLabel="Voltar para pesquisas"
+        breadcrumbs={[
+          { label: 'Pesquisas', href: '/app/pesquisas' },
+          { label: 'NPS' },
+        ]}
+      >
       <AdminModal
         open={isCreateModalOpen}
         title="Nova pesquisa NPS"
@@ -167,7 +313,7 @@ export function NpsSurveysPage() {
                 setCreateForm((current) => ({
                   ...current,
                   title: event.target.value,
-                  slug: isSlugDirty ? current.slug : slugify(event.target.value),
+                  slug: isSlugDirty ? current.slug : buildSuggestedNpsSlug(current.brandName, event.target.value),
                 }))
               }
               required
@@ -195,6 +341,10 @@ export function NpsSurveysPage() {
                 }}
                 required
               />
+              <span className="text-xs text-slate-500">
+                O endereço público será{' '}
+                <span className="font-medium text-slate-700">/{createForm.slug || 'nps-sua-marca'}</span>
+              </span>
             </label>
 
             <label className="grid gap-2 text-sm">
@@ -202,7 +352,13 @@ export function NpsSurveysPage() {
               <input
                 className="admin-input"
                 value={createForm.brandName}
-                onChange={(event) => setCreateForm((current) => ({ ...current, brandName: event.target.value }))}
+                onChange={(event) =>
+                  setCreateForm((current) => ({
+                    ...current,
+                    brandName: event.target.value,
+                    slug: isSlugDirty ? current.slug : buildSuggestedNpsSlug(event.target.value, current.title),
+                  }))
+                }
                 required
               />
             </label>
@@ -233,8 +389,6 @@ export function NpsSurveysPage() {
           </div>
         </form>
       </AdminModal>
-
-      {feedback ? <div className="admin-alert mb-6 border-rose-200 bg-rose-50 text-rose-900">{feedback}</div> : null}
 
       <section className="admin-page-hero mb-6 grid gap-3 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
         <div>
@@ -399,27 +553,42 @@ export function NpsSurveysPage() {
           ) : (
             <div className="space-y-3">
               {npsSurveys.map((survey) => (
-                <Link key={survey.id} to={`/app/pesquisas/${survey.id}`} className="admin-panel block overflow-hidden transition hover:border-slate-300 hover:bg-white">
+                <article key={survey.id} className="admin-panel overflow-hidden transition hover:border-slate-300 hover:bg-white">
                   <div className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
+                    <Link to={`/app/pesquisas/${survey.id}`} className="min-w-0 flex-1">
                       <p className="truncate font-semibold text-slate-950">{survey.title}</p>
                       <p className="mt-1 truncate text-sm text-slate-500">/{survey.slug}</p>
-                    </div>
+                    </Link>
                     <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                       <span className="admin-badge bg-white">{survey.responses} resposta(s)</span>
                       <span className="admin-badge bg-white">NPS</span>
                       <span className="admin-badge border-slate-900 bg-slate-950 text-white">{survey.status}</span>
-                      <span className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600" style={{ borderRadius: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSurvey(survey.id, survey.title)}
+                        disabled={deleteSurveyMutation.isPending}
+                        className="inline-flex h-9 items-center justify-center gap-2 border border-rose-200 bg-rose-50 px-3 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        style={{ borderRadius: 8 }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deleteSurveyMutation.isPending ? 'Excluindo...' : 'Excluir'}
+                      </button>
+                      <Link
+                        to={`/app/pesquisas/${survey.id}`}
+                        className="inline-flex h-9 w-9 items-center justify-center border border-slate-200 bg-white text-slate-600"
+                        style={{ borderRadius: 8 }}
+                      >
                         <ChevronRight className="h-4 w-4" />
-                      </span>
+                      </Link>
                     </div>
                   </div>
-                </Link>
+                </article>
               ))}
             </div>
           )}
         </SectionCard>
       </div>
-    </AppShell>
+      </AppShell>
+    </>
   )
 }

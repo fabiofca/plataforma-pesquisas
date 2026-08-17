@@ -62,6 +62,29 @@ function buildPublicSurveyUrl(slug: string) {
   return new URL(`/${slug}?src=qr`, env.frontendUrl).toString()
 }
 
+async function findSurveyIdBySlug(slug: string) {
+  const result = await query<{ survey_id: string }>(
+    'select survey_id from survey_slugs where slug = $1 and is_active = true limit 1',
+    [slug],
+  )
+
+  return result.rows[0]?.survey_id ?? null
+}
+
+async function buildAvailableSurveySlug(baseSlug: string) {
+  const normalizedBaseSlug = sanitizeFileName(baseSlug).slice(0, 150) || `pesquisa-${makeId().slice(0, 8)}`
+
+  let candidate = normalizedBaseSlug
+  let suffix = 2
+
+  while (await findSurveyIdBySlug(candidate)) {
+    candidate = `${normalizedBaseSlug}-${suffix}`
+    suffix += 1
+  }
+
+  return candidate
+}
+
 function removeManagedSurveyFile(value: unknown) {
   if (typeof value !== 'string' || !value.startsWith('/uploads/surveys/')) {
     return
@@ -460,7 +483,7 @@ surveysRouter.get('/', async (request: AuthenticatedRequest, response) => {
             end as survey_kind,
             surveys.title, surveys.description, surveys.status, surveys.participation_mode,
             surveys.brand_name, surveys.primary_color, surveys.reward_enabled, surveys.prevent_duplicate_responses, surveys.published_at,
-            survey_slugs.slug,
+            survey_slug.slug,
             cast(count(distinct survey_responses.id) as text) as responses,
             (
               select cast(count(*) as text)
@@ -473,10 +496,17 @@ surveysRouter.get('/', async (request: AuthenticatedRequest, response) => {
               where survey_share_visits.survey_id = surveys.id and survey_share_visits.source = 'qr'
             ) as qr_scans
      from surveys
-     left join survey_slugs on survey_slugs.survey_id = surveys.id and survey_slugs.is_active = true
+     left join lateral (
+       select slug
+       from survey_slugs
+       where survey_slugs.survey_id = surveys.id
+         and survey_slugs.is_active = true
+       order by survey_slugs.created_at desc, survey_slugs.id desc
+       limit 1
+     ) survey_slug on true
      left join survey_responses on survey_responses.survey_id = surveys.id
      where surveys.owner_user_id = $1 or $2 = 'master'
-     group by surveys.id, survey_slugs.slug
+     group by surveys.id, survey_slug.slug
      order by surveys.updated_at desc`,
     [request.auth!.userId, request.auth!.roleCode],
   )
@@ -647,6 +677,7 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
 
   const surveyId = makeId()
   const slugId = makeId()
+  const resolvedSlug = await buildAvailableSurveySlug(payload.slug)
 
   await query(
     `insert into surveys (
@@ -673,7 +704,7 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
     ],
   )
 
-  await query('insert into survey_slugs (id, survey_id, slug) values ($1, $2, $3)', [slugId, surveyId, payload.slug])
+  await query('insert into survey_slugs (id, survey_id, slug) values ($1, $2, $3)', [slugId, surveyId, resolvedSlug])
 
   for (const item of payload.questions) {
     const questionId = item.id ?? makeId()
@@ -710,7 +741,11 @@ surveysRouter.post('/', async (request: AuthenticatedRequest, response) => {
     )
   }
 
-  response.status(201).json({ id: surveyId })
+  response.status(201).json({
+    id: surveyId,
+    slug: resolvedSlug,
+    slugAdjusted: resolvedSlug !== payload.slug,
+  })
 })
 
 surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
@@ -727,6 +762,15 @@ surveysRouter.patch('/:id', async (request: AuthenticatedRequest, response) => {
 
   if (flowValidationMessage) {
     response.status(400).json({ message: flowValidationMessage })
+    return
+  }
+
+  const conflictingSurveyId = await findSurveyIdBySlug(payload.slug)
+
+  if (conflictingSurveyId && conflictingSurveyId !== surveyId) {
+    response.status(400).json({
+      message: 'Esse slug publico ja esta em uso por outra pesquisa. Escolha outro identificador para continuar.',
+    })
     return
   }
 

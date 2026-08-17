@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 type MetricCardTone = 'blue' | 'emerald' | 'violet' | 'amber'
 
@@ -39,6 +40,7 @@ export function MetricCard({
   detail,
   tone = 'blue',
   icon: Icon,
+  to,
 }: {
   label: string
   value: string
@@ -46,14 +48,11 @@ export function MetricCard({
   detail?: string
   tone?: MetricCardTone
   icon?: LucideIcon
+  to?: string
 }) {
   const palette = toneClasses[tone]
-
-  return (
-    <article
-      className={`overflow-hidden rounded-[8px] border p-3 shadow-card ${palette.border}`}
-      style={{ background: 'linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%)' }}
-    >
+  const content = (
+    <>
       <div className={`mb-3 h-[3px] w-14 bg-gradient-to-r ${palette.glow}`} />
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -72,6 +71,25 @@ export function MetricCard({
         <span className={`inline-flex rounded-[8px] px-2.5 py-1 text-[10px] font-semibold ${palette.badge}`}>{change}</span>
         {detail ? <p className="text-[13px] text-slate-500">{detail}</p> : null}
       </div>
+    </>
+  )
+
+  const className = `block overflow-hidden rounded-[8px] border p-3 shadow-card ${palette.border} ${
+    to ? 'transition hover:border-slate-300 hover:-translate-y-0.5' : ''
+  }`
+  const style = { background: 'linear-gradient(180deg, var(--surface-0) 0%, var(--surface-1) 100%)' }
+
+  if (to) {
+    return (
+      <Link to={to} className={className} style={style}>
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <article className={className} style={style}>
+      {content}
     </article>
   )
 }
